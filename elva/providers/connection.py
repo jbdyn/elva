@@ -1,0 +1,6 @@
+class Connection():
+    def send(self):
+        ...
+
+    def recv(self):
+        ...

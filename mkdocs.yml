@@ -1,0 +1,7 @@
+site_name: ELVA
+theme:
+  name: material
+plugins:
+- search
+- autoref
+- mkdocstrings
