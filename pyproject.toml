@@ -24,15 +24,13 @@ keywords = [
   "text",
   "terminal"
 ]
-# TODO decide about displayed contact information
-#authors = [
-#  { name = "<name>", email = "<email>" }
-#]
-#maintainers = [
-#  { name = "<name>", email = "<email>" }
-#]
-# TODO decide on a license
-# license = { file = "LICENSE" }
+authors = [
+  { name = "ELVA Team", email = "elva@mintgruen.tu-berlin.de" }
+]
+maintainers = [
+  { name = "Jakob Zahn", email = "jakob.zahn@mailbox.org" },
+]
+license = { file = "LICENSE" }
 classifiers = [
   "Programming Language :: Python :: 3"
 ]
