@@ -11,10 +11,9 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from pycrdt import Doc, Map
-from app import ElvaApp
+from base import BaseApp
 from utils import print_tree, print_event
 from pycrdt_websocket.ystore import FileYStore
-from jupyter_ydoc import YBlob
 
 # source: https://gist.github.com/mivade/f4cb26c282d421a62e8b9a341c7c65f6
 class AsyncQueueEventHandler(FileSystemEventHandler):
@@ -43,7 +42,7 @@ class AsyncQueueIterator:
         return item
 
 
-class ElvaTree(ElvaApp):
+class Drive(BaseApp):
     def __init__(self, path=None, doc=None):
         super().__init__(doc)
 
@@ -140,8 +139,8 @@ class ElvaTree(ElvaApp):
 
 
 async def main():
-    tree_handler = ElvaTree()
-    await tree_handler.start()
+    drive_handler = Drive()
+    await drive_handler.start()
 
 if __name__ == "__main__":
     anyio.run(main)

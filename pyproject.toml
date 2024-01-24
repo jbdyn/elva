@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "elva"
-description = "A suite of realtime collaboration apps based on CRDTs."
+description = "A suite of local-first TUI realtime collaboration apps based on CRDTs."
 readme = "README.md"
 requires-python = ">=3.8"
 keywords = [
@@ -17,7 +17,12 @@ keywords = [
   "y-crdt",
   "yjs",
   "yrs",
-  "suite"
+  "suite",
+  "local",
+  "local-first",
+  "tui",
+  "text",
+  "terminal"
 ]
 # TODO decide about displayed contact information
 #authors = [
@@ -33,20 +38,23 @@ classifiers = [
 ]
 dependencies = [
   "websockets",
-  "pycrdt>=0.8.3",
-  "pycrdt_websockets>=0.12.6",
+  "pycrdt>=0.8.6",
+  "pycrdt-websocket>=0.12.6",
   "anyio",
-  "textual"
+  "textual[syntax]"
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
 dev = [
+  "black",
+  "build",
   "setuptools-scm",
   "tox",
   "twine",
   "mkdocs",
-  "mkdocstrings"
+  "mkdocstrings",
+  "textual-dev"
 ]
 
 # TODO complete url list

@@ -1,28 +1,20 @@
-import asyncio
-from pycrdt import Doc
-from jupyter_ydoc import YBlob
-from websockets import connect
+import anyio
+from pycrdt import Doc, Text
 from pycrdt_websocket import WebsocketProvider
-from tree import ElvaTree
+from websockets import connect
+from apps.editor import Editor
+from providers import ElvaProvider
+from time import sleep
 
-import sys
 
-async def client(path):
-    doc = Doc()
-    tree = ElvaTree(path=path, doc=doc)
+async def client():
+    ydoc = Doc()
+    editor = Editor(ydoc)
+    ydoc["uuid"] = Text("9914bba9-8f17-429f-ab97-6b60f61bc49")
     async with (
-        connect("ws://localhost:1234/my-roomname") as websocket,
-        WebsocketProvider(doc, websocket),
+        connect("ws://localhost:1234/") as websocket,
+        ElvaProvider([ydoc], websocket) as provider,
     ):
-        # Changes to remote ydoc are applied to local ydoc.
-        # Changes to local ydoc are sent over the WebSocket and
-        # broadcast to all clients.
-        
-        #with open('Rundschreiben.pdf', 'rb') as file:
-        #    blob = YBlob(ydoc)
-        #    print("setting yblob")
-        #    blob.set(file.read())
-        await tree.start()
-        await asyncio.Future()  # run forever
+        await editor.run_async()
 
-asyncio.run(client(sys.argv[1]))
+anyio.run(client)

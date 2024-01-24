@@ -1,0 +1,10 @@
+<!doctype html>
+<html>
+<body>
+<script>
+let webSocket = new WebSocket('ws://localhost:1237/');
+webSocket.onmessage = function(e) { console.log(e)}
+webSocket.send("test")
+</script>
+</body>
+</html>
