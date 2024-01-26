@@ -17,15 +17,13 @@ from functools import partial
 log = logging.getLogger(__name__)
 
 class ElvaProvider():
-    def __init__(self, ydocs, connection):
-        self.ydocs = dict()
+    def __init__(self, ydocs: dict[str, Doc], connection):
+        self.ydocs = ydocs
         self.is_synced = dict()
         self.connection = connection
-        for ydoc in ydocs:
-            uuid = str(ydoc["uuid"])
-            self.ydocs.update({uuid: ydoc})
+        for uuid in ydocs.keys():
             self.is_synced.update({uuid: False})
-            ydoc.observe(partial(self.observe, uuid=uuid))
+            ydocs[uuid].observe(partial(self.observe, uuid=uuid))
 
 
     async def __aenter__(self):

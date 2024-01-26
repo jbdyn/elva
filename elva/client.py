@@ -10,10 +10,10 @@ from time import sleep
 async def client():
     ydoc = Doc()
     editor = Editor(ydoc)
-    ydoc["uuid"] = Text("9914bba9-8f17-429f-ab97-6b60f61bc49")
+    uuid = "9914bba9-8f17-429f-ab97-6b60f61bc49"
     async with (
         connect("ws://localhost:1234/") as websocket,
-        ElvaProvider([ydoc], websocket) as provider,
+        ElvaProvider({uuid: ydoc}, websocket) as provider,
     ):
         await editor.run_async()
 
