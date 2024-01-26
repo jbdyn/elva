@@ -3,4 +3,5 @@ build
 dist
 .envrc
 env
+venv
 __pycache__

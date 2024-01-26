@@ -23,7 +23,7 @@ class ElvaProvider():
         self.connection = connection
         for uuid in ydocs.keys():
             self.is_synced.update({uuid: False})
-            ydocs[uuid].observe(partial(self.observe, uuid=uuid))
+            self.ydocs[uuid].observe(partial(self.observe, uuid=uuid))
 
 
     async def __aenter__(self):
