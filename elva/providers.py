@@ -77,7 +77,10 @@ class ElvaProvider():
     async def process_sync_message(self, message, uuid):
         message_type = message[0]
         msg = message[1:]
-        ydoc = self.ydocs[uuid]
+        try:
+            ydoc = self.ydocs[uuid]
+        except:
+            return
         sync_message_type = YSyncMessageType(message_type).name
         print(f"> received {sync_message_type} message")
         if message_type == YSyncMessageType.SYNC_STEP1:

@@ -1,14 +1,21 @@
 from textual.app import App
 from textual.message import Message
-from textual.widgets import TextArea
+from textual.widgets import TextArea, Label
 from textual.events import Paste
+from rich.text import Text as RichText
 import time
 import anyio
 from pycrdt import Doc, Text
+from functools import partial
+import os
 
 from websockets import connect
 from pycrdt_websocket import WebsocketProvider
+from elva.providers import ElvaProvider
 import sys
+import uuid
+import click
+from elva.utils import load_ydoc, save_ydoc
 
 class YTextArea(TextArea):
     def __init__(self, ydoc):
@@ -16,7 +23,6 @@ class YTextArea(TextArea):
         self.ydoc = ydoc
         self.ytext = ydoc["ytext"]
         self.ytext.observe(self.callback)
-        print("subscribed to YText observer")
 
     def callback(self, event):
         self.log(">>> YTextEvent:", event)
@@ -109,9 +115,10 @@ class YTextArea(TextArea):
 # delete_to_end_of_line
 
 class Editor(App):
-    def __init__(self, ydoc=None):
+    def __init__(self, ydoc=None, identifier=None):
         super().__init__()
         self.ydoc = ydoc if ydoc is not None else Doc()
+        self.identifier = identifier
         try:
             self.ytext = self.ydoc["ytext"]
         except KeyError as e:
@@ -122,15 +129,38 @@ class Editor(App):
 
     def compose(self):
         yield self.text_area
- 
-async def client():
+        if self.identifier:
+            yield Label(f"id: {self.identifier}")
+
+async def run(identifier=None, uri="ws://localhost:8000/"):
+    if not identifier:
+        identifier = str(uuid.uuid4())
+    path = identifier + ".y" if not identifier.endswith(".y") else identifier
     ydoc = Doc()
-    app = Editor(ydoc)
+    app = Editor(ydoc, identifier)
+    if os.path.exists(path):
+        try:
+            load_ydoc(ydoc, path=path)
+        except Exception as e:
+            print(e)
+
     async with (
-        connect("ws://localhost:1234/my-roomname") as websocket,
-        WebsocketProvider(ydoc, websocket),
+        connect(uri) as websocket,
+        ElvaProvider({identifier: ydoc}, websocket),
     ):
         await app.run_async()
 
+    try:
+        save_ydoc(ydoc, path=path)
+    except Exception as e:
+        print(e)
+
+
+@click.command()
+@click.argument("name", required=False)
+@click.option("--uri", "-u", "uri", default="ws://localhost:8000/", show_default=True)
+def main(name, uri):
+    anyio.run(run, name, uri)
+
 if __name__ == "__main__":
-    anyio.run(client)
+    main()

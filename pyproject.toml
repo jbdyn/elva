@@ -39,7 +39,8 @@ dependencies = [
   "pycrdt>=0.8.6",
   "pycrdt-websocket>=0.12.6",
   "anyio",
-  "textual[syntax]"
+  "textual[syntax]",
+  "click"
 ]
 dynamic = ["version"]
 
@@ -64,8 +65,12 @@ dev = [
 #"Bug Tracker" = "https://url.to/bug-tracker"
 #Changelog = "https://url.to/changelog"
 
+[project.scripts]
+elva = "elva.cli:elva"
+
 [tool.setuptools]
 packages = ["elva"]
 
 [tool.setuptools_scm]
 version_file = "elva/_version.py"
+local_scheme = "no-local-version"

@@ -1,0 +1,2 @@
+prune elva
+include elva/apps/editor.py elva/providers.py elva/utils.py elva/websocket-server.py elva/cli.py
