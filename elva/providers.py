@@ -95,15 +95,10 @@ class ElvaProvider():
             YSyncMessageType.SYNC_STEP2,
             YSyncMessageType.SYNC_UPDATE,
         ):
-            print(f">>> got message {msg}")
             update = read_message(msg)
             print(f">>> got update {update}")
-            ytext = ydoc["ytext"]
-            print(f"> YText before: {ytext}")
             if update != b"\x00\x00":
                 ydoc.apply_update(update)
-                print(f"> YText after: {ytext}")
-                print(f">>> applied update {update}")
             if message_type == YSyncMessageType.SYNC_STEP2:
                 self.is_synced.update({uuid: True})
 

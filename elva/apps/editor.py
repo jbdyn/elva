@@ -18,10 +18,11 @@ import click
 from elva.utils import load_ydoc, save_ydoc
 
 class YTextArea(TextArea):
-    def __init__(self, ydoc):
-        super().__init__()
-        self.ydoc = ydoc
-        self.ytext = ydoc["ytext"]
+    def __init__(self, ytext, **kwargs):
+        super().__init__(**kwargs)
+        self.ytext = ytext
+        start = self.document.get_location_from_index(0)
+        self.insert(str(ytext), start)
         self.ytext.observe(self.callback)
 
     def callback(self, event):
@@ -53,7 +54,7 @@ class YTextArea(TextArea):
         start, end = selection
         return sorted([self.document.get_index_from_location(loc) for loc in (start, end)])
 
-    async def on_key(self, event) -> None:
+    def on_key(self, event) -> None:
         """Handle key presses which correspond to document inserts."""
         self.log(">>> Key:", event)
         key = event.key
@@ -78,6 +79,7 @@ class YTextArea(TextArea):
         
             self.log(self.text)
             self.log(self.ytext.to_py())
+
 
     async def on_paste(self, event):
         # do not also call `on_paste` on the parent class,
@@ -129,8 +131,7 @@ class Editor(App):
 
     def compose(self):
         yield self.text_area
-        if self.identifier:
-            yield Label(f"id: {self.identifier}")
+        yield Label(f"id: {self.identifier}")
 
 async def run(identifier=None, uri="ws://localhost:8000/"):
     if not identifier:
