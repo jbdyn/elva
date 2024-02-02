@@ -82,9 +82,7 @@ class MetaProvider():
                 "The WebsocketServer is not running: use `async with websocket_server:` or `await websocket_server.start()`"
             )
 
-        #async with anyio.create_task_group() as tg:
-        #    tg.start_soon(self._serve, websocket, tg)
-        self.task_group.start_soon(self._serve, websocket, self.task_group)
+        await self._serve(websocket, self.task_group)
 
     async def _serve(self, websocket: Websocket, tg: TaskGroup):
         uuid = websocket.path[1:]
