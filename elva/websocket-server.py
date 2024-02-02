@@ -63,5 +63,5 @@ if __name__ == "__main__":
         log.info("closing connections...")
         for socket in SOCKETS.copy():
             log.debug(f"closing connection {socket}")
-            sockets.close()
+            socket.close()
         log.info("server stopped")
