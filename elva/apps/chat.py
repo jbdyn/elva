@@ -18,6 +18,8 @@ from functools import partial
 import sys
 from editor import YTextArea
 
+from pycrdt_websocket import WebsocketProvider
+
 
 class Message(Widget):
     content = reactive("")
@@ -215,17 +217,21 @@ class Chat(App):
             self.message_text = None
             self.message = None
             
-async def main(name):
+async def main(name, uri="wss://example.com/sync/"):
     ydoc = Doc()
     app = Chat(name, ydoc)
     async with (
-        websockets.connect("wss://example.com/sync/") as websocket,
-        ElvaProvider({"test": ydoc}, websocket) as provider
+        websockets.connect(uri) as websocket,
+        WebsocketProvider(ydoc, websocket)
     ):
         await app.run_async()
 
 if __name__ == "__main__":
-    anyio.run(main, sys.argv[1])
+    if len(sys.argv) > 1:
+        anyio.run(main, sys.argv[1], sys.argv[2])
+    else:
+        anyio.run(main, sys.argv[1])
+
     #ydoc = Doc()
     #app = Chat(sys.argv[1], ydoc)
     #app.run()
