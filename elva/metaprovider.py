@@ -105,7 +105,7 @@ class MetaProvider():
 
             await websocket.close()
             log.debug(f"closed connection {websocket}")
-            log.debug(f"all clients: {SOCKETS}")
+            log.debug(f"all clients: {self.LOCAL_SOCKETS}")
             tg.cancel_scope.cancel()
 
 async def main():
