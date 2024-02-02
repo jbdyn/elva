@@ -227,7 +227,7 @@ async def main(name, uri="wss://example.com/sync/"):
         await app.run_async()
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 2:
         anyio.run(main, sys.argv[1], sys.argv[2])
     else:
         anyio.run(main, sys.argv[1])
