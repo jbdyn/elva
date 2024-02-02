@@ -1,3 +1,10 @@
+import websockets
+import uuid
+from functools import partial
+import sys
+import abc
+
+
 from textual.app import App
 from textual.widget import Widget
 from textual.widgets import Input, Static, ListView, ListItem, Label
@@ -8,15 +15,12 @@ from pycrdt import Doc, Array, Text, Map
 from pycrdt.text import TextEvent
 from pycrdt.array import ArrayEvent
 from pycrdt.map import MapEvent
-from elva.providers import ElvaProvider
-import websockets
-import anyio
-import copy
-import uuid
 
-from functools import partial
-import sys
-from editor import YTextArea
+import anyio
+
+
+from elva.providers import ElvaProvider
+from elva.apps.editor import YTextArea
 
 
 class Message(Widget):
@@ -32,7 +36,7 @@ class Message(Widget):
 
     def watch_content(self, content):
         self.content_field.update(content)
- 
+
 
 class MessageList(VerticalScroll, can_focus_children=False):
     def __init__(self, messages, username, show_self=True, **kwargs):
