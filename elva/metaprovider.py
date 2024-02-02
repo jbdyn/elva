@@ -123,7 +123,4 @@ if __name__ == "__main__":
         anyio.run(main)
     except KeyboardInterrupt:
         log.info("closing connections...")
-        for socket in SOCKETS.copy():
-            log.debug(f"closing connection {socket}")
-            socket.close()
         log.info("server stopped")
