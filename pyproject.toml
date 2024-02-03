@@ -47,6 +47,7 @@ dynamic = ["version"]
 [project.optional-dependencies]
 dev = [
   "pytest",
+  "trio",
   "black",
   "build",
   "setuptools-scm",

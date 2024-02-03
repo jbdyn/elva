@@ -9,7 +9,6 @@ from pycrdt.map import MapEvent
 class EventParser(abc.ABC):
     def __init__(self, event_type):
         self.event_type = event_type
-        self.Runner = type(f'{self.__name__}Runner', (self.__class__,), vars(self))
 
     def check_event(self, event):
         if not isinstance(event, self.event_type):
@@ -17,7 +16,7 @@ class EventParser(abc.ABC):
 
     def parse(self, event):
         self.check_event(event)
-        runner = self.Runner()
+        runner = self.__class__()
         runner.event = event
         return runner.parse_event(event)
 
