@@ -6,7 +6,7 @@ from pycrdt.array import ArrayEvent
 from pycrdt.map import MapEvent
 
 
-class EventParser(abc.ABC):
+class EventParser():
     def __init__(self, event_type):
         self.event_type = event_type
 
@@ -20,7 +20,6 @@ class EventParser(abc.ABC):
         runner.event = event
         return runner.parse_event(event)
 
-    @abc.abstractmethod
     def parse_event(self, event):
         ...
 

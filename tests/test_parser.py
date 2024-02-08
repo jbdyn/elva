@@ -104,9 +104,30 @@ def test_text_event_parser():
     text_event_parser = TextEventParser()
 
     text += "test"
+    assert str(text) == "test"
     event = holder.event
 
     target, actions, path = text_event_parser.parse(event)
     assert actions == [
         ('insert', "test")
+    ]
+
+    text += "test"
+    assert str(text) == "testtest"
+    event = holder.event
+
+    target, actions, path = text_event_parser.parse(event)
+    assert actions == [
+        ('retain', 4),
+        ('insert', "test")
+    ]
+
+    del text[2:]
+    assert str(text) == 'te'
+    event = holder.event
+
+    target, actions, path = text_event_parser.parse(event)
+    assert actions == [
+        ('retain', 2),
+        ('delete', 6)
     ]
