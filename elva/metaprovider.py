@@ -18,12 +18,12 @@ UUID = str
 
 class MetaProvider():
 
-    connection: WebSocketClient
+    remote_connection: WebSocketClient
     LOCAL_SOCKETS: dict[UUID, set[Websocket]]
     log: Logger
 
-    def __init__(self, connection: WebSocketClient, log: Logger | None = None):
-        self.connection = connection
+    def __init__(self, remote_connection: WebSocketClient, log: Logger | None = None):
+        self.remote_connection = remote_connection
         self.log = log or getLogger(__name__)
         self.LOCAL_SOCKETS = dict()
 
@@ -51,43 +51,65 @@ class MetaProvider():
         buuid = uuid.encode()
         return write_var_uint(len(buuid)) + buuid + message
 
-    async def send(self, message, uuid, sending: Websocket=None):
-        await self.send_local(message, uuid, sending)
-        message = self.create_uuid_message(message, uuid)
-        self.log.debug(f"> [{uuid}] sending from {get_websocket_identifier(sending)} to remote: {message}")
-        await self.connection.send(message)
 
-    async def send_local(self, message, uuid, sending: Websocket|None=None):
+    async def send(self, message, uuid, origin_ws: Websocket|None = None) -> None:
+
+        if origin_ws != None:
+            # if message comes from a local client (origin_ws != None)
+            # send to other local clients if they exist and remote 
+
+            origin_name = get_websocket_identifier(origin_ws)
+
+            await self._send_to_local(message, uuid, origin_ws, origin_name)
+            await self._send_to_remote(message, uuid, origin_ws, origin_name)
+        else:
+            # if message comes from remote (origin_ws == None)
+            # only send to local clients
+            
+            origin_name = "remote"
+
+            await self._send_to_local(message, uuid, origin_ws, origin_name)
+        
+    async def _send_to_remote(self, message: str, uuid: UUID, origin_ws: Websocket|None, origin_name: str):
+        # send message to self.remote_connection 
+        message = self.create_uuid_message(message, uuid)
+        self.log.debug(f"> [{uuid}] sending from {origin_name} to remote: {message}")
+        await self.remote_connection.send(message)
+
+    async def _send_to_local(self, message: str, uuid: UUID, origin_ws: Websocket|None, origin_name: str):
+        # check if any local client subscribed to the uuid
         if uuid in self.LOCAL_SOCKETS.keys():
+           # go through all subscribed websockets 
             for websocket in self.LOCAL_SOCKETS[uuid]:
-                if websocket == sending:
+                # don't send message back to it's origin
+                if websocket == origin_ws:
                     self.log.debug(f"> [{uuid}] not sending message back to sender: {message}")
                     continue
-                sender = "remote"
-                if sending != None:
-                    sender = f"{get_websocket_identifier(sending)}"
-                self.log.debug(f"> [{uuid}] sending from {sender} to {get_websocket_identifier(websocket)}: {message}")
+                self.log.debug(f"> [{uuid}] sending from {origin_name} to {get_websocket_identifier(websocket)}: {message}")
                 await websocket.send(message)
         else:
             self.log.debug(f"> [{uuid}] no local recipient found for message: {message}")
     
-    def process_uuid_message(self, message):
+    def process_uuid_message(self, message: bytes) -> tuple[UUID, str]:
         buuid = read_message(message)
         self.log.debug(f"# binary uuid extracted: {buuid}")
         return buuid.decode(), message[len(buuid) + 1:]
 
     async def recv(self):
-        async for message in self.connection:
+        # listen for incomming messages from remote
+        async for message in self.remote_connection:
             uuid, message = self.process_uuid_message(message)
             self.log.debug(f"< [{uuid}] received from remote to local: {message}")
-            await self.send_local(message, uuid, None)
+            await self.send(message, uuid, None)
 
     async def serve(self, websocket: Websocket) -> None:
+        # wrapper function called for every local connection, to make sure task_group exists
+
         if self.task_group is None:
             raise RuntimeError(
                 "The WebsocketServer is not running: use `async with websocket_server:` or `await websocket_server.start()`"
             )
-
+        
         await self._serve(websocket, self.task_group)
 
     async def _serve(self, websocket: Websocket, tg: TaskGroup):
@@ -101,7 +123,7 @@ class MetaProvider():
             self.LOCAL_SOCKETS[uuid] = set()
         self.LOCAL_SOCKETS[uuid].add(websocket)
 
-        # 
+        # listen for messages from local client and relay them 
         try:
             async for message in websocket:
                 self.log.debug(f"< [{uuid}] received from {ws_id}: {message}")
@@ -109,6 +131,7 @@ class MetaProvider():
         except Exception as e:
             log.error(e)
         finally:
+            # after connection ended, remove webscoket from list
             self.LOCAL_SOCKETS[uuid].remove(websocket)
             if len(self.LOCAL_SOCKETS[uuid]) == 0:
                 self.LOCAL_SOCKETS.pop(uuid)
