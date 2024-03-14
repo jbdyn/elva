@@ -146,8 +146,8 @@ async def run(identifier=None, uri="ws://localhost:8000/"):
             print(e)
 
     async with (
-        connect(uri) as websocket,
-        ElvaProvider({identifier: ydoc}, websocket),
+        connect(uri+identifier) as websocket,
+        WebsocketProvider(ydoc, websocket),
     ):
         await app.run_async()
 

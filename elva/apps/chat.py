@@ -216,21 +216,35 @@ class Chat(App):
             self.message_index = None
             self.message_text = None
             self.message = None
-            
-async def main(name, uri="wss://example.com/sync/"):
-    ydoc = Doc()
+
+UUID = "test"
+REMOTE_URI = "wss://example.com/sync/"
+LOCAL_URI = f"ws://localhost:8000/{UUID}"
+
+async def main(name: str,
+               ydoc: Doc=Doc(),
+               uri: str=LOCAL_URI,
+               Provider=WebsocketProvider):
     app = Chat(name, ydoc)
     async with (
         websockets.connect(uri) as websocket,
-        WebsocketProvider(ydoc, websocket)
+        Provider(ydoc, websocket)
     ):
         await app.run_async()
 
 if __name__ == "__main__":
+    server = 'local'
     if len(sys.argv) > 2:
-        anyio.run(main, sys.argv[1], sys.argv[2])
+        server = sys.argv[2].lower()
+    
+    ydoc = Doc()
+    if server == "remote":
+        # connect to the remote websocket server directly, without using the metaprovider
+        elva_provider_wrapper = lambda ydoc, ws: ElvaProvider({UUID:ydoc},ws)
+        anyio.run(main, sys.argv[1], ydoc, REMOTE_URI, elva_provider_wrapper)
     else:
-        anyio.run(main, sys.argv[1])
+        # connect to the local metaprovider
+        anyio.run(main, sys.argv[1], ydoc, LOCAL_URI)
 
     #ydoc = Doc()
     #app = Chat(sys.argv[1], ydoc)
