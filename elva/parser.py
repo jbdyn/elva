@@ -16,7 +16,7 @@ class EventParser():
 
     def parse(self, event):
         self.check_event(event)
-        runner = self.__class__()
+        runner = type(self)()
         runner.event = event
         return runner.parse_event(event)
 
