@@ -1,38 +1,52 @@
 import time
+from typing import Union
 
 import anyio
-from pycrdt import Doc, Text, Array, Map
-from pycrdt.text import TextEvent
-from pycrdt.array import ArrayEvent
-from pycrdt.map import MapEvent
+from pycrdt import Doc, Text, Array, Map, TextEvent, ArrayEvent, MapEvent
 
-from elva.parser import EventParser, TextEventParser, ArrayEventParser, MapEventParser, AnyEventParser
+from elva.parser import (
+    EventParser,
+    TextEventParser,
+    ArrayEventParser,
+    MapEventParser,
+    AnyEventParser,
+)
 
-def init_text():
-    class Holder():
-        pass
 
+class Holder:
+    """An object to assign arbitrary attributes to."""
+
+    pass
+
+
+def init(data_type) -> tuple[Doc, Union[Text, Array, Map], Holder]:
+    """
+    Initializes a shared data type of kind 'kind' and integrates it into a YDocument.
+    It returns the YDocument, the shared data type and an holder object holding the last event.
+    """
     doc = Doc()
-    text = Text()
-    doc["text"] = text
+    doc["shared"] = data_type
 
     holder = Holder()
 
-    def text_callback(event):
+    def callback(event):
         holder.event = event
 
-    text.observe(text_callback)
+    data_type.observe(callback)
 
-    return doc, text, holder
+    return doc, data_type, holder
 
 
 async def test_dynamic_self_instantiation(anyio_backend):
-    doc, text, holder = init_text()
+    doc, text, holder = init(Text())
 
     text += "test1"
     event1 = holder.event
+    assert type(event1) == TextEvent
+
     text += "test2"
     event2 = holder.event
+    assert type(event2) == TextEvent
 
     holder.start_timers = list()
     holder.finish_timers = list()
@@ -41,19 +55,21 @@ async def test_dynamic_self_instantiation(anyio_backend):
 
     class DynamicTextEventParser(TextEventParser):
         def test_dynamic_self_instantiation(self):
-            runner1 = self.__class__()
+            runner1 = type(self)()
             runner1.event = event1
-            runner2 = self.__class__()
+            runner2 = type(self)()
             runner2.event = event2
             assert runner1 is not runner2
-            assert runner1.event is event1 and runner1.event is not event2  # test for side effects
+            assert (
+                runner1.event is event1 and runner1.event is not event2
+            )  # test for side effects
 
         def return_self_event(self):
             return self.event
 
         async def aparse(self, event):
             self.check_event(event)
-            runner = self.__class__()
+            runner = type(self)()
             runner.event = event
 
             # simulate long running parsing
@@ -67,7 +83,6 @@ async def test_dynamic_self_instantiation(anyio_backend):
 
             # save result
             holder.results.append((runner, runner.return_self_event()))
-
 
     event_parser = DynamicTextEventParser()
     event_parser.test_dynamic_self_instantiation()
@@ -100,34 +115,110 @@ async def test_dynamic_self_instantiation(anyio_backend):
 
 
 def test_text_event_parser():
-    doc, text, holder = init_text()
+    doc, text, holder = init(Text())
     text_event_parser = TextEventParser()
 
+    # insert
     text += "test"
     assert str(text) == "test"
     event = holder.event
+    assert type(event) == TextEvent
 
-    target, actions, path = text_event_parser.parse(event)
+    actions = text_event_parser.parse(event)
     assert actions == [
-        ('insert', "test")
+        ("insert", "test")
     ]
 
+    # retain and insert, order matters
     text += "test"
     assert str(text) == "testtest"
     event = holder.event
+    assert type(event) == TextEvent
 
-    target, actions, path = text_event_parser.parse(event)
+    actions = text_event_parser.parse(event)
     assert actions == [
-        ('retain', 4),
-        ('insert', "test")
+        ("retain", 4),
+        ("insert", "test")
     ]
 
+    # retain and delete, order matters
     del text[2:]
-    assert str(text) == 'te'
+    assert str(text) == "te"
     event = holder.event
+    assert type(event) == TextEvent
 
-    target, actions, path = text_event_parser.parse(event)
+    actions = text_event_parser.parse(event)
     assert actions == [
-        ('retain', 2),
-        ('delete', 6)
+        ("retain", 2),
+        ("delete", 6)
     ]
+
+
+def test_array_event_parser():
+    doc, array, holder = init(Array())
+    array_event_parser = ArrayEventParser()
+
+    # extend
+    array.extend([1, 2, 3])
+    assert array.to_py() == [1.0, 2.0, 3.0]
+    event = holder.event
+    assert type(event) == ArrayEvent
+
+    actions = array_event_parser.parse(event)
+    assert actions == [
+        ("insert", [1.0, 2.0, 3.0])
+    ]
+
+    # retain and insert, order matters
+    array.insert(2, 10)
+    assert array.to_py() == [1.0, 2.0, 10.0, 3.0]
+    event = holder.event
+    assert type(event) == ArrayEvent
+
+    actions = array_event_parser.parse(event)
+    assert actions == [
+        ("retain", 2),
+        ("insert", [10.0])
+    ]
+
+    # retain and delete, order matters
+    array.pop(1)
+    assert array.to_py() == [1.0, 10.0, 3.0]
+    event = holder.event
+    assert type(event) == ArrayEvent
+
+    actions = array_event_parser.parse(event)
+    assert actions == [
+        ("retain", 1),
+        ("delete", 1)
+    ]
+
+
+def test_map_event_parser():
+    doc, map, holder = init(Map())
+    map_event_parser = MapEventParser()
+
+    # add
+    # order does not matter
+    map.update({"foo": "bar", "baz": "faz"})
+    assert map.to_py() == {"foo": "bar", "baz": "faz"}
+    event = holder.event
+    assert type(event) == MapEvent
+
+    actions = map_event_parser.parse(event)
+    assert set(actions) == set([
+        ("add", "foo", "bar"),
+        ("add", "baz", "faz")
+    ])
+
+    # delete
+    # order does not matter
+    map.pop("foo")
+    assert map.to_py() == {"baz": "faz"}
+    event = holder.event
+    assert type(event) == MapEvent
+
+    actions = map_event_parser.parse(event)
+    assert set(actions) == set([
+        ("delete", "foo", "bar")
+    ])

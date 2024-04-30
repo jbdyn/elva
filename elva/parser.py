@@ -1,9 +1,7 @@
 import abc
 
-from pycrdt.base import BaseEvent
-from pycrdt.text import TextEvent
-from pycrdt.array import ArrayEvent
-from pycrdt.map import MapEvent
+from pycrdt._base import BaseEvent
+from pycrdt import TextEvent, ArrayEvent, MapEvent
 
 
 class EventParser():
@@ -16,11 +14,14 @@ class EventParser():
 
     def parse(self, event):
         self.check_event(event)
+
+        # self-instantiate to avoid race conditions
         runner = type(self)()
         runner.event = event
-        return runner.parse_event(event)
 
-    def parse_event(self, event):
+        return runner._parse_event()
+
+    def _parse_event(self):
         ...
 
 
@@ -28,14 +29,12 @@ class TextEventParser(EventParser):
     def __init__(self):
         super().__init__(TextEvent)
 
-    def parse_event(self, event):
-        target = event.target
-        deltas = event.delta
-        path = event.path
+    def _parse_event(self):
+        deltas = self.event.delta
 
         actions = []
+        range_offset = 0
         for delta in deltas:
-            range_offset = 0
             for action, var in delta.items():
                 actions.append((action, var))
                 if action == 'retain':
@@ -48,7 +47,7 @@ class TextEventParser(EventParser):
                     range_length = var
                     self.on_delete(range_offset, range_length)
 
-        return target, actions, path
+        return actions
 
     def on_retain(self, range_offset):
         ...
@@ -64,32 +63,30 @@ class ArrayEventParser(EventParser):
     def __init__(self):
         super().__init__(ArrayEvent)
 
-    def parse_event(self, event):
-        target = event.target
-        deltas = event.deltas
-        path = event.path
+    def _parse_event(self):
+        deltas = self.event.delta
 
         actions = []
+        range_offset = 0
         for delta in deltas:
-            range_offset = 0
             for action, var in delta.items():
                 actions.append((action, var))
                 if action == 'retain':
                     range_offset = var
                     self.on_retain(range_offset)
                 elif action == 'insert':
-                    insert_values = var
-                    self.on_insert(range_offset, insert_values)
+                    insert_value = var
+                    self.on_insert(range_offset, insert_value)
                 elif action == 'delete':
                     range_length = var
                     self.on_delete(range_offset, range_length)
 
-        return target, actions, path
+        return actions
 
     def on_retain(self, range_offset):
         ...
 
-    def on_insert(self, range_offset, insert_values):
+    def on_insert(self, range_offset, insert_value):
         ...
 
     def on_delete(self, range_offset, range_length):
@@ -100,30 +97,29 @@ class MapEventParser(EventParser):
     def __init__(self):
         super().__init__(MapEvent)
 
-    def parse_event(self, event):
-        target = event.target
-        keys = event.keys
-        path = event.path
+    def _parse_event(self):
+        keys = self.event.keys
 
         actions = []
         for key, delta in keys.items():
             action = delta["action"]
             if action == 'add':
-                new_value = change["newValue"]
+                new_value = delta["newValue"]
                 actions.append((action, key, new_value))
                 self.on_add(key, new_value)
             elif action == 'delete':
-                old_value = change["oldValue"]
+                old_value = delta["oldValue"]
                 actions.append((action, key, old_value))
                 self.on_delete(key, old_value)
 
-        return target, actions, path
+        return actions
 
     def on_add(self, key, new_value):
         ...
 
     def on_delete(self, key, old_value):
         ...
+
 
 class AnyEventParser():
     def __init__(self, text_event_parser=None, array_event_parser=None, map_event_parser=None):
