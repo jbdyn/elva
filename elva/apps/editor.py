@@ -16,6 +16,9 @@ import sys
 import uuid
 import click
 from elva.utils import load_ydoc, save_ydoc
+from elva.parser import TextEventParser
+
+
 
 class YTextArea(TextArea):
     def __init__(self, ytext, **kwargs):
@@ -24,27 +27,25 @@ class YTextArea(TextArea):
         start = self.document.get_location_from_index(0)
         self.insert(str(ytext), start)
         self.ytext.observe(self.callback)
+        text_area = self
+
+        class EditorEventParser(TextEventParser):
+            def __init__(self):
+                super().__init__()
+            
+            def on_insert(self, range_offset, insert_value):
+                start = text_area.document.get_location_from_index(range_offset)
+                text_area.insert(insert_value, start)
+
+            def on_delete(self, range_offset, range_length):
+                start = text_area.document.get_location_from_index(range_offset)
+                end = text_area.document.get_location_from_index(range_offset + range_length)
+                text_area.delete(start, end, maintain_selection_offset=True)
+                
+        self.text_event_parser = EditorEventParser()
 
     def callback(self, event):
-        self.log(">>> YTextEvent:", event)
-        delta = event.delta
-        start = self.document.get_location_from_index(0)
-        for d in delta:
-            self.log(">>> Delta:", list(d.items())[0])
-            action, var = list(d.items())[0]
-
-            # depends on assumption that 'retain' always comes before
-            # 'insert' or 'delete'
-            if action == 'retain':
-                start = self.document.get_location_from_index(var)
-            elif action == 'insert':
-                self.insert(var, start)
-            elif action == 'delete':
-                istart = self.document.get_index_from_location(start)
-                end = self.document.get_location_from_index(istart + var)
-                self.delete(start, end, maintain_selection_offset=True)
-            else:
-                raise Exception(f"Unknown action '{action}' from YTextEvent")
+        self.text_event_parser.parse(event)
 
     @property
     def slice(self):
@@ -127,7 +128,7 @@ class Editor(App):
             self.log(e)
             self.log("Adding an empty YText data type.")
             self.ydoc["ytext"] = self.ytext = Text()
-        self.text_area = YTextArea(self.ydoc)
+        self.text_area = YTextArea(self.ytext)
 
     def compose(self):
         yield self.text_area
