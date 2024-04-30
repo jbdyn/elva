@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "elva"
 description = "A suite of local-first TUI realtime collaboration apps based on CRDTs."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 keywords = [
   "real time",
   "real-time",
@@ -25,7 +25,7 @@ keywords = [
   "terminal"
 ]
 authors = [
-  { name = "ELVA Team", email = "elva@mintgruen.tu-berlin.de" }
+  { name = "ELVA Team", email = "elva@innocampus.tu-berlin.de" }
 ]
 maintainers = [
   { name = "Jakob Zahn", email = "jakob.zahn@mailbox.org" },
@@ -36,7 +36,7 @@ classifiers = [
 ]
 dependencies = [
   "websockets",
-  "pycrdt>=0.8.6",
+  "pycrdt>=0.8.19",
   "pycrdt-websocket>=0.12.6",
   "anyio",
   "textual[syntax]",
@@ -49,6 +49,8 @@ dev = [
   "pytest",
   "trio",
   "black",
+  "ruff",
+  "isort",
   "build",
   "setuptools-scm",
   "tox",
