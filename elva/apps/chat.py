@@ -5,9 +5,9 @@ from textual.containers import VerticalScroll, Container, Horizontal, Vertical, 
 from textual.reactive import reactive
 
 from pycrdt import Doc, Array, Text, Map
-from pycrdt.text import TextEvent
-from pycrdt.array import ArrayEvent
-from pycrdt.map import MapEvent
+from pycrdt import TextEvent
+from pycrdt import ArrayEvent
+from pycrdt import MapEvent
 from elva.providers import get_websocket_like_elva_provider
 import websockets
 import anyio
