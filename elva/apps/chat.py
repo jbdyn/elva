@@ -8,7 +8,7 @@ from pycrdt import Doc, Array, Text, Map
 from pycrdt.text import TextEvent
 from pycrdt.array import ArrayEvent
 from pycrdt.map import MapEvent
-from elva.providers import ElvaProvider
+from elva.providers import get_websocket_like_elva_provider
 import websockets
 import anyio
 import copy
@@ -16,9 +16,12 @@ import uuid
 
 from functools import partial
 import sys
-from editor import YTextArea
+from .editor import YTextArea
 
 from pycrdt_websocket import WebsocketProvider
+
+import click
+from elva.click_utils import lazy_group, get_option_callback_check_in_list, lazy_app_cli
 
 
 class Message(Widget):
@@ -221,10 +224,8 @@ UUID = "test"
 REMOTE_URI = "wss://example.com/sync/"
 LOCAL_URI = f"ws://localhost:8000/{UUID}"
 
-async def main(name: str,
-               ydoc: Doc=Doc(),
-               uri: str=LOCAL_URI,
-               Provider=WebsocketProvider):
+
+async def run(name: str, ydoc: Doc=Doc(), uri: str=LOCAL_URI, Provider=WebsocketProvider):
     app = Chat(name, ydoc)
     async with (
         websockets.connect(uri) as websocket,
@@ -232,19 +233,26 @@ async def main(name: str,
     ):
         await app.run_async()
 
-if __name__ == "__main__":
-    server = 'local'
-    if len(sys.argv) > 2:
-        server = sys.argv[2].lower()
-    
-    ydoc = Doc()
+
+@lazy_app_cli()
+@click.argument("name", required=True)
+def cli(name: str, server: str, uuid: str, provider, remote_websocket_server: str, local_websocket_host: str, local_websocket_port: int):
     if server == "remote":
         # connect to the remote websocket server directly, without using the metaprovider
-        elva_provider_wrapper = lambda ydoc, ws: ElvaProvider({UUID:ydoc},ws)
-        anyio.run(main, sys.argv[1], ydoc, REMOTE_URI, elva_provider_wrapper)
-    else:
+        uri = remote_websocket_server
+        Provider = get_websocket_like_elva_provider(uuid)
+    elif server == "local":
         # connect to the local metaprovider
-        anyio.run(main, sys.argv[1], ydoc, LOCAL_URI)
+        uri = f"ws://{local_websocket_host}:{local_websocket_port}/{uuid}"
+        Provider = WebsocketProvider
+    else:
+        raise Exception("No valid server argument was given!")
+
+    ydoc = Doc()
+    anyio.run(run, name, ydoc, uri, Provider)
+
+if __name__ == "__main__":
+    cli()
 
     #ydoc = Doc()
     #app = Chat(sys.argv[1], ydoc)

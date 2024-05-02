@@ -1,6 +1,8 @@
 import anyio
 import asyncio
 from anyio.abc import TaskGroup
+import click
+from elva.click_utils import lazy_group
 from pycrdt_websocket.yutils import (
     read_message,
     write_var_uint,
@@ -129,7 +131,7 @@ class MetaProvider():
                 self.log.debug(f"< [{uuid}] received from {ws_id}: {message}")
                 await self.send(message, uuid, websocket)
         except Exception as e:
-            log.error(e)
+            self.log.error(e)
         finally:
             # after connection ended, remove webscoket from list
             self.LOCAL_SOCKETS[uuid].remove(websocket)
@@ -137,8 +139,8 @@ class MetaProvider():
                 self.LOCAL_SOCKETS.pop(uuid)
 
             await websocket.close()
-            log.debug(f"- closed connection {ws_id}")
-            log.debug(f"all clients: {self.LOCAL_SOCKETS}")
+            self.log.debug(f"- closed connection {ws_id}")
+            self.log.debug(f"all clients: {self.LOCAL_SOCKETS}")
             #tg.cancel_scope.cancel()
 
 def get_websocket_identifier(websocket: Websocket) -> str:
@@ -149,20 +151,32 @@ def get_uuid_from_local_websocket(websocket: Websocket) -> UUID:
     # get room id (uuid) from websocketpath without the leading "/"
     return websocket.path[1:]
 
-async def main(log: Logger | None = None):
+async def run(log:Logger|None = None,
+              remote_websocket_server:str ="wss://example.com/sync/",
+              local_websocket_host:str ="localhost",
+              local_websocket_port:int =8000,
+              ):
     async with (
-        websockets.connect("wss://example.com/sync/") as websocket_remote,
+        websockets.connect(remote_websocket_server) as websocket_remote,
         MetaProvider(websocket_remote) as metaprovider,
-        websockets.serve(metaprovider.serve, 'localhost', 8000)
+        websockets.serve(metaprovider.serve, local_websocket_host, local_websocket_port)
     ):
         await asyncio.Future()
 
-if __name__ == "__main__":
+@lazy_group()
+@click.option("--remote_websocket_server", "-r", "remote_websocket_server", default="wss://example.com/sync/", show_default=False)
+@click.option("--local_host", "-h", "local_websocket_host", default="localhost", show_default=True)
+@click.option("--local_port", "-p", "local_websocket_port", default=8000, show_default=True)
+def cli(remote_websocket_server:str, local_websocket_host:str, local_websocket_port:int):
+    """run meta provider"""
     log = getLogger(__name__)
     log_handler = logging.StreamHandler(sys.stdout)
     log.addHandler(log_handler)
     log.setLevel(logging.DEBUG)
     try:
-        anyio.run(main, log)
+        anyio.run(run, log)
     except KeyboardInterrupt:
         log.info("server stopped")
+
+if __name__ == "__main__":
+    cli()

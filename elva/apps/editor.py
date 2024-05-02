@@ -15,6 +15,7 @@ from elva.providers import ElvaProvider
 import sys
 import uuid
 import click
+from elva.click_utils import lazy_group, get_option_callback_check_in_list
 from elva.utils import load_ydoc, save_ydoc
 
 class YTextArea(TextArea):
@@ -133,7 +134,8 @@ class Editor(App):
         yield self.text_area
         yield Label(f"id: {self.identifier}")
 
-async def run(identifier=None, uri="ws://localhost:8000/"):
+async def run(identifier=None, local_websocket_host:str='localhost', local_websocket_port:int=8000):
+    uri = f"ws://{local_websocket_host}:{local_websocket_port}/"
     if not identifier:
         identifier = str(uuid.uuid4())
     path = identifier + ".y" if not identifier.endswith(".y") else identifier
@@ -157,11 +159,12 @@ async def run(identifier=None, uri="ws://localhost:8000/"):
         print(e)
 
 
-@click.command()
-@click.argument("name", required=False)
-@click.option("--uri", "-u", "uri", default="ws://localhost:8000/", show_default=True)
-def main(name, uri):
-    anyio.run(run, name, uri)
+@lazy_group()
+@click.option("--identifier", "-i", "identifier", default="test", help="room name")
+@click.option("--local_host", "-h", "local_websocket_host", default="localhost", show_default=True)
+@click.option("--local_port", "-p", "local_websocket_port", default=8000, show_default=True)
+def cli(identifier: str, local_websocket_host:str, local_websocket_port:int):
+    anyio.run(run, identifier, local_websocket_host, local_websocket_port)
 
 if __name__ == "__main__":
-    main()
+    cli()

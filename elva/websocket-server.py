@@ -5,6 +5,7 @@ import sys
 import logging
 
 import click
+from elva.click_utils import lazy_group
 import ssl
 
 SOCKETS = set()
@@ -48,15 +49,7 @@ async def run(host, port, **kwargs):
             log.info(f"start broadcasting on {host}:{port}")
             await broadcast(receive_stream)
 
-if __name__ == "__main__":
-    try:
-        host = sys.argv[1]
-        port = sys.argv[2]
-    except Exception as e:
-        log.error(e)
-        log.info("using defaults")
-        host = 'localhost'
-        port = 8000
+def serve(host, port):
     try:
         anyio.run(run, host, port)
     except KeyboardInterrupt:
@@ -65,3 +58,14 @@ if __name__ == "__main__":
             log.debug(f"closing connection {socket}")
             socket.close()
         log.info("server stopped")
+    except Exception as e:
+        click.echo(e)
+
+@lazy_group()
+@click.option("--host", "-h", "host", default="localhost", show_default=True)
+@click.option("--port", "-p", "port", default="8000", type=int, show_default=True)
+def cli(host, port):
+    serve(host, port)
+
+if __name__ == "__main__":
+    cli()

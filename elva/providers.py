@@ -1,4 +1,6 @@
 import anyio
+from anyio import Event, TASK_STATUS_IGNORED
+from anyio.abc import TaskStatus
 from pycrdt import Doc
 from pycrdt_websocket.yutils import (
     process_sync_message,
@@ -10,14 +12,18 @@ from pycrdt_websocket.yutils import (
     create_update_message,
     write_var_uint
 )
+from pycrdt_websocket.websocket import Websocket 
 import contextlib
-import logging
+from logging import Logger, getLogger
 from functools import partial
+from typing import Type
 
-log = logging.getLogger(__name__)
+log = getLogger(__name__)
 
 class ElvaProvider():
-    def __init__(self, ydocs: dict[str, Doc], connection):
+
+    def __init__(self, ydocs: dict[str, Doc], connection: Websocket, log: Logger | None = None):
+        self.log = log or getLogger(__name__)
         self.ydocs = ydocs
         self.is_synced = dict()
         self.connection = connection
@@ -26,7 +32,7 @@ class ElvaProvider():
             self.ydocs[uuid].observe(partial(self.observe, uuid=uuid))
 
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> 'ElvaProvider':
         async with contextlib.AsyncExitStack() as exit_stack:
             tg = anyio.create_task_group()
             self.task_group = await exit_stack.enter_async_context(tg)
@@ -54,7 +60,7 @@ class ElvaProvider():
         print("> sending SYNC_STEP1 message")
         await self.send(msg, uuid)
 
-    def create_uuid_message(self, message, uuid):
+    def create_uuid_message(self, message, uuid) -> bytes:
         buuid = uuid.encode()
         return write_var_uint(len(buuid)) + buuid + message
 
@@ -69,12 +75,12 @@ class ElvaProvider():
         print(f"> sending {message} for {uuid}")
         await self.connection.send(message)
 
-    def process_uuid_message(self, message):
+    def process_uuid_message(self, message: bytes) -> tuple[str, bytes]:
         buuid = read_message(message)
         print(f"> binary uuid {buuid} extracted")
         return buuid.decode(), message[len(buuid) + 1:]
 
-    async def process_sync_message(self, message, uuid):
+    async def process_sync_message(self, message: bytes, uuid: str):
         message_type = message[0]
         msg = message[1:]
         try:
@@ -102,7 +108,7 @@ class ElvaProvider():
             if message_type == YSyncMessageType.SYNC_STEP2:
                 self.is_synced.update({uuid: True})
 
-    async def process_update_message(self, message, uuid):
+    async def process_update_message(self, message: bytes, uuid: str):
         message_type = message[0]
         msg = message[1:]
         if message_type == YMessageType.SYNC:
@@ -117,3 +123,36 @@ class ElvaProvider():
             uuid, message = self.process_uuid_message(message)
             print(f"> received {message} for {uuid}")
             await self.process_update_message(message, uuid)
+
+
+class WebsocketProvider:
+    def __init__(self, ydoc: Doc, websocket: Websocket, log: Logger | None = None) -> None:
+        ...
+
+    @property
+    def started(self) -> Event:
+        ...
+
+    async def __aenter__(self) -> 'WebsocketProvider':
+        ...
+
+    async def __aexit__(self, exc_type, exc_value, exc_tb):
+        ...
+
+    async def _run(self):
+        ...
+
+    async def _send(self):
+        ...
+
+    async def start(self, *, task_status: TaskStatus[None] = TASK_STATUS_IGNORED):
+        ...
+
+    def stop(self):
+        ...
+
+def get_websocket_like_elva_provider(uuid: str) -> WebsocketProvider:
+    class ElvaProviderSingle(ElvaProvider):
+        def __init__(self, ydoc: Doc, ws: Websocket, log: Logger | None = None):
+            super().__init__({uuid:ydoc}, ws)
+    return ElvaProviderSingle
