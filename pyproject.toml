@@ -36,12 +36,12 @@ classifiers = [
 ]
 dependencies = [
   "websockets",
-  "pycrdt>=0.8.19",
-  "pycrdt-websocket>=0.12.6",
+  "pycrdt~=0.8.19",
+  "pycrdt-websocket~=0.12.6",
   "anyio",
   "textual[syntax]",
   "click",
-  "watchdog>=4.0.0"
+  "watchdog~=4.0.0"
 ]
 dynamic = ["version"]
 
