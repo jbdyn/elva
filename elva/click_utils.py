@@ -3,6 +3,7 @@ from click import Command, Group, Context, Option
 from collections.abc import Callable
 from typing import Any
 from elva.click_lazy_group import LazyGroup
+import importlib
 
 def lazy_cli(f: Callable) -> Group:
     """
@@ -48,7 +49,7 @@ def lazy_group_without_invoke(**kwargs) -> Callable[[Callable], Group]:
         
     return decorator
 
-def lazy_app_cli(**kwargs):
+def lazy_app_cli(**kwargs) -> Callable[[Callable], Group]:
     """
     like click.group(**kwargs) (with lazy_group) and with default options for elva apps already configured
     """
@@ -60,27 +61,34 @@ def lazy_app_cli(**kwargs):
         f = click.option("--remote_websocket_server", "-r", "remote_websocket_server", default="wss://example.com/sync/", show_default=False)(f)
         f = click.option("--local_host", "-h", "local_websocket_host", default="localhost", show_default=True)(f)
         f = click.option("--local_port", "-p", "local_websocket_port", default=8000, show_default=True)(f)
-        f = click.option("----------elva_provider","provider", hidden=True, callback=test)(f)
+        f = click.option("----------elva_provider","provider", hidden=True, callback=_lazy_app_processing_callback)(f)
         return f
     return decorator
 
-def test(ctx: Context, param, value):
-    server = ctx.params.pop('server')
-    uuid = ctx.params.pop('uuid')
-    remote_websocket_server = ctx.params.pop('remote_websocket_server')
-    local_host = ctx.params.pop('local_host')
-    local_port = ctx.params.pop('local_port')
-    uuid = ctx.params.pop('uuid')
-    return 1 
+def _lazy_app_processing_callback(ctx: Context, param, value):
+    settings = dict()
 
-def preprocessor(f):
-    def newf(*args, **kwargs):
-        server = kwargs.pop('server')
-        remote_websocket_server = kwargs.pop('remote_websocket_server')
-        local_websocket_host = kwargs.pop('local_websocket_host')
-        local_websocket_port = kwargs.pop('local_websocket_port')
-        return f(*args, **kwargs)
-    return newf
+    settings['server'] = ctx.params.pop('server')
+    settings['uuid'] = ctx.params.pop('uuid')
+    settings['remote_websocket_server'] = ctx.params.pop('remote_websocket_server')
+    settings['local_websocket_host'] = ctx.params.pop('local_websocket_host')
+    settings['local_websocket_port'] = ctx.params.pop('local_websocket_port')
+
+    if settings['server'] == "remote":
+        # connect to the remote websocket server directly, without using the metaprovider
+        uri = settings['remote_websocket_server']
+        Provider = importlib.import_module('elva.providers').get_websocket_like_elva_provider(settings['uuid'])
+    elif settings['server'] == 'local':
+        # connect to the local metaprovider
+        uri = f"ws://{settings['local_websocket_host']}:{settings['local_websocket_port']}/{settings['uuid']}"
+        Provider = providers = importlib.import_module('pycrdt_websocket','WebsocketProvider')
+
+    settings['uri'] = uri
+    settings['provider']= Provider
+    ctx.params['uri'] = uri 
+    ctx.obj = settings
+
+    return Provider 
 
 def echo_help(f: Command):
     """

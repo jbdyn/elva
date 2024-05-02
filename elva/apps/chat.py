@@ -220,12 +220,7 @@ class Chat(App):
             self.message_text = None
             self.message = None
 
-UUID = "test"
-REMOTE_URI = "wss://example.com/sync/"
-LOCAL_URI = f"ws://localhost:8000/{UUID}"
-
-
-async def run(name: str, ydoc: Doc=Doc(), uri: str=LOCAL_URI, Provider=WebsocketProvider):
+async def run(name: str, ydoc: Doc=Doc(), uri: str="ws://localhost:8000/test", Provider=WebsocketProvider):
     app = Chat(name, ydoc)
     async with (
         websockets.connect(uri) as websocket,
@@ -233,23 +228,22 @@ async def run(name: str, ydoc: Doc=Doc(), uri: str=LOCAL_URI, Provider=Websocket
     ):
         await app.run_async()
 
-
 @lazy_app_cli()
 @click.argument("name", required=True)
-def cli(name: str, server: str, uuid: str, provider, remote_websocket_server: str, local_websocket_host: str, local_websocket_port: int):
-    if server == "remote":
-        # connect to the remote websocket server directly, without using the metaprovider
-        uri = remote_websocket_server
-        Provider = get_websocket_like_elva_provider(uuid)
-    elif server == "local":
-        # connect to the local metaprovider
-        uri = f"ws://{local_websocket_host}:{local_websocket_port}/{uuid}"
-        Provider = WebsocketProvider
-    else:
-        raise Exception("No valid server argument was given!")
+def cli(name: str, uri: str, provider: WebsocketProvider):
+    #if server == "remote":
+    #    # connect to the remote websocket server directly, without using the metaprovider
+    #    uri = remote_websocket_server
+    #    Provider = get_websocket_like_elva_provider(uuid)
+    #elif server == "local":
+    #    # connect to the local metaprovider
+    #    uri = f"ws://{local_websocket_host}:{local_websocket_port}/{uuid}"
+    #    Provider = WebsocketProvider
+    #else:
+    #    raise Exception("No valid server argument was given!")
 
     ydoc = Doc()
-    anyio.run(run, name, ydoc, uri, Provider)
+    anyio.run(run, name, ydoc, uri, provider)
 
 if __name__ == "__main__":
     cli()
