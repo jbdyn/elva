@@ -9,7 +9,7 @@ class TextRenderer(Component):
 
     async def cleanup(self):
         await self.write()
-            
+
     async def write(self):
         async with await anyio.open_file(self.path, 'w') as file:
             await file.write(str(self.ytext))
