@@ -22,10 +22,10 @@ keywords = [
   "local-first",
   "tui",
   "text",
-  "terminal"
+  "terminal",
 ]
 authors = [
-  { name = "ELVA Team", email = "elva@innocampus.tu-berlin.de" }
+  { name = "ELVA Team", email = "elva@innocampus.tu-berlin.de" },
 ]
 maintainers = [
   { name = "Jakob Zahn", email = "jakob.zahn@mailbox.org" },
@@ -40,7 +40,9 @@ dependencies = [
   "pycrdt-websocket>=0.12.6",
   "anyio",
   "textual[syntax]",
-  "click"
+  "click",
+  "rich",
+  "python-json-logger",
 ]
 dynamic = ["version"]
 
@@ -57,7 +59,7 @@ dev = [
   "twine",
   "mkdocs",
   "mkdocstrings",
-  "textual-dev"
+  "textual-dev",
 ]
 
 # TODO complete url list
