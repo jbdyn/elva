@@ -1,27 +1,32 @@
-import abc
+import anyio
+from logging import getLogger
 
 from pycrdt._base import BaseEvent
 from pycrdt import TextEvent, ArrayEvent, MapEvent
 
+from elva.base import Component
 
-class EventParser():
+log = getLogger(__name__)
+
+class EventParser(Component):
     def __init__(self, event_type):
         self.event_type = event_type
 
-    def check_event(self, event):
+    async def run(self):
+        self.send_stream, self.receive_stream = anyio.create_memory_object_stream()
+        async with self.send_stream, self.receive_stream:
+            async for event in self.receive_stream:
+                await self._parse_event(event)
+
+    def check(self, event):
         if not isinstance(event, self.event_type):
             raise TypeError(f"The event '{event}' is of type {type(event)}, but needs to be {self.event_type}")
 
-    def parse(self, event):
-        self.check_event(event)
+    async def parse(self, event):
+        self.check(event)
+        await self.send_stream.send(event)
 
-        # self-instantiate to avoid race conditions
-        runner = type(self)()
-        runner.event = event
-
-        return runner._parse_event()
-
-    def _parse_event(self):
+    async def _parse_event(self, event):
         ...
 
 
@@ -29,8 +34,8 @@ class TextEventParser(EventParser):
     def __init__(self):
         super().__init__(TextEvent)
 
-    def _parse_event(self):
-        deltas = self.event.delta
+    async def _parse_event(self, event):
+        deltas = event.delta
 
         actions = []
         range_offset = 0
@@ -39,23 +44,23 @@ class TextEventParser(EventParser):
                 actions.append((action, var))
                 if action == 'retain':
                     range_offset = var
-                    self.on_retain(range_offset)
+                    await self.on_retain(range_offset)
                 elif action == 'insert':
                     insert_value = var
-                    self.on_insert(range_offset, insert_value)
+                    await self.on_insert(range_offset, insert_value)
                 elif action == 'delete':
                     range_length = var
-                    self.on_delete(range_offset, range_length)
+                    await self.on_delete(range_offset, range_length)
 
         return actions
 
-    def on_retain(self, range_offset):
+    async def on_retain(self, range_offset):
         ...
 
-    def on_insert(self, range_offset, insert_value):
+    async def on_insert(self, range_offset, insert_value):
         ...
 
-    def on_delete(self, range_offset, range_length):
+    async def on_delete(self, range_offset, range_length):
         ...
 
 
@@ -120,21 +125,3 @@ class MapEventParser(EventParser):
     def on_delete(self, key, old_value):
         ...
 
-
-class AnyEventParser():
-    def __init__(self, text_event_parser=None, array_event_parser=None, map_event_parser=None):
-        self.text_event_parser = TextEventParser() if text_event_parser is None else text_event_parser
-        self.array_event_parser = ArrayEventParser() if array_event_parser is None else array_event_parser
-        self.map_event_parser = MapEventParser() if map_event_parser is None else map_event_parser
-
-    def parse(self, event):
-        if isinstance(event, TextEvent):
-            return self.text_event_parser.parse(event)
-        elif isinstance(event, ArrayEvent):
-            return self.array_event_parser.parse(event)
-        elif isinstance(event, MapEvent):
-            return self.map_event_parser.parse(event)
-        elif isinstance(event, BaseEvent):
-            raise NotImplementedError(f"The event '{event}' seems to be of an unknown pycrdt data type event {type(event)}")
-        else:
-            raise TypeError(f"The event '{event}' is of type {type(event)}, but needs to base {BaseEvent}")
