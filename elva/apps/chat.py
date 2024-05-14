@@ -11,15 +11,12 @@ from textual.widgets import Input, Static, ListView, ListItem, Label
 from textual.containers import VerticalScroll, Container, Horizontal, Vertical, HorizontalScroll
 from textual.reactive import reactive
 
-from pycrdt import Doc, Array, Text, Map
-from pycrdt.text import TextEvent
-from pycrdt.array import ArrayEvent
-from pycrdt.map import MapEvent
+from pycrdt import Doc, Array, Text, Map, TextEvent, ArrayEvent, MapEvent
 
 import anyio
 
 
-from elva.providers import ElvaProvider
+from elva.provider import ElvaProvider
 from elva.apps.editor import YTextArea
 
 
@@ -194,7 +191,7 @@ class Chat(App):
             self.future.pop(self.message_id)
             self.message_editor = None
             self.log("> MESSAGE ID: ", self.message_id)
-            self.message_index = None
+            self.message_id = None
             self.message_text = None
             self.message = None
 
@@ -205,13 +202,9 @@ class Chat(App):
             self.message_editor is not None and
             self.message_text is not None
         ):
-            # buggy
-            #pop_text = str(self.future.pop(self.message_index))
-
             # copy message content
-            message_text = Text(str(self.message["text"]))
-            message = Map(dict(text=message_text, author=self.message["author"], id=self.message["id"]))
-            self.future.pop(self.message_id)
+            message = self.future.pop(self.message_id)
+            message = Map(message)
             self.history.append(message)
             self.message_editor.remove()
             self.message_editor = None
@@ -223,7 +216,7 @@ async def main(name):
     ydoc = Doc()
     app = Chat(name, ydoc)
     async with (
-        websockets.connect("wss://example.com/sync/") as websocket,
+        websockets.connect("ws://localhost:8000") as websocket,
         ElvaProvider({"test": ydoc}, websocket) as provider
     ):
         await app.run_async()
