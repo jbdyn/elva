@@ -9,8 +9,7 @@ from elva.base import Component
 log = getLogger(__name__)
 
 class EventParser(Component):
-    def __init__(self, event_type):
-        self.event_type = event_type
+    event_type = BaseEvent
 
     async def run(self):
         self.send_stream, self.receive_stream = anyio.create_memory_object_stream()
@@ -31,17 +30,14 @@ class EventParser(Component):
 
 
 class TextEventParser(EventParser):
-    def __init__(self):
-        super().__init__(TextEvent)
+    event_type = TextEvent
 
     async def _parse_event(self, event):
         deltas = event.delta
 
-        actions = []
         range_offset = 0
         for delta in deltas:
             for action, var in delta.items():
-                actions.append((action, var))
                 if action == 'retain':
                     range_offset = var
                     await self.on_retain(range_offset)
@@ -51,8 +47,6 @@ class TextEventParser(EventParser):
                 elif action == 'delete':
                     range_length = var
                     await self.on_delete(range_offset, range_length)
-
-        return actions
 
     async def on_retain(self, range_offset):
         ...
@@ -65,63 +59,52 @@ class TextEventParser(EventParser):
 
 
 class ArrayEventParser(EventParser):
-    def __init__(self):
-        super().__init__(ArrayEvent)
+    event_type = ArrayEvent
 
-    def _parse_event(self):
-        deltas = self.event.delta
+    async def _parse_event(self, event):
+        deltas = event.delta
 
-        actions = []
         range_offset = 0
         for delta in deltas:
             for action, var in delta.items():
-                actions.append((action, var))
                 if action == 'retain':
                     range_offset = var
-                    self.on_retain(range_offset)
+                    await self.on_retain(range_offset)
                 elif action == 'insert':
                     insert_value = var
-                    self.on_insert(range_offset, insert_value)
+                    await self.on_insert(range_offset, insert_value)
                 elif action == 'delete':
                     range_length = var
-                    self.on_delete(range_offset, range_length)
+                    await self.on_delete(range_offset, range_length)
 
-        return actions
-
-    def on_retain(self, range_offset):
+    async def on_retain(self, range_offset):
         ...
 
-    def on_insert(self, range_offset, insert_value):
+    async def on_insert(self, range_offset, insert_value):
         ...
 
-    def on_delete(self, range_offset, range_length):
+    async def on_delete(self, range_offset, range_length):
         ...
 
 
 class MapEventParser(EventParser):
-    def __init__(self):
-        super().__init__(MapEvent)
+    event_type = MapEvent
 
-    def _parse_event(self):
-        keys = self.event.keys
+    async def _parse_event(self, event):
+        keys = event.keys
 
-        actions = []
         for key, delta in keys.items():
             action = delta["action"]
             if action == 'add':
                 new_value = delta["newValue"]
-                actions.append((action, key, new_value))
-                self.on_add(key, new_value)
+                await self.on_add(key, new_value)
             elif action == 'delete':
                 old_value = delta["oldValue"]
-                actions.append((action, key, old_value))
-                self.on_delete(key, old_value)
+                await self.on_delete(key, old_value)
 
-        return actions
-
-    def on_add(self, key, new_value):
+    async def on_add(self, key, new_value):
         ...
 
-    def on_delete(self, key, old_value):
+    async def on_delete(self, key, old_value):
         ...
 
