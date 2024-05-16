@@ -1,6 +1,7 @@
 Screen {
   padding: 1 1;
 }
+
 #history {
   max-height: 100%;
   height: auto;
@@ -19,6 +20,7 @@ Screen {
 
 .message {
   height: auto;
+  layout: horizontal;
 }
 
 .author {

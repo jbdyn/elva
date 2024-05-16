@@ -41,33 +41,42 @@ def set_language(text_area, filename):
             log.exception(f"no syntax highlighting available for extension '{extension}'")
 
 
-class YTextAreaParser(TextEventParser):
-    def __init__(self, ytext, ytext_area):
-        super().__init__()
-        self.ytext = ytext
-        self.ytext.observe(self.callback)
-        self.ytext_area = ytext_area
-
-    def callback(self, event):
-        self._task_group.start_soon(self.parse, event)
-
-    def location(self, index):
-        return self.ytext_area.document.get_location_from_index(index)
-
-    async def on_insert(self, range_offset, insert_value):
-        start = self.location(range_offset)
-        self.ytext_area.insert(insert_value, start)
-
-    async def on_delete(self, range_offset, range_length):
-        start = self.location(range_offset)
-        end = self.location(range_offset + range_length)
-        self.ytext_area.delete(start, end, maintain_selection_offset=True)
-
 
 class YTextArea(TextArea):
+    class YTextAreaParser(TextEventParser):
+        def __init__(self, ytext, ytext_area):
+            super().__init__()
+            self.ytext = ytext
+            self.ytext.observe(self.callback)
+            self.ytext_area = ytext_area
+    
+        def callback(self, event):
+            self._task_group.start_soon(self.parse, event)
+    
+        def location(self, index):
+            return self.ytext_area.document.get_location_from_index(index)
+    
+        async def on_insert(self, range_offset, insert_value):
+            start = self.location(range_offset)
+            self.ytext_area.insert(insert_value, start)
+    
+        async def on_delete(self, range_offset, range_length):
+            start = self.location(range_offset)
+            end = self.location(range_offset + range_length)
+            self.ytext_area.delete(start, end, maintain_selection_offset=True)
+
     def __init__(self, ytext, **kwargs):
         super().__init__(**kwargs)
         self.ytext = ytext
+        self.insert(str(ytext), (0,0))
+        self.parser = self.YTextAreaParser(ytext, self)
+
+    async def run_parser(self):
+        async with anyio.create_task_group() as tg:
+            await tg.start(self.parser.start)
+
+    async def on_mount(self):
+        self.run_worker(self.run_parser)
 
     @property
     def slice(self):
@@ -167,12 +176,12 @@ async def run(filename, uri):
     ui = UI(ytext, filename, renderer)
     ytext_area = ui.ytext_area
     set_language(ytext_area, filename)
-    parser = YTextAreaParser(ytext, ytext_area)
+    #parser = YTextAreaParser(ytext, ytext_area)
 
     async with anyio.create_task_group() as tg:
         await tg.start(store.start)
         await tg.start(renderer.start)
-        await tg.start(parser.start)
+        #await tg.start(parser.start)
 
         async with (
             connect(uri, logger=log) as websocket,
@@ -180,7 +189,7 @@ async def run(filename, uri):
         ):
             await ui.run_async()
 
-        await parser.stop()
+        #await parser.stop()
         await renderer.stop()
         await store.stop()
 
