@@ -65,16 +65,15 @@ class Component():
             self.started.set()
             log.info("started")
 
-            log.debug(f"running")
             await self.run()
 
             # keep the task running when `self.run()` has finished
             # so the cancellation exception can be always caught
             await sleep_forever()
-        except get_cancelled_exc_class() as e:
+        except get_cancelled_exc_class() as exc:
+            log.debug(f"cancelled due to exception {exc}")
             log.info("stopping")
             with CancelScope(shield=True):
-                log.debug("cleaning up")
                 await self.cleanup()
 
             self._task_group = None
@@ -85,7 +84,7 @@ class Component():
             # otherwise the behavior is undefined
             raise
 
-    async def start(self, task_status):
+    async def start(self, task_status=TASK_STATUS_IGNORED):
         """Start the component
 
         Arguments:
@@ -105,8 +104,8 @@ class Component():
         if self._task_group is None:
             raise RuntimeError(f"{self} not running")
 
-        log.debug("cancelling")
         self._task_group.cancel_scope.cancel()
+        log.debug("cancelled")
 
     async def run(self):
         ...

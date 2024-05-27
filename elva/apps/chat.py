@@ -194,8 +194,7 @@ async def main(name):
     
     async with anyio.create_task_group() as tg:
         async with (
-            websockets.connect("ws://localhost:8000") as websocket,
-            ElvaProvider({"test": ydoc}, websocket) as provider
+            ElvaProvider({"test": ydoc}) as provider
         ):
             await app.run_async()
 
