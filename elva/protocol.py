@@ -106,12 +106,16 @@ class YMessage(Message):
 
 
 class ElvaMessage(Message):
-    SYNC_STEP1  = (0, 0)
-    SYNC_STEP2  = (0, 1)
-    SYNC_UPDATE = (0, 2)
-    SYNC_CROSS  = (0, 3)
-    AWARENESS   = (1,)
-    ID          = (2, 0)
-    READ        = (2, 1)
-    READ_WRITE  = (2, 2)
-    DATA        = (3, 0)
+    SYNC_STEP1    = (0, 0)
+    SYNC_STEP2    = (0, 1)
+    SYNC_UPDATE   = (0, 2)
+    SYNC_CROSS    = (0, 3)
+    AWARENESS     = (1,)
+    ID            = (2, 0)
+    READ          = (2, 1)
+    READ_WRITE    = (2, 2)
+    DATA_REQUEST  = (3, 0)
+    DATA_OFFER    = (3, 1)
+    DATA_ORDER    = (3, 2)
+    DATA_TRANSFER = (3, 3)
+

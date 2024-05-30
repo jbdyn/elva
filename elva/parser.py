@@ -4,7 +4,7 @@ from logging import getLogger
 from pycrdt._base import BaseEvent
 from pycrdt import TextEvent, ArrayEvent, MapEvent
 
-from elva.base import Component
+from elva.component import Component
 
 log = getLogger(__name__)
 
@@ -94,6 +94,7 @@ class MapEventParser(EventParser):
         keys = event.keys
 
         for key, delta in keys.items():
+            print(delta)
             action = delta["action"]
             if action == 'add':
                 new_value = delta["newValue"]

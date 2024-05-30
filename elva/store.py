@@ -5,7 +5,7 @@ import sqlite_anyio as sqlite
 import logging
 
 import elva.logging_config
-from elva.base import Component
+from elva.component import Component
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)

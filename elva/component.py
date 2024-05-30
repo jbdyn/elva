@@ -71,7 +71,6 @@ class Component():
             # so the cancellation exception can be always caught
             await sleep_forever()
         except get_cancelled_exc_class() as exc:
-            log.debug(f"cancelled due to exception {exc}")
             log.info("stopping")
             with CancelScope(shield=True):
                 await self.cleanup()

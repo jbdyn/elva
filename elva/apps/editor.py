@@ -6,8 +6,9 @@ from pathlib import Path
 import anyio
 import click
 from pycrdt import Doc, Text
-from textual.app import App as TextualApp
+from textual.app import App
 from textual.binding import Binding
+from textual.widget import Widget
 from textual.widgets import Label, TextArea
 from websockets import connect
 
@@ -119,18 +120,14 @@ class YTextArea(TextArea):
         istart, iend = self.get_slice_from_selection((start, end))
         del self.ytext[istart:iend]
 
-# delete_word_left
-# delete_word_right
-# delete_line
-# delete_to_start_of_line
-# delete_to_end_of_line
+    # delete_word_left
+    # delete_word_right
+    # delete_line
+    # delete_to_start_of_line
+    # delete_to_end_of_line
 
 
-class UI(TextualApp):
-    BINDINGS = [
-        Binding("ctrl+s", "save")
-    ]
-
+class Editor(Widget):
     def __init__(self, filename, uri):
         super().__init__()
         self.filename = filename
@@ -141,7 +138,7 @@ class UI(TextualApp):
         self.ydoc["ytext"] = self.ytext
 
         # widgets
-        self.ytext_area = YTextArea(self.ytext)
+        self.ytext_area = YTextArea(self.ytext, tab_behavior='indent', show_line_numbers=True, id="editor")
 
         # components
         self.store = SQLiteStore(self.ydoc, filename)
@@ -173,8 +170,11 @@ class UI(TextualApp):
                 async with await anyio.open_file(path, "r") as file:
                     self.ytext += await file.read()
 
-    def on_mount(self):
+    async def on_mount(self):
         self.run_worker(self.run_components())
+        async with anyio.create_task_group() as tg:
+            for component in self.components:
+                tg.start_soon(component.started.wait)
 
     async def on_unmount(self):
         async with anyio.create_task_group() as tg:
@@ -199,10 +199,19 @@ class UI(TextualApp):
                 log.info(f"no syntax highlighting available for extension '{extension}'")
 
 
+class UI(App):
+    CSS_PATH = "editor.tcss"
 
-async def run(filename, uri):
-    ui = UI(filename, uri)
-    await ui.run_async()
+    BINDINGS = [
+        Binding("ctrl+s", "save")
+    ]
+
+    def __init__(self, filename, uri):
+        super().__init__()
+        self.editor = Editor(filename, uri)
+
+    def compose(self):
+        yield self.editor
 
 
 @click.command()
@@ -215,7 +224,8 @@ def main(name, uri):
         name = str(uuid.uuid4())
 
     # run app
-    anyio.run(run, name, uri)
+    ui = UI(name, uri)
+    ui.run()
 
 
 if __name__ == "__main__":

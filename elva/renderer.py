@@ -1,6 +1,6 @@
 import anyio
 
-from elva.base import Component
+from elva.component import Component
 
 class TextRenderer(Component):
     def __init__(self, ytext, path):

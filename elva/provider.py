@@ -7,7 +7,7 @@ import logging
 import websockets
 
 import elva.logging_config
-from elva.base import Component
+from elva.component import Component
 from elva.protocol import YCodec, YIncrementalEncoder, YIncrementalDecoder, ElvaMessage
 
 
@@ -118,8 +118,6 @@ class ElvaProvider(WebsocketConnection):
     def __init__(self, ydocs: dict[str, Doc], uri):
         super().__init__(uri)
         self.ydocs = ydocs
-        for uuid in ydocs.keys():
-            self.ydocs[uuid].observe(partial(self.callback, uuid=uuid))
 
     def add(self, ydocs):
         self.ydocs.update(ydocs)
@@ -128,6 +126,11 @@ class ElvaProvider(WebsocketConnection):
 
     def remove(self, ydocs):
         self.ydocs.remove(ydocs)
+
+    async def run(self):
+        for uuid in self.ydocs.keys():
+            self.ydocs[uuid].observe(partial(self.callback, uuid=uuid))
+        await super().run()
 
     async def on_connect(self):
         log.info("sync all")
@@ -149,6 +152,7 @@ class ElvaProvider(WebsocketConnection):
             log.debug(f"expected ID message, got {exc}")
             return
 
+        log.debug(f"UUID: {uuid}")
         uuid = uuid.decode()
 
         try:

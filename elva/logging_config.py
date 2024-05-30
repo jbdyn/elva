@@ -28,8 +28,8 @@ LOGGING = {
             "class": "textual.logging.TextualHandler",
             "formatter": "json",
             "level": "DEBUG",
-#            "stderr": True,
-#            "stdout": True,
+            "stderr": True,
+            "stdout": True,
         },
         "rich": {
             "class": "rich.logging.RichHandler",
