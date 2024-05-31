@@ -175,6 +175,8 @@ class UI(App):
         db_path = Path(self.filename + ".y")
         if path.exists() and not db_path.exists():
             add_content = True
+            async with await anyio.open_file(path, "r") as file:
+                text = await file.read()
         else:
             add_content = False
 
@@ -191,8 +193,7 @@ class UI(App):
             self.log("waiting for store to be initialized")
             await self.store.wait_running()
             self.log("reading in already present text file")
-            async with await anyio.open_file(path, "r") as file:
-                self.ytext += await file.read()
+            self.ytext += text
 
     async def on_unmount(self):
         async with anyio.create_task_group() as tg:

@@ -36,7 +36,7 @@ class MessageView(Widget):
 
     def on_mount(self):
         if not str(self.text):
-            self.display = True # False
+            self.display = False
         self.text.observe(self.text_callback)
 
     def compose(self):
@@ -49,8 +49,7 @@ class MessageView(Widget):
             self.display = True
             self.text_field.update(RichMarkdown(emoji.emojize(text)))
         else:
-            self.text_field.update(RichMarkdown(emoji.emojize(text)))
-            self.display = True # False
+            self.display = False
 
 
 class MessageList(VerticalScroll):
