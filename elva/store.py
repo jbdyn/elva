@@ -25,8 +25,7 @@ class SQLiteStore(Component):
     async def _provide_table(self):
         async with self.lock:
             log.debug("providing table")
-            cursor = await self.db.cursor()
-            await cursor.execute(
+            await self.cursor.execute(
                 "CREATE TABLE IF NOT EXISTS yupdates(yupdate BLOB)"
             )
             await self.db.commit()
@@ -36,16 +35,19 @@ class SQLiteStore(Component):
         log.debug("initializing database")
         self.initialized = Event()
         self.db = await sqlite.connect(self.db_path)
-        self.initialized.set()
+        self.cursor = await self.db.cursor()
         log.debug(f"connected to database {self.path}")
         await self._provide_table()
         log.info("database initialized")
+        self.initialized.set()
 
-    async def run(self):
+    async def before(self):
         await self._init_db()
         await self.read()
         self.ydoc.observe(self.callback)
-        self.stream_send, self.stream_recv = create_memory_object_stream()
+
+    async def run(self):
+        self.stream_send, self.stream_recv = create_memory_object_stream(max_buffer_size=65543)
         async with self.stream_send, self.stream_recv:
             async for data in self.stream_recv:
                 await self._write(data)
@@ -54,32 +56,31 @@ class SQLiteStore(Component):
         if self.initialized.is_set():
             await self.db.close()
 
-    async def running(self):
+    async def wait_running(self):
         if self.started is None:
             raise RuntimeError("{self} not started")
         await self.initialized.wait()
 
     async def read(self):
-        await self.running()
+        await self.wait_running()
 
         async with self.lock:
-            cursor = await self.db.cursor()
-            await cursor.execute(
+            await self.cursor.execute(
                 "SELECT yupdate FROM yupdates"
             )
-            for update, *rest in await cursor.fetchall():
+            for update, *rest in await self.cursor.fetchall():
                 self.ydoc.apply_update(update)
 
     async def _write(self, data):
-        await self.running()
+        await self.wait_running()
 
         async with self.lock:
             log.debug(f"writing {data}")
-            cursor = await self.db.cursor()
-            await cursor.execute(
+            await self.cursor.execute(
                 "INSERT INTO yupdates VALUES (?)", [data],
             )
             await self.db.commit()
 
     async def write(self, data):
         await self.stream_send.send(data)
+        #self.stream_send.send_nowait(data)

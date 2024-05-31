@@ -43,7 +43,8 @@ class YTextAreaParser(TextEventParser):
         await super().run()
 
     def callback(self, event):
-        self._task_group.start_soon(self.parse, event)
+        #self._task_group.start_soon(self.parse, event)
+        self.parse_nowait(event)
 
     def location(self, index):
         return self.ytext_area.document.get_location_from_index(index)
@@ -63,7 +64,6 @@ class YTextArea(TextArea):
     def __init__(self, ytext, **kwargs):
         super().__init__(**kwargs)
         self.ytext = ytext
-        self.insert(str(ytext), (0, 0))
 
     @property
     def slice(self):
@@ -72,6 +72,9 @@ class YTextArea(TextArea):
     def get_slice_from_selection(self, selection):
         start, end = selection
         return sorted([self.document.get_index_from_location(loc) for loc in (start, end)])
+
+    def on_mount(self):
+        self.load_text(str(self.ytext))
 
     async def on_key(self, event) -> None:
         """Handle key presses which correspond to document inserts."""
@@ -94,7 +97,7 @@ class YTextArea(TextArea):
     async def on_paste(self, event):
         # do not also call `on_paste` on the parent class,
         # which would trigger another paste
-        # directly into the TextArea document (and not the YText)
+        # directly into the TextArea document (and thus again into the YText)
         event.prevent_default()
 
         istart, iend = self.slice
@@ -127,7 +130,13 @@ class YTextArea(TextArea):
     # delete_to_end_of_line
 
 
-class Editor(Widget):
+class UI(App):
+    CSS_PATH = "editor.tcss"
+
+    BINDINGS = [
+        Binding("ctrl+s", "save")
+    ]
+
     def __init__(self, filename, uri):
         super().__init__()
         self.filename = filename
@@ -156,25 +165,34 @@ class Editor(Widget):
         self.set_language()
 
     async def run_components(self):
-        path = Path(self.filename)
-        db_path = Path(self.filename + ".y")
-        add_content = False
-        if path.exists() and not db_path.exists():
-            add_content = True
-
         async with anyio.create_task_group() as self.tg:
             for component in self.components:
                 await self.tg.start(component.start)
 
-            if add_content:
-                async with await anyio.open_file(path, "r") as file:
-                    self.ytext += await file.read()
-
     async def on_mount(self):
+        # check existence of files before anything is changed on disk
+        path = Path(self.filename)
+        db_path = Path(self.filename + ".y")
+        if path.exists() and not db_path.exists():
+            add_content = True
+        else:
+            add_content = False
+
+        # run components
         self.run_worker(self.run_components())
+
+        # wait for the components to have started
         async with anyio.create_task_group() as tg:
             for component in self.components:
                 tg.start_soon(component.started.wait)
+
+        # add content of pre-existing text files
+        if add_content:
+            self.log("waiting for store to be initialized")
+            await self.store.wait_running()
+            self.log("reading in already present text file")
+            async with await anyio.open_file(path, "r") as file:
+                self.ytext += await file.read()
 
     async def on_unmount(self):
         async with anyio.create_task_group() as tg:
@@ -197,21 +215,6 @@ class Editor(Widget):
                 self.ytext_area.language = LANGUAGES[extension]
             except:
                 log.info(f"no syntax highlighting available for extension '{extension}'")
-
-
-class UI(App):
-    CSS_PATH = "editor.tcss"
-
-    BINDINGS = [
-        Binding("ctrl+s", "save")
-    ]
-
-    def __init__(self, filename, uri):
-        super().__init__()
-        self.editor = Editor(filename, uri)
-
-    def compose(self):
-        yield self.editor
 
 
 @click.command()

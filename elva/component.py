@@ -62,6 +62,7 @@ class Component():
 
         # start runner and do a shielded cleanup on cancellation
         try:
+            await self.before()
             self.started.set()
             log.info("started")
 
@@ -105,6 +106,9 @@ class Component():
 
         self._task_group.cancel_scope.cancel()
         log.debug("cancelled")
+
+    async def before(self):
+        ...
 
     async def run(self):
         ...

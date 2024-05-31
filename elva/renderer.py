@@ -11,7 +11,6 @@ class TextRenderer(Component):
         await self.write()
 
     async def write(self):
-        mode = "r+" if await self.path.exists() else "w"
-        async with await anyio.open_file(self.path, mode) as file:
+        async with await anyio.open_file(self.path, "w") as file:
             await file.write(str(self.ytext))
 

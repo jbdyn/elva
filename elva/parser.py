@@ -12,7 +12,7 @@ class EventParser(Component):
     event_type = BaseEvent
 
     async def run(self):
-        self.send_stream, self.receive_stream = anyio.create_memory_object_stream()
+        self.send_stream, self.receive_stream = anyio.create_memory_object_stream(max_buffer_size=65543)
         async with self.send_stream, self.receive_stream:
             async for event in self.receive_stream:
                 await self._parse_event(event)
@@ -24,6 +24,10 @@ class EventParser(Component):
     async def parse(self, event):
         self.check(event)
         await self.send_stream.send(event)
+
+    def parse_nowait(self, event):
+        self.check(event)
+        self.send_stream.send_nowait(event)
 
     async def _parse_event(self, event):
         ...
