@@ -1,0 +1,4 @@
+#editor {
+  border: none;
+  padding: 0;
+}
