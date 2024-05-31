@@ -2,7 +2,6 @@ import anyio
 import asyncio
 from anyio.abc import TaskGroup
 import click
-from elva.click_utils import lazy_group
 from pycrdt_websocket.yutils import (
     read_message,
     write_var_uint,
@@ -158,23 +157,23 @@ async def run(log:Logger|None = None,
               ):
     async with (
         websockets.connect(remote_websocket_server) as websocket_remote,
-        MetaProvider(websocket_remote) as metaprovider,
+        MetaProvider(websocket_remote, log=log) as metaprovider,
         websockets.serve(metaprovider.serve, local_websocket_host, local_websocket_port)
     ):
         await asyncio.Future()
 
-@lazy_group()
-@click.option("--remote_websocket_server", "-r", "remote_websocket_server", default="wss://example.com/sync/", show_default=False)
-@click.option("--local_host", "-h", "local_websocket_host", default="localhost", show_default=True)
-@click.option("--local_port", "-p", "local_websocket_port", default=8000, show_default=True)
-def cli(remote_websocket_server:str, local_websocket_host:str, local_websocket_port:int):
-    """run meta provider"""
+@click.group(invoke_without_command=True)
+@click.pass_context
+def cli(ctx: click.Context):
+    """local meta provider"""
+
     log = getLogger(__name__)
     log_handler = logging.StreamHandler(sys.stdout)
     log.addHandler(log_handler)
     log.setLevel(logging.DEBUG)
+
     try:
-        anyio.run(run, log)
+        anyio.run(run, log, ctx.obj['remote_websocket_server'], ctx.obj['local_websocket_host'], ctx.obj['local_websocket_port'])
     except KeyboardInterrupt:
         log.info("server stopped")
 

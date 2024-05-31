@@ -8,7 +8,6 @@ from pycrdt import Doc, Array, Text, Map
 from pycrdt import TextEvent
 from pycrdt import ArrayEvent
 from pycrdt import MapEvent
-from elva.providers import get_websocket_like_elva_provider
 import websockets
 import anyio
 import copy
@@ -21,7 +20,6 @@ from .editor import YTextArea
 from pycrdt_websocket import WebsocketProvider
 
 import click
-from elva.click_utils import lazy_group, get_option_callback_check_in_list, lazy_app_cli
 
 
 class Message(Widget):
@@ -228,19 +226,14 @@ async def run(name: str, ydoc: Doc=Doc(), uri: str="ws://localhost:8000/test", P
     ):
         await app.run_async()
 
-@lazy_app_cli()
+
+@click.group(invoke_without_command=True)
+@click.pass_context
 @click.argument("name", required=True)
-def cli(name: str, uri: str, provider: WebsocketProvider):
-    #if server == "remote":
-    #    # connect to the remote websocket server directly, without using the metaprovider
-    #    uri = remote_websocket_server
-    #    Provider = get_websocket_like_elva_provider(uuid)
-    #elif server == "local":
-    #    # connect to the local metaprovider
-    #    uri = f"ws://{local_websocket_host}:{local_websocket_port}/{uuid}"
-    #    Provider = WebsocketProvider
-    #else:
-    #    raise Exception("No valid server argument was given!")
+def cli(ctx, name: str):
+    """chat app"""
+    uri = ctx.obj['uri']
+    provider = ctx.obj['provider']
 
     ydoc = Doc()
     anyio.run(run, name, ydoc, uri, provider)

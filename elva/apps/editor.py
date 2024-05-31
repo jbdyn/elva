@@ -15,7 +15,6 @@ from elva.providers import ElvaProvider
 import sys
 import uuid
 import click
-from elva.click_utils import lazy_group, get_option_callback_check_in_list
 from elva.utils import load_ydoc, save_ydoc
 
 class YTextArea(TextArea):
@@ -128,14 +127,13 @@ class Editor(App):
             self.log(e)
             self.log("Adding an empty YText data type.")
             self.ydoc["ytext"] = self.ytext = Text()
-        self.text_area = YTextArea(self.ydoc)
+        self.text_area = YTextArea(self.ytext)
 
     def compose(self):
         yield self.text_area
         yield Label(f"id: {self.identifier}")
 
-async def run(identifier=None, local_websocket_host:str='localhost', local_websocket_port:int=8000):
-    uri = f"ws://{local_websocket_host}:{local_websocket_port}/"
+async def run(identifier: str, uri:str, provider:WebsocketProvider = WebsocketProvider):
     if not identifier:
         identifier = str(uuid.uuid4())
     path = identifier + ".y" if not identifier.endswith(".y") else identifier
@@ -149,7 +147,7 @@ async def run(identifier=None, local_websocket_host:str='localhost', local_webso
 
     async with (
         connect(uri+identifier) as websocket,
-        WebsocketProvider(ydoc, websocket),
+        provider(ydoc, websocket),
     ):
         await app.run_async()
 
@@ -159,12 +157,16 @@ async def run(identifier=None, local_websocket_host:str='localhost', local_webso
         print(e)
 
 
-@lazy_group()
-@click.option("--identifier", "-i", "identifier", default="test", help="room name")
-@click.option("--local_host", "-h", "local_websocket_host", default="localhost", show_default=True)
-@click.option("--local_port", "-p", "local_websocket_port", default=8000, show_default=True)
-def cli(identifier: str, local_websocket_host:str, local_websocket_port:int):
-    anyio.run(run, identifier, local_websocket_host, local_websocket_port)
+@click.group(invoke_without_command=True)
+@click.pass_context
+def cli(ctx: click.Context):
+    """collaborative editor"""
+
+    identifier = ctx.obj['identifier']
+    uri = ctx.obj['uri']
+    provider = ctx.obj['provider']
+
+    anyio.run(run, identifier, uri, provider)
 
 if __name__ == "__main__":
     cli()
