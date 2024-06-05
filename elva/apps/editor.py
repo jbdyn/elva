@@ -1,50 +1,69 @@
-from textual.app import App
-from textual.message import Message
-from textual.widgets import TextArea, Label
-from textual.events import Paste
-from rich.text import Text as RichText
-import time
-import anyio
-from pycrdt import Doc, Text
-from functools import partial
 import os
-
-from websockets import connect
-from pycrdt_websocket import WebsocketProvider
-from elva.providers import ElvaProvider
-import sys
 import uuid
+import logging
+from pathlib import Path
+
+import anyio
 import click
-from elva.utils import load_ydoc, save_ydoc
+from pycrdt import Doc, Text
+from textual.app import App
+from textual.binding import Binding
+from textual.widget import Widget
+from textual.widgets import Label, TextArea
+from websockets import connect
+
+import elva.logging_config
+from elva.parser import TextEventParser
+from elva.provider import ElvaProvider
+from elva.store import SQLiteStore
+from elva.renderer import TextRenderer
+
+
+log = logging.getLogger(__name__)
+
+
+LANGUAGES = {
+    "py": "python",
+    "md": "markdown",
+    "sh": "bash",
+    "js": "javascript",
+    "rs": "rust",
+    "yml": "yaml",
+}
+
+
+class YTextAreaParser(TextEventParser):
+    def __init__(self, ytext, ytext_area):
+        super().__init__()
+        self.ytext = ytext
+        self.ytext_area = ytext_area
+
+    async def run(self):
+        self.ytext.observe(self.callback)
+        await super().run()
+
+    def callback(self, event):
+        #self._task_group.start_soon(self.parse, event)
+        self.parse_nowait(event)
+
+    def location(self, index):
+        return self.ytext_area.document.get_location_from_index(index)
+
+    async def on_insert(self, range_offset, insert_value):
+        start = self.location(range_offset)
+        self.ytext_area.insert(insert_value, start)
+
+    async def on_delete(self, range_offset, range_length):
+        start = self.location(range_offset)
+        end = self.location(range_offset + range_length)
+        self.ytext_area.delete(start, end, maintain_selection_offset=True)
+
+
 
 class YTextArea(TextArea):
     def __init__(self, ytext, **kwargs):
         super().__init__(**kwargs)
         self.ytext = ytext
-        start = self.document.get_location_from_index(0)
-        self.insert(str(ytext), start)
-        self.ytext.observe(self.callback)
-
-    def callback(self, event):
-        self.log(">>> YTextEvent:", event)
-        delta = event.delta
-        start = self.document.get_location_from_index(0)
-        for d in delta:
-            self.log(">>> Delta:", list(d.items())[0])
-            action, var = list(d.items())[0]
-
-            # depends on assumption that 'retain' always comes before
-            # 'insert' or 'delete'
-            if action == 'retain':
-                start = self.document.get_location_from_index(var)
-            elif action == 'insert':
-                self.insert(var, start)
-            elif action == 'delete':
-                istart = self.document.get_index_from_location(start)
-                end = self.document.get_location_from_index(istart + var)
-                self.delete(start, end, maintain_selection_offset=True)
-            else:
-                raise Exception(f"Unknown action '{action}' from YTextEvent")
 
     @property
     def slice(self):
@@ -54,9 +73,12 @@ class YTextArea(TextArea):
         start, end = selection
         return sorted([self.document.get_index_from_location(loc) for loc in (start, end)])
 
-    def on_key(self, event) -> None:
+    def on_mount(self):
+        self.load_text(str(self.ytext))
+
+    async def on_key(self, event) -> None:
         """Handle key presses which correspond to document inserts."""
-        self.log(">>> Key:", event)
+        self.log(f"got event {event}")
         key = event.key
         insert_values = {
             #"tab": " " * self._find_columns_to_next_tab_stop(),
@@ -68,23 +90,14 @@ class YTextArea(TextArea):
             event.stop()
             event.prevent_default()
             insert = insert_values.get(key, event.character)
-            # `insert` is not None because event.character cannot be
-            # None because we've checked that it's printable.
-            assert insert is not None
-            #start, end = self.selection
-            #self.replace(insert, start, end, maintain_selection_offset=False)
 
             istart, iend = self.slice
             self.ytext[istart:iend] = insert
-        
-            self.log(self.text)
-            self.log(self.ytext.to_py())
-
 
     async def on_paste(self, event):
         # do not also call `on_paste` on the parent class,
         # which would trigger another paste
-        # directly into the TextArea document (and not the YText)
+        # directly into the TextArea document (and thus again into the YText)
         event.prevent_default()
 
         istart, iend = self.slice
@@ -110,63 +123,115 @@ class YTextArea(TextArea):
         istart, iend = self.get_slice_from_selection((start, end))
         del self.ytext[istart:iend]
 
-# delete_word_left
-# delete_word_right
-# delete_line
-# delete_to_start_of_line
-# delete_to_end_of_line
+    # delete_word_left
+    # delete_word_right
+    # delete_line
+    # delete_to_start_of_line
+    # delete_to_end_of_line
 
-class Editor(App):
-    def __init__(self, ydoc=None, identifier=None):
+
+class UI(App):
+    CSS_PATH = "editor.tcss"
+
+    BINDINGS = [
+        Binding("ctrl+s", "save")
+    ]
+
+    def __init__(self, filename, uri, Provider: ElvaProvider = ElvaProvider):
         super().__init__()
-        self.ydoc = ydoc if ydoc is not None else Doc()
-        self.identifier = identifier
-        try:
-            self.ytext = self.ydoc["ytext"]
-        except KeyError as e:
-            self.log(e)
-            self.log("Adding an empty YText data type.")
-            self.ydoc["ytext"] = self.ytext = Text()
-        self.text_area = YTextArea(self.ytext)
+        self.filename = filename
+
+        # document structure
+        self.ydoc = Doc()
+        self.ytext = Text()
+        self.ydoc["ytext"] = self.ytext
+
+        # widgets
+        self.ytext_area = YTextArea(self.ytext, tab_behavior='indent', show_line_numbers=True, id="editor")
+
+        # components
+        self.store = SQLiteStore(self.ydoc, filename)
+        self.parser = YTextAreaParser(self.ytext, self.ytext_area)
+        self.renderer = TextRenderer(self.ytext, filename)
+        self.provider = ElvaProvider({filename: self.ydoc}, uri)
+        self.components = [
+            self.renderer,
+            self.store,
+            self.parser,
+            self.provider,
+        ]
+
+        # other stuff
+        self.set_language()
+
+    async def run_components(self):
+        async with anyio.create_task_group() as self.tg:
+            for component in self.components:
+                await self.tg.start(component.start)
+
+    async def on_mount(self):
+        # check existence of files before anything is changed on disk
+        path = Path(self.filename)
+        db_path = Path(self.filename + ".y")
+        if path.exists() and not db_path.exists():
+            add_content = True
+            async with await anyio.open_file(path, "r") as file:
+                text = await file.read()
+        else:
+            add_content = False
+
+        # run components
+        self.run_worker(self.run_components())
+
+        # wait for the components to have started
+        async with anyio.create_task_group() as tg:
+            for component in self.components:
+                tg.start_soon(component.started.wait)
+
+        # add content of pre-existing text files
+        if add_content:
+            self.log("waiting for store to be initialized")
+            await self.store.wait_running()
+            self.log("reading in already present text file")
+            self.ytext += text
+
+    async def on_unmount(self):
+        async with anyio.create_task_group() as tg:
+            for component in self.components:
+                tg.start_soon(component.stopped.wait)
 
     def compose(self):
-        yield self.text_area
-        yield Label(f"id: {self.identifier}")
+        yield self.ytext_area
+        yield Label(f"file: {self.filename}")
 
-async def run(identifier: str, uri:str, provider:WebsocketProvider = WebsocketProvider):
-    if not identifier:
-        identifier = str(uuid.uuid4())
-    path = identifier + ".y" if not identifier.endswith(".y") else identifier
-    ydoc = Doc()
-    app = Editor(ydoc, identifier)
-    if os.path.exists(path):
-        try:
-            load_ydoc(ydoc, path=path)
-        except Exception as e:
-            print(e)
+    def action_save(self):
+        self.run_worker(self.renderer.write())
 
-    async with (
-        connect(uri+identifier) as websocket,
-        provider(ydoc, websocket),
-    ):
-        await app.run_async()
-
-    try:
-        save_ydoc(ydoc, path=path)
-    except Exception as e:
-        print(e)
+    def set_language(self):
+        extension = self.filename.split(".")[-1]
+        if extension == self.filename:
+            log.info("continuing without syntax highlighting")
+        else:
+            try:
+                self.ytext_area.language = LANGUAGES[extension]
+            except:
+                log.info(f"no syntax highlighting available for extension '{extension}'")
 
 
 @click.group(invoke_without_command=True)
+@click.option("--file", "-f", "file", help="file name", required=True)
 @click.pass_context
-def cli(ctx: click.Context):
+def cli(ctx: click.Context, file: str):
     """collaborative editor"""
 
-    identifier = ctx.obj['identifier']
-    uri = ctx.obj['uri']
-    provider = ctx.obj['provider']
-
-    anyio.run(run, identifier, uri, provider)
+    #name = ctx.obj['name']
+    #uri = ctx.obj['uri']
+    #provider = ctx.obj['provider']
+    uri = "wss://example.com/sync/"
+    provider = ElvaProvider
+    # run app
+    ui = UI(file, uri, provider)
+    ui.run()
 
 if __name__ == "__main__":
     cli()
