@@ -256,9 +256,8 @@ class WebsocketElvaProvider(ElvaProvider):
 
     async def on_recv(self, message):
         ydoc = list(self.ydocs.values())[0]
+        log.debug(f"received message {message}")
         inbound = UUIDMessage(None, ydoc, message)
-        log.debug("received message", inbound)
-        log.debug("processing...")
         await self.process(inbound)
 
     async def process_sync_step1(self, message):

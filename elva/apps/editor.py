@@ -78,7 +78,7 @@ class YTextArea(TextArea):
 
     async def on_key(self, event) -> None:
         """Handle key presses which correspond to document inserts."""
-        self.log(f"got event {event}")
+        log.debug(f"got event {event}")
         key = event.key
         insert_values = {
             #"tab": " " * self._find_columns_to_next_tab_stop(),
@@ -190,9 +190,9 @@ class UI(App):
 
         # add content of pre-existing text files
         if add_content:
-            self.log("waiting for store to be initialized")
+            log.debug("waiting for store to be initialized")
             await self.store.wait_running()
-            self.log("reading in already present text file")
+            log.debug("reading in already present text file")
             self.ytext += text
 
     async def on_unmount(self):

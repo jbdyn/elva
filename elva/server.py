@@ -2,7 +2,6 @@ import asyncio
 from websockets import serve
 from pycrdt_websocket import WebsocketServer
 import logging
-import logging_config
 
 log = logging.basicConfig()
 

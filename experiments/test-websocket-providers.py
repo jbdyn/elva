@@ -1,9 +1,9 @@
-from provider import WebsocketElvaProvider
+from elva.provider import WebsocketElvaProvider
 from pycrdt import Doc, Text
 from pycrdt_websocket import WebsocketProvider
 from time import sleep
 import anyio
-import logging_config
+import elva.logging_config
 import logging
 import sys
 import websockets

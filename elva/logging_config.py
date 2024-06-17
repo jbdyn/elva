@@ -45,7 +45,7 @@ LOGGING = {
 #            "level": "INFO",
 #        },
         "elva": {
-            "handlers": ["stdout"],
+            "handlers": ["textual"],
             "level": "DEBUG",
         },
     },
