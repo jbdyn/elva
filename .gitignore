@@ -1,7 +1,6 @@
 *.egg-info
 build
 dist
-.envrc
-env
-venv
+*env*
+.vagrant
 __pycache__
