@@ -25,10 +25,10 @@ def read_var_uint(data):
 
 
 class YCodec(Codec):
-    def encode(payload, errors='strict'):
+    def encode(self, payload, errors='strict'):
         return write_var_uint(payload)
 
-    def decode(message, errors='strict'):
+    def decode(self, message, errors='strict'):
         return read_var_uint(message)
 
 

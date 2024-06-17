@@ -153,7 +153,7 @@ class UI(App):
         self.store = SQLiteStore(self.ydoc, filename)
         self.parser = YTextAreaParser(self.ytext, self.ytext_area)
         self.renderer = TextRenderer(self.ytext, filename)
-        self.provider = ElvaProvider({filename: self.ydoc}, uri)
+        self.provider = Provider({filename: self.ydoc}, uri)
         self.components = [
             self.renderer,
             self.store,
@@ -225,10 +225,13 @@ def cli(ctx: click.Context, file: str):
     """collaborative editor"""
 
     #name = ctx.obj['name']
-    #uri = ctx.obj['uri']
-    #provider = ctx.obj['provider']
-    uri = "wss://example.com/sync/"
-    provider = ElvaProvider
+    uri = ctx.obj['uri']
+    provider = ctx.obj['provider']
+    print(uri)
+    print(provider)
+    #uri = "wss://example.com/sync/"
+    #uri = "ws://localhost:8000"
+    #provider = ElvaProvider
     # run app
     ui = UI(file, uri, provider)
     ui.run()

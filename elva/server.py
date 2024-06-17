@@ -1,17 +1,16 @@
 import asyncio
 from websockets import serve
 from pycrdt_websocket import WebsocketServer
+import logging
+import logging_config
 
-def callback(event):
-    print(event)
+log = logging.basicConfig()
 
 async def server():
     async with (
-        WebsocketServer() as websocket_server,
-        serve(websocket_server.serve, "localhost", 1234),
+        WebsocketServer(log=log) as websocket_server,
+        serve(websocket_server.serve, "localhost", 8000),
     ):
-        room = await websocket_server.get_room("/my-roomname")
-        room.on_message = callback
         await asyncio.Future()  # run forever
 
 asyncio.run(server())

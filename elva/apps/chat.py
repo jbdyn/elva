@@ -153,16 +153,17 @@ class MessagePreview(Static):
     async def on_show(self):
         self.update(RichMarkdown(emoji.emojize(str(self.ytext))))
 
-class ChatProvider(ElvaProvider):
-    def __init__(self, ydocs, uri, future, client_id):
-        super().__init__(ydocs, uri)
-        self.future = future
-        self.client_id = client_id
+#class ChatProvider(ElvaProvider):
+#    def __init__(self, ydocs, uri, future, client_id):
+#        super().__init__(ydocs, uri)
+#        self.future = future
+#        self.client_id = client_id
+#
+#    async def cleanup(self):
+#        self.future.pop(self.client_id)
 
-    async def cleanup(self):
-        self.future.pop(self.client_id)
+def get_chat_provider(Provider: ElvaProvider = ElvaProvider):
 
-def get_chat_provider(Provider: ElvaProvider = ElvaProvider) -> ChatProvider:
     class ChatProvider(Provider):
         def __init__(self, ydocs, uri, future, client_id):
             super().__init__(ydocs, uri)
@@ -171,7 +172,9 @@ def get_chat_provider(Provider: ElvaProvider = ElvaProvider) -> ChatProvider:
 
         async def cleanup(self):
             self.future.pop(self.client_id)
+
     return ChatProvider
+
 class Chat(Widget):
 
     BINDINGS = [
@@ -202,6 +205,7 @@ class Chat(Widget):
         self.future_parser = FutureParser(self.future, self.future_widget, username, self.client_id, show_self)
         self.message_parser = YTextAreaParser(self.message["text"], self.message_widget)
         ChatProvider = get_chat_provider(Provider)
+        print(ChatProvider)
         self.provider = ChatProvider({'test.chat': ydoc}, uri, self.future, self.client_id)
         self.components = [
             self.history_parser,
@@ -281,14 +285,12 @@ class UI(App):
 def cli(ctx, show_self: bool):
     """chat app"""
     
-    # just test hard coded values, 
-    uri = "wss://example.com/sync/"
-    name = "MyUsername"
-    provider = ElvaProvider
-    if False:
-        uri = ctx.obj['uri'] or "wss://example.com/sync/"
-        name = ctx.obj['name'] or "JP"
-        provider = ctx.obj['provider'] or ElvaProvider
+    uri = ctx.obj['uri']
+    name = ctx.obj['name']
+    provider = ctx.obj['provider']
+    uri = "ws://localhost:8000"
+    print(uri)
+    print(provider)
 
     app = UI(name, uri, provider, show_self)
     app.run()
