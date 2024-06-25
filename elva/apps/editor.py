@@ -1,6 +1,5 @@
-import os
-import uuid
 import logging
+import uuid
 from pathlib import Path
 
 import anyio
@@ -8,9 +7,7 @@ import click
 from pycrdt import Doc, Text
 from textual.app import App
 from textual.binding import Binding
-from textual.widget import Widget
 from textual.widgets import Label, TextArea
-from websockets import connect
 
 import elva.logging_config
 from elva.parser import TextEventParser
@@ -214,24 +211,22 @@ class UI(App):
         else:
             try:
                 self.ytext_area.language = LANGUAGES[extension]
-            except:
+            except Exception:
                 log.info(f"no syntax highlighting available for extension '{extension}'")
 
 
 @click.group(invoke_without_command=True)
-@click.option("--file", "-f", "file", help="file name", required=True)
+@click.argument("file", required=False)
 @click.pass_context
 def cli(ctx: click.Context, file: str):
     """collaborative editor"""
 
-    #name = ctx.obj['name']
     uri = ctx.obj['uri']
     provider = ctx.obj['provider']
-    print(uri)
-    print(provider)
-    #uri = "wss://example.com/sync/"
-    #uri = "ws://localhost:8000"
-    #provider = ElvaProvider
+
+    if file is None:
+        file = str(uuid.uuid4())
+
     # run app
     ui = UI(file, uri, provider)
     ui.run()
