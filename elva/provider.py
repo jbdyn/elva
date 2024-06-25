@@ -10,7 +10,6 @@ import elva.logging_config
 from elva.component import Component
 from elva.protocol import YCodec, YIncrementalEncoder, YIncrementalDecoder, ElvaMessage
 
-
 log = logging.getLogger(__name__)
 
 
@@ -111,13 +110,11 @@ class UUIDMessage():
     payload: bytes
 
 
-ycodec = YCodec()
-
-
 class ElvaProvider(WebsocketConnection):
     def __init__(self, ydocs: dict[str, Doc], uri):
         super().__init__(uri)
         self.ydocs = ydocs
+        self.ycodec = YCodec()
 
     def add(self, ydocs):
         self.ydocs.update(ydocs)
@@ -191,11 +188,11 @@ class ElvaProvider(WebsocketConnection):
         state = message.payload
         update = ydoc.get_update(state)
         state = ydoc.get_state()
-        encoded_update, _ = ycodec.encode(update)
-        encoded_state, _ = ycodec.encode(state)
+        encoded_update, _ = self.ycodec.encode(update)
+        encoded_state, _ = self.ycodec.encode(state)
         payload = encoded_update + encoded_state
         reply, _ = ElvaMessage.SYNC_CROSS.encode(payload)
-        log.debug("sending cross_sync message {reply}")
+        log.debug(f"sending cross_sync message {reply}")
         await self.send_uuid(reply, message.uuid)
 
     async def process_sync_update(self, message):
@@ -233,3 +230,43 @@ class ElvaProvider(WebsocketConnection):
                 await self.process_sync_update(message)
             case _:
                 log.debug(f"do nothing with {message_type} message {payload}")
+
+
+class SingleElvaProvider(ElvaProvider):
+    def __init__(self, ydocs: dict[str, Doc], uri, without_uuid: bool = False):
+        if without_uuid: 
+            if len(ydocs) != 1:
+                raise Exception("dict ydocs has one than entry")
+            self.send_uuid = self.send_without_uuid
+        
+        super().__init__(ydocs, uri)
+
+    async def send_without_uuid(self, message, uuid=None):
+        try:
+            await self.send(message)
+        except:
+            pass
+
+class WebsocketElvaProvider(ElvaProvider):
+    def __init__(self, ydocs: dict[str, Doc], uri: str):
+        super().__init__(ydocs, uri)
+
+    async def send_uuid(self, message, uuid=None):
+        try:
+            await self.send(message)
+        except:
+            pass
+
+    async def on_recv(self, message):
+        ydoc = list(self.ydocs.values())[0]
+        log.debug(f"received message {message}")
+        inbound = UUIDMessage(None, ydoc, message)
+        await self.process(inbound)
+
+    async def process_sync_step1(self, message):
+        ydoc = message.ydoc
+        state = message.payload
+        update = ydoc.get_update(state)
+        reply, _ = ElvaMessage.SYNC_STEP2.encode(update)
+        log.debug(f"sending sync_step2 message {reply}")
+        await self.send_uuid(reply)

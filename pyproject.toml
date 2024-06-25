@@ -42,7 +42,9 @@ dependencies = [
   "textual[syntax]",
   "click",
   "rich",
+  "emoji",
   "python-json-logger",
+  "watchdog~=4.0.0"
 ]
 dynamic = ["version"]
 

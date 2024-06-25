@@ -1,28 +1,25 @@
 import uuid
-from functools import partial
-from dataclasses import dataclass
 import logging
 
 import click
 import emoji
 import anyio
-from pycrdt import Doc, Array, Text, Map, TextEvent, ArrayEvent, MapEvent
+from pycrdt import Doc, Array, Text, Map
 from textual.app import App
 from textual.widget import Widget
-from textual.widgets import Input, Static, ListView, ListItem, Label, Markdown, TabbedContent, TextArea
+from textual.widgets import Static, TabbedContent
 from textual.containers import VerticalScroll
-from textual.reactive import reactive
-import websockets
 from rich.markdown import Markdown as RichMarkdown
 
 import elva.logging_config
 from elva.provider import ElvaProvider
 from elva.apps.editor import YTextArea, YTextAreaParser
-from elva.parser import TextEventParser, ArrayEventParser, MapEventParser
+from elva.parser import ArrayEventParser, MapEventParser
 
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
+
 
 class MessageView(Widget):
     def __init__(self, author, text, **kwargs):
@@ -32,7 +29,6 @@ class MessageView(Widget):
 
         content = emoji.emojize(str(text))
         self.text_field = Static(RichMarkdown(content), classes="field content")
-
 
     def on_mount(self):
         if not str(self.text):
@@ -154,23 +150,26 @@ class MessagePreview(Static):
         self.update(RichMarkdown(emoji.emojize(str(self.ytext))))
 
 
-class ChatProvider(ElvaProvider):
-    def __init__(self, ydocs, uri, future, client_id):
-        super().__init__(ydocs, uri)
-        self.future = future
-        self.client_id = client_id
+def get_chat_provider(Provider: ElvaProvider = ElvaProvider):
 
-    async def cleanup(self):
-        self.future.pop(self.client_id)
+    class ChatProvider(Provider):
+        def __init__(self, ydocs, uri, future, client_id):
+            super().__init__(ydocs, uri)
+            self.future = future
+            self.client_id = client_id
+
+        async def cleanup(self):
+            self.future.pop(self.client_id)
+
+    return ChatProvider
 
 
 class Chat(Widget):
-
     BINDINGS = [
         ("ctrl+s", "send", "Send currently composed message")
     ]
 
-    def __init__(self, username, uri, show_self=True):
+    def __init__(self, username, uri, Provider: ElvaProvider=ElvaProvider, show_self=True):
         super().__init__()
         self.username = username
 
@@ -193,6 +192,7 @@ class Chat(Widget):
         self.history_parser = HistoryParser(self.history, self.history_widget)
         self.future_parser = FutureParser(self.future, self.future_widget, username, self.client_id, show_self)
         self.message_parser = YTextAreaParser(self.message["text"], self.message_widget)
+        ChatProvider = get_chat_provider(Provider)
         self.provider = ChatProvider({'test.chat': ydoc}, uri, self.future, self.client_id)
         self.components = [
             self.history_parser,
@@ -219,14 +219,12 @@ class Chat(Widget):
                 await self.tg.start(comp.start)
 
     async def on_mount(self):
-        self.log(f"> FUTURE: {self.future}")
         self.run_worker(self.run_components())
         async with anyio.create_task_group() as tg:
             for comp in self.components:
                 tg.start_soon(comp.started.wait)
 
     async def on_unmount(self):
-        self.log(f"> FUTURE: {self.future}")
         async with anyio.create_task_group() as tg:
             for comp in self.components:
                 tg.start_soon(comp.stopped.wait)
@@ -249,35 +247,34 @@ class Chat(Widget):
         message, _ = self.get_message(str(self.message["text"]), message_id=self.message["id"])
         self.history.append(message)
 
-        self.log(f"> FUTURE: {self.future}")
         self.message["text"].clear()
         self.message["id"] = self.get_new_id()
-        self.log(f"> FUTURE: {self.future}")
 
 
 class UI(App):
-
     CSS_PATH = "chat.tcss"
 
-    def __init__(self, username, uri, show_self):
+    def __init__(self, username, uri, Provider: ElvaProvider=ElvaProvider, show_self=True):
         super().__init__()
-        self.chat = Chat(username, uri, show_self)
+        self.chat = Chat(username, uri, Provider, show_self)
 
     def compose(self):
         yield self.chat
 
 
-@click.command()
-@click.argument("name", required=False)
-@click.option("--uri", "-u", "uri", default="ws://localhost:8000/", show_default=True)
+@click.group(invoke_without_command=True)
+@click.pass_context
 @click.option("--show-self", "-s", "show_self", is_flag=True, default=False, show_default=True)
-def main(name, uri, show_self):
-    # check arguments and sanitize
-    if not name:
-        name = str(uuid.uuid4())
+def cli(ctx, show_self: bool):
+    """chat app"""
+    
+    uri = ctx.obj['uri']
+    name = ctx.obj['name']
+    provider = ctx.obj['provider']
 
-    app = UI(name, uri, show_self)
+    app = UI(name, uri, provider, show_self)
     app.run()
 
+
 if __name__ == "__main__":
-    main()
+    cli()

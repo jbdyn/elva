@@ -1,6 +1,5 @@
-import os
-import uuid
 import logging
+import uuid
 from pathlib import Path
 
 import anyio
@@ -8,9 +7,7 @@ import click
 from pycrdt import Doc, Text
 from textual.app import App
 from textual.binding import Binding
-from textual.widget import Widget
 from textual.widgets import Label, TextArea
-from websockets import connect
 
 import elva.logging_config
 from elva.parser import TextEventParser
@@ -78,7 +75,7 @@ class YTextArea(TextArea):
 
     async def on_key(self, event) -> None:
         """Handle key presses which correspond to document inserts."""
-        self.log(f"got event {event}")
+        log.debug(f"got event {event}")
         key = event.key
         insert_values = {
             #"tab": " " * self._find_columns_to_next_tab_stop(),
@@ -137,7 +134,7 @@ class UI(App):
         Binding("ctrl+s", "save")
     ]
 
-    def __init__(self, filename, uri):
+    def __init__(self, filename, uri, Provider: ElvaProvider = ElvaProvider):
         super().__init__()
         self.filename = filename
 
@@ -153,7 +150,7 @@ class UI(App):
         self.store = SQLiteStore(self.ydoc, filename)
         self.parser = YTextAreaParser(self.ytext, self.ytext_area)
         self.renderer = TextRenderer(self.ytext, filename)
-        self.provider = ElvaProvider({filename: self.ydoc}, uri)
+        self.provider = Provider({filename: self.ydoc}, uri)
         self.components = [
             self.renderer,
             self.store,
@@ -190,9 +187,9 @@ class UI(App):
 
         # add content of pre-existing text files
         if add_content:
-            self.log("waiting for store to be initialized")
+            log.debug("waiting for store to be initialized")
             await self.store.wait_running()
-            self.log("reading in already present text file")
+            log.debug("reading in already present text file")
             self.ytext += text
 
     async def on_unmount(self):
@@ -214,23 +211,25 @@ class UI(App):
         else:
             try:
                 self.ytext_area.language = LANGUAGES[extension]
-            except:
+            except Exception:
                 log.info(f"no syntax highlighting available for extension '{extension}'")
 
 
-@click.command()
-@click.argument("name", required=False)
-@click.option("--uri", "-u", "uri", default="ws://localhost:8000/", show_default=True)
-def main(name, uri):
+@click.group(invoke_without_command=True)
+@click.argument("file", required=False)
+@click.pass_context
+def cli(ctx: click.Context, file: str):
+    """collaborative editor"""
 
-    # check arguments and sanitize
-    if not name:
-        name = str(uuid.uuid4())
+    uri = ctx.obj['uri']
+    provider = ctx.obj['provider']
+
+    if file is None:
+        file = str(uuid.uuid4())
 
     # run app
-    ui = UI(name, uri)
+    ui = UI(file, uri, provider)
     ui.run()
 
-
 if __name__ == "__main__":
-    main()
+    cli()
