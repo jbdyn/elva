@@ -5,12 +5,10 @@ import uuid
 @click.group( context_settings=dict(ignore_unknown_options=True,allow_extra_args=True))
 @click.pass_context
 @click.option("--name", "-n", "name", default=str(uuid.uuid4()), help="username")
-@click.option("--server", "-s", "server", default="local", help="'local' or 'remote'", callback=get_option_callback_check_in_list(['local', 'remote']))
+@click.option("--server", "-s", "server", default="wss://example.com/sync/")
 @click.option("--identifier", "-i", "identifier", default='test', help="room name")
-@click.option("--remote_ws_server", "-r", "remote_websocket_server", default="wss://example.com/sync/", show_default=False)
-@click.option("--local_host", "-h", "local_websocket_host", default="localhost", show_default=True)
-@click.option("--local_port", "-p", "local_websocket_port", default=8000, show_default=True)
-def elva(ctx: click.Context, name: str, server: str, identifier: str, remote_websocket_server: str, local_websocket_host: str, local_websocket_port: int):
+@click.option("--provider", "-p", "provider", default='ElvaProvider', help="room name")
+def elva(ctx: click.Context, name: str, server: str, identifier: str, provider: str):
     """ELVA - A suite of real-time collaboration TUI apps."""
 
     if ctx.invoked_subcommand is None:
@@ -24,17 +22,19 @@ def elva(ctx: click.Context, name: str, server: str, identifier: str, remote_web
     settings['identifier'] = identifier
     settings['name'] = name
     settings['server'] = server
-    settings['remote_websocket_server'] = remote_websocket_server
-    settings['local_websocket_host'] = local_websocket_host
-    settings['local_websocket_port'] = local_websocket_port
+    settings['provider'] = provider.lower()
 
-    if settings['server'] == "remote":
+    if settings['provider'] == "elvaprovider":
         # connect to the remote websocket server directly, without using the metaprovider
-        uri = remote_websocket_server
+        uri = server
         Provider: ElvaProvider = ElvaProvider
     else: #elif settings['server'] == 'local':
         # connect to the local metaprovider
-        uri = f"ws://{local_websocket_host}:{local_websocket_port}/{identifier}"
+        if server[-1] == "/":
+            uri = f"{server}{identifier}"
+        else:
+            uri = f"{server}/{identifier}"
+            
         Provider: ElvaProvider = WebsocketElvaProvider
 
     settings['uri'] = uri
