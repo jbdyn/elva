@@ -1,24 +1,26 @@
-import uuid
 import logging
+import re
+import uuid
 
+import anyio
 import click
 import emoji
-import anyio
-from pycrdt import Doc, Array, Text, Map
-from textual.app import App
-from textual.widget import Widget
-from textual.widgets import Static, TabbedContent
-from textual.containers import VerticalScroll
+from pycrdt import Array, Doc, Map, Text
 from rich.markdown import Markdown as RichMarkdown
+from textual.app import App
+from textual.containers import VerticalScroll
+from textual.widget import Widget
+from textual.widgets import Rule, Static, TabbedContent
 
 import elva.logging_config
-from elva.provider import ElvaProvider
 from elva.apps.editor import YTextArea, YTextAreaParser
 from elva.parser import ArrayEventParser, MapEventParser
-
+from elva.provider import ElvaProvider
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
+
+WHITESPACE_ONLY = re.compile(r"^\s*$")
 
 
 class MessageView(Widget):
@@ -41,7 +43,7 @@ class MessageView(Widget):
 
     def text_callback(self, event):
         text = str(event.target)
-        if text:
+        if re.match(WHITESPACE_ONLY, text) is None:
             self.display = True
             self.text_field.update(RichMarkdown(emoji.emojize(text)))
         else:
@@ -231,9 +233,9 @@ class Chat(Widget):
 
     def compose(self):
         yield self.history_widget
+        yield Rule()
         yield self.future_widget
-
-        with TabbedContent("Message", "Preview", id="composer"):
+        with TabbedContent("Message", "Preview", id="tabview"):
             yield self.message_widget
             with VerticalScroll():
                 yield self.markdown_widget
@@ -244,11 +246,13 @@ class Chat(Widget):
             self.message_widget.focus()
 
     async def action_send(self):
-        message, _ = self.get_message(str(self.message["text"]), message_id=self.message["id"])
-        self.history.append(message)
+        text = str(self.message["text"])
+        if re.match(WHITESPACE_ONLY, text) is None:
+            message, _ = self.get_message(text, message_id=self.message["id"])
+            self.history.append(message)
 
-        self.message["text"].clear()
-        self.message["id"] = self.get_new_id()
+            self.message["text"].clear()
+            self.message["id"] = self.get_new_id()
 
 
 class UI(App):
