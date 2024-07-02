@@ -1,9 +1,9 @@
-import anyio
 from pycrdt import Doc, Text
 from textual.app import App
-from textual.widgets import TabbedContent, Markdown
+from textual.widgets import Markdown, TabbedContent
 
 from elva.apps.editor import YTextArea, YTextAreaParser
+
 
 class UI(App):
     def __init__(self):
