@@ -9,15 +9,12 @@ from textual.app import App
 from textual.binding import Binding
 from textual.widgets import Label, TextArea
 
-import elva.logging_config
 from elva.parser import TextEventParser
 from elva.provider import ElvaProvider
-from elva.store import SQLiteStore
 from elva.renderer import TextRenderer
-
+from elva.store import SQLiteStore
 
 log = logging.getLogger(__name__)
-
 
 LANGUAGES = {
     "py": "python",
@@ -34,6 +31,7 @@ class YTextAreaParser(TextEventParser):
         super().__init__()
         self.ytext = ytext
         self.ytext_area = ytext_area
+        self.btext = self.ytext_area.text.encode()
 
     async def run(self):
         self.ytext.observe(self.callback)
@@ -47,14 +45,33 @@ class YTextAreaParser(TextEventParser):
         return self.ytext_area.document.get_location_from_index(index)
 
     async def on_insert(self, range_offset, insert_value):
+        # adapt range_offset to UTF-8 encoding
+        btext_start = self.btext[:range_offset]
+        btext_rest = self.btext[range_offset:]
+        range_offset = len(btext_start.decode())
+
+        # get Location and insert in TextArea
         start = self.location(range_offset)
         self.ytext_area.insert(insert_value, start)
 
+        # update UTF-8 encoded TextArea content
+        self.btext = btext_start + insert_value.encode() + btext_rest
+
     async def on_delete(self, range_offset, range_length):
+        # adapt range_offset and range_length to UTF-8 encoding
+        btext_start = self.btext[:range_offset]
+        btext_range = self.btext[range_offset:range_offset +  range_length]
+        btext_rest = self.btext[range_offset + range_length:]
+        range_offset = len(btext_start.decode())
+        range_length = len(btext_range.decode())
+
+        # get Locations and perform deletion
         start = self.location(range_offset)
         end = self.location(range_offset + range_length)
         self.ytext_area.delete(start, end, maintain_selection_offset=True)
 
+        # update UTF-8 encoded TextArea content
+        self.btext = btext_start + btext_rest
 
 
 class YTextArea(TextArea):
@@ -62,13 +79,17 @@ class YTextArea(TextArea):
         super().__init__(**kwargs)
         self.ytext = ytext
 
+    def get_utf8_index(self, unicode_index):
+        return len(self.text[:unicode_index].encode())
+
     @property
     def slice(self):
         return self.get_slice_from_selection(self.selection)
 
     def get_slice_from_selection(self, selection):
         start, end = selection
-        return sorted([self.document.get_index_from_location(loc) for loc in (start, end)])
+        unicode_slice = sorted([self.document.get_index_from_location(loc) for loc in (start, end)])
+        return tuple(self.get_utf8_index(unicode_index) for unicode_index in unicode_slice)
 
     def on_mount(self):
         self.load_text(str(self.ytext))
@@ -88,6 +109,7 @@ class YTextArea(TextArea):
             event.prevent_default()
             insert = insert_values.get(key, event.character)
 
+            start, end = self.selection
             istart, iend = self.slice
             self.ytext[istart:iend] = insert
 
