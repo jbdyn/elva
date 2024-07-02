@@ -1,4 +1,11 @@
+import logging
 import logging.config
+import logging.handlers
+
+socketHandler = logging.handlers.SocketHandler(
+    'localhost',
+    logging.handlers.DEFAULT_TCP_LOGGING_PORT
+)
 
 LOGGING = {
     "version": 1,
