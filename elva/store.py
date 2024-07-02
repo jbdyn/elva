@@ -3,7 +3,7 @@ import logging
 import sqlite_anyio as sqlite
 from anyio import Event, Lock, Path, create_memory_object_stream
 
-import elva.logging_config
+import elva.log
 from elva.component import Component
 
 

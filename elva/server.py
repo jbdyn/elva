@@ -3,7 +3,7 @@ import logging
 
 from websockets import serve
 
-import elva.logging_config
+import elva.log
 from elva.pycrdt_websocket_server import WebsocketServer
 
 log = logging.getLogger("elva.pycrdt_websocket_server")

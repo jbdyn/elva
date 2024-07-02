@@ -5,7 +5,7 @@ import anyio
 import websockets
 from pycrdt import Doc
 
-import elva.logging_config
+import elva.log
 from elva.component import Component
 from elva.protocol import (ElvaMessage, YCodec, YIncrementalDecoder,
                            YIncrementalEncoder)

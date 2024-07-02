@@ -9,6 +9,7 @@ from textual.app import App
 from textual.binding import Binding
 from textual.widgets import Label, TextArea
 
+import elva.log
 from elva.parser import TextEventParser
 from elva.provider import ElvaProvider
 from elva.renderer import TextRenderer

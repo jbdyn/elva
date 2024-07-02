@@ -5,7 +5,7 @@ from anyio import (TASK_STATUS_IGNORED, CancelScope, Event, Lock,
                    create_task_group, get_cancelled_exc_class, sleep_forever)
 from anyio.abc import TaskGroup
 
-import elva.logging_config
+import elva.log
 
 
 class Component():

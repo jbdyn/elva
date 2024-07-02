@@ -12,7 +12,7 @@ from textual.containers import VerticalScroll
 from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent
 
-import elva.logging_config
+import elva.log
 from elva.apps.editor import YTextArea, YTextAreaParser
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import ElvaProvider
