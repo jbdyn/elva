@@ -36,8 +36,8 @@ classifiers = [
 ]
 dependencies = [
   "websockets",
-  "pycrdt>=0.8.19",
-  "pycrdt-websocket>=0.12.6",
+  "pycrdt>=0.8.30",
+  "pycrdt-websocket>=0.14.0",
   "anyio",
   "textual[syntax]",
   "click",
@@ -46,7 +46,7 @@ dependencies = [
   "python-json-logger",
   "watchdog~=4.0.0"
 ]
-dynamic = ["version"]
+version = "0.0.1"
 
 [project.optional-dependencies]
 dev = [
