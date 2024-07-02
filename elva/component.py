@@ -1,22 +1,23 @@
-from abc import ABC, abstractmethod
-from pycrdt import Doc
-from functools import partial
-import elva.logging_config
 import logging
-import signal
-
 from contextlib import AsyncExitStack
-from anyio import sleep_forever, get_cancelled_exc_class, CancelScope, TASK_STATUS_IGNORED, Event, Lock, create_task_group
-from anyio.abc import TaskGroup, TaskStatus
 
-log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
+from anyio import (TASK_STATUS_IGNORED, CancelScope, Event, Lock,
+                   create_task_group, get_cancelled_exc_class, sleep_forever)
+from anyio.abc import TaskGroup
+
+import elva.logging_config
+
 
 class Component():
     _started: Event | None = None
     _stopped: Event | None = None
     _task_group: TaskGroup | None = None
     _start_lock: Lock | None = None
+
+    def __new__(cls, *args, **kwargs):
+        self = super().__new__(cls)
+        self.log = logging.getLogger(f"{self.__module__}.{self.__class__.__name__}")
+        return self
 
     def __str__(self):
         return f"{self.__class__.__name__}"
@@ -64,21 +65,21 @@ class Component():
         try:
             await self.before()
             self.started.set()
-            log.info("started")
+            self.log.info("started")
 
             await self.run()
 
             # keep the task running when `self.run()` has finished
             # so the cancellation exception can be always caught
             await sleep_forever()
-        except get_cancelled_exc_class() as exc:
-            log.info("stopping")
+        except get_cancelled_exc_class():
+            self.log.info("stopping")
             with CancelScope(shield=True):
                 await self.cleanup()
 
-            self._task_group = None
             self.stopped.set()
-            log.info("stopped")
+            self._task_group = None
+            self.log.info("stopped")
 
             # always re-raise a captured cancellation exception,
             # otherwise the behavior is undefined
@@ -90,7 +91,7 @@ class Component():
         Arguments:
             task_status: The status to set when the task has started.
         """
-        log.info("starting")
+        self.log.info("starting")
         async with self._get_start_lock():
             if self._task_group is not None:
                 raise RuntimeError(f"{self} already running")
@@ -105,7 +106,7 @@ class Component():
             raise RuntimeError(f"{self} not running")
 
         self._task_group.cancel_scope.cancel()
-        log.debug("cancelled")
+        self.log.debug("cancelled")
 
     async def before(self):
         ...

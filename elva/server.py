@@ -1,9 +1,12 @@
 import asyncio
-from websockets import serve
-from pycrdt_websocket import WebsocketServer
 import logging
 
-log = logging.basicConfig()
+from websockets import serve
+
+import elva.logging_config
+from elva.pycrdt_websocket_server import WebsocketServer
+
+log = logging.getLogger("elva.pycrdt_websocket_server")
 
 async def server():
     async with (

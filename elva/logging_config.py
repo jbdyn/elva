@@ -5,7 +5,7 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "default": {
-            "format": "%(asctime)s %(name)s %(process)d %(lineno)d : %(levelname)s %(message)s",
+            "format": "%(asctime)s - %(levelname)s - (%(name)s) %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
         "simple": {
@@ -13,7 +13,7 @@ LOGGING = {
         },
         "json": {
             "class": "pythonjsonlogger.jsonlogger.JsonFormatter",
-            "format": "%(asctime)s %(levelname)s %(message)s",
+            "format": "%(asctime)s %(name)s %(levelname)s %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
@@ -23,6 +23,12 @@ LOGGING = {
             "formatter": "json",
             "level": "DEBUG",
             "stream": "ext://sys.stdout",
+        },
+        "file": {
+            "class": "logging.FileHandler",
+            "formatter": "default",
+            "level": "DEBUG",
+            "filename": "elva.log",
         },
         "textual": {
             "class": "textual.logging.TextualHandler",
@@ -37,7 +43,7 @@ LOGGING = {
             "level": "DEBUG",
             "markup": True,
             "rich_tracebacks": True,
-        },
+},
     },
     "loggers": {
 #        "root": { # all loggers
@@ -45,7 +51,7 @@ LOGGING = {
 #            "level": "INFO",
 #        },
         "elva": {
-            "handlers": ["textual"],
+            "handlers": ["file"],
             "level": "DEBUG",
         },
     },

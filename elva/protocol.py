@@ -1,5 +1,6 @@
-from codecs import register, Codec, CodecInfo, IncrementalEncoder, IncrementalDecoder
+from codecs import Codec, IncrementalDecoder, IncrementalEncoder
 from enum import Enum
+
 
 def write_var_uint(data):
     num = len(data)

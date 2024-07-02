@@ -1,16 +1,14 @@
-from functools import partial
 from dataclasses import dataclass
+from functools import partial
 
 import anyio
-from pycrdt import Doc
-import logging
 import websockets
+from pycrdt import Doc
 
 import elva.logging_config
 from elva.component import Component
-from elva.protocol import YCodec, YIncrementalEncoder, YIncrementalDecoder, ElvaMessage
-
-log = logging.getLogger(__name__)
+from elva.protocol import (ElvaMessage, YCodec, YIncrementalDecoder,
+                           YIncrementalEncoder)
 
 
 class Connection(Component):
@@ -47,23 +45,23 @@ class Connection(Component):
     async def send(self, data):
         if self.connected.is_set():
             try:
-                log.debug(f"sending {data}")
+                self.log.debug(f"sending {data}")
                 await self.outgoing.send(data)
             except Exception as exc:
-                log.info(f"cancelled sending {data}")
-                log.debug(f"cancelled due to exception: {exc}")
+                self.log.info(f"cancelled sending {data}")
+                self.log.debug(f"cancelled due to exception: {exc}")
 
     async def recv(self):
-        log.debug("waiting for connection")
+        self.log.debug("waiting for connection")
         await self.connected.wait()
         try:
-            log.info("listening")
+            self.log.info("listening")
             async for data in self.incoming:
-                log.debug(f"received message {data}")
+                self.log.debug(f"received message {data}")
                 await self.on_recv(data)
         except Exception as exc:
-            log.info("cancelled listening for incoming data")
-            log.debug(f"cancelled due to exception: {exc}")
+            self.log.info("cancelled listening for incoming data")
+            self.log.debug(f"cancelled due to exception: {exc}")
 
 
 class WebsocketConnection(Connection):
@@ -74,29 +72,29 @@ class WebsocketConnection(Connection):
     async def run(self):
         async for self._websocket in websockets.connect(self.uri):
             try:
-                log.info(f"connected")
+                self.log.info(f"connection to {self.uri} opened")
 
                 self.incoming = self._websocket
                 self.outgoing = self._websocket
                 self.connected.set()
-                log.debug("set 'connected' event flag and streams")
+                self.log.debug("set 'connected' event flag and streams")
 
                 self._task_group.start_soon(self.on_connect)
                 await self.recv()
             except websockets.ConnectionClosed:
-                log.info("connection closed")
+                self.log.info(f"connection to {self.uri} closed")
                 self._connected = None
                 self._outgoing = None
                 self._incoming = None
-                log.debug("unset 'connected' event flag and streams")
+                self.log.debug("unset 'connected' event flag and streams")
                 continue
             except Exception as exc:
-                log.exception(f"unexpected websocket client exception: {exc}")
+                self.log.exception(f"unexpected websocket client exception: {exc}")
                 break
 
     async def cleanup(self):
         if self._websocket is not None:
-            log.debug("closing websocket connection")
+            self.log.debug("closing connection")
             await self._websocket.close()
 
     async def on_connect(self):
@@ -130,58 +128,58 @@ class ElvaProvider(WebsocketConnection):
         await super().run()
 
     async def on_connect(self):
-        log.info("sync all")
+        self.log.info("synchronize all YDocs")
         await self.sync_all()
 
     async def send_uuid(self, message, uuid):
-        log.debug("tag message with uuid")
+        self.log.debug("tag message with uuid")
         encoded_uuid, _ = ElvaMessage.ID.encode(uuid.encode())
         message = encoded_uuid + message
         try:
             await self.send(message)
-        except:
+        except Exception:
             pass
 
     async def on_recv(self, message):
         try:
             uuid, length = ElvaMessage.ID.decode(message)
         except ValueError as exc:
-            log.debug(f"expected ID message, got {exc}")
+            self.log.debug(f"expected ID message, got {exc}")
             return
 
-        log.debug(f"UUID: {uuid}")
+        self.log.debug(f"UUID: {uuid}")
         uuid = uuid.decode()
 
         try:
             ydoc = self.ydocs[uuid]
         except KeyError:
-            log.debug(f"no YDoc with UUID {uuid} present")
+            self.log.debug(f"no YDoc with UUID {uuid} present")
             return
  
         message = UUIDMessage(uuid, ydoc, message[length:])
-        log.debug(f"received {message} for {uuid}")
+        self.log.debug(f"received {message} for {uuid}")
         await self.process(message)
 
     async def sync_all(self):
         for uuid in self.ydocs.keys():
-            log.debug(f"syncing UUID {uuid}")
+            self.log.debug(f"syncing UUID {uuid}")
             await self.sync(uuid)
 
     async def sync(self, uuid):
         ydoc = self.ydocs[uuid]
         state = ydoc.get_state()
         msg, _ = ElvaMessage.SYNC_STEP1.encode(state)
-        log.debug("sending SYNC_STEP1 message")
+        self.log.debug("sending SYNC_STEP1 message")
         await self.send_uuid(msg, uuid)
 
     def callback(self, event, uuid):
         try:
             if event.update != b"\x00\x00":
                 message, _  = ElvaMessage.SYNC_UPDATE.encode(event.update)
-                log.debug(f"update message {message} from observer callback")
+                self.log.debug(f"update message {message} from observer callback")
                 self._task_group.start_soon(self.send_uuid, message, uuid)
-        except Exception as exc:
-            log.exception(f"unexpected observer callback error for UUID {uuid}")
+        except Exception:
+            self.log.exception(f"unexpected observer callback error for UUID {uuid}")
 
     async def process_sync_step1(self, message):
         ydoc = message.ydoc
@@ -192,7 +190,7 @@ class ElvaProvider(WebsocketConnection):
         encoded_state, _ = self.ycodec.encode(state)
         payload = encoded_update + encoded_state
         reply, _ = ElvaMessage.SYNC_CROSS.encode(payload)
-        log.debug(f"sending cross_sync message {reply}")
+        self.log.debug(f"sending cross_sync message {reply}")
         await self.send_uuid(reply, message.uuid)
 
     async def process_sync_update(self, message):
@@ -217,10 +215,10 @@ class ElvaProvider(WebsocketConnection):
         try:
             message_type, payload, _ = ElvaMessage.infer_and_decode(message.payload)
         except ValueError as exc:
-            log.debug(f"expected some kind of ElvaMessage, got {exc}")
+            self.log.debug(f"expected some kind of ElvaMessage, got {exc}")
             return
         message.payload = payload
-        log.debug(f"received {message_type} message {payload}")
+        self.log.debug(f"received {message_type} message {payload}")
         match message_type:
             case ElvaMessage.SYNC_STEP1:
                 await self.process_sync_step1(message)
@@ -229,7 +227,7 @@ class ElvaProvider(WebsocketConnection):
             case ElvaMessage.SYNC_STEP2 | ElvaMessage.SYNC_UPDATE:
                 await self.process_sync_update(message)
             case _:
-                log.debug(f"do nothing with {message_type} message {payload}")
+                self.log.debug(f"do nothing with {message_type} message {payload}")
 
 
 class SingleElvaProvider(ElvaProvider):
@@ -244,7 +242,7 @@ class SingleElvaProvider(ElvaProvider):
     async def send_without_uuid(self, message, uuid=None):
         try:
             await self.send(message)
-        except:
+        except Exception:
             pass
 
 class WebsocketElvaProvider(ElvaProvider):
@@ -254,12 +252,12 @@ class WebsocketElvaProvider(ElvaProvider):
     async def send_uuid(self, message, uuid=None):
         try:
             await self.send(message)
-        except:
+        except Exception:
             pass
 
     async def on_recv(self, message):
         ydoc = list(self.ydocs.values())[0]
-        log.debug(f"received message {message}")
+        self.log.debug(f"received message {message}")
         inbound = UUIDMessage(None, ydoc, message)
         await self.process(inbound)
 
@@ -268,5 +266,5 @@ class WebsocketElvaProvider(ElvaProvider):
         state = message.payload
         update = ydoc.get_update(state)
         reply, _ = ElvaMessage.SYNC_STEP2.encode(update)
-        log.debug(f"sending sync_step2 message {reply}")
+        self.log.debug(f"sending sync_step2 message {reply}")
         await self.send_uuid(reply)

@@ -1,14 +1,10 @@
-import time
-
-from anyio import get_cancelled_exc_class, Event, Path, Lock, create_memory_object_stream
-import sqlite_anyio as sqlite
 import logging
+
+import sqlite_anyio as sqlite
+from anyio import Event, Lock, Path, create_memory_object_stream
 
 import elva.logging_config
 from elva.component import Component
-
-log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
 
 
 class SQLiteStore(Component):
@@ -24,21 +20,21 @@ class SQLiteStore(Component):
 
     async def _provide_table(self):
         async with self.lock:
-            log.debug("providing table")
+            self.log.debug("providing table")
             await self.cursor.execute(
                 "CREATE TABLE IF NOT EXISTS yupdates(yupdate BLOB)"
             )
             await self.db.commit()
-            log.debug("provided table")
+            self.log.debug("provided table")
         
     async def _init_db(self):
-        log.debug("initializing database")
+        self.log.debug("initializing database")
         self.initialized = Event()
         self.db = await sqlite.connect(self.db_path)
         self.cursor = await self.db.cursor()
-        log.debug(f"connected to database {self.path}")
+        self.log.debug(f"connected to database {self.path}")
         await self._provide_table()
-        log.info("database initialized")
+        self.log.info("database initialized")
         self.initialized.set()
 
     async def before(self):
@@ -75,7 +71,7 @@ class SQLiteStore(Component):
         await self.wait_running()
 
         async with self.lock:
-            log.debug(f"writing {data}")
+            self.log.debug(f"writing {data}")
             await self.cursor.execute(
                 "INSERT INTO yupdates VALUES (?)", [data],
             )

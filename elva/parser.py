@@ -1,8 +1,8 @@
-import anyio
 from logging import getLogger
 
+import anyio
+from pycrdt import ArrayEvent, MapEvent, TextEvent
 from pycrdt._base import BaseEvent
-from pycrdt import TextEvent, ArrayEvent, MapEvent
 
 from elva.component import Component
 
@@ -14,6 +14,7 @@ class EventParser(Component):
     async def run(self):
         self.send_stream, self.receive_stream = anyio.create_memory_object_stream(max_buffer_size=65543)
         async with self.send_stream, self.receive_stream:
+            self.log.info("awaiting events")
             async for event in self.receive_stream:
                 await self._parse_event(event)
 
@@ -24,6 +25,7 @@ class EventParser(Component):
     async def parse(self, event):
         self.check(event)
         await self.send_stream.send(event)
+        self.log.debug("sending event")
 
     def parse_nowait(self, event):
         self.check(event)
