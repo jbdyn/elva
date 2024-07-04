@@ -99,7 +99,7 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
     show_envvar=True,
     default=ELVA_DATA_PATH,
     show_default=True,
-    # process this first, as it might hold configs as well
+    # process this first, as it might hold a config file
     is_eager=True,
     type=click.Path(path_type=Path, file_okay=False),
     callback=_handle_data,
@@ -198,6 +198,7 @@ def init():
     """initialize a data directory in the current working directory"""
     data = Path.cwd() / ELVA_DOT_DIR_NAME
     data.mkdir(exist_ok=True)
+    # TODO: call also `git init`
 
 
 apps = [
