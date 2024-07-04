@@ -1,11 +1,12 @@
-import anyio
-import websockets
-from functools import partial
-import sys
 import logging
+import sys
+from functools import partial
 from logging import Logger
 
+import anyio
 import click
+import websockets
+
 from elva.click_utils import elva_app_cli
 
 SOCKETS = set()
@@ -58,11 +59,18 @@ def serve(host, port, log: Logger|None = None):
     except Exception as e:
         click.echo(e)
 
-@click.group(invoke_without_command=True)
-@click.option("--local_host", "-h", "local_websocket_host", default="localhost", show_default=True)
-@click.option("--local_port", "-p", "local_websocket_port", default=8000, show_default=True)
+
+@click.command()
 @click.pass_context
-def cli(ctx: click.Context, local_websocket_host, local_websocket_port):
+@click.argument(
+    "host",
+    default="localhost",
+)
+@click.argument(
+    "port",
+    default=8000,
+)
+def cli(ctx: click.Context, host: str, port: str):
     """local websocket server"""
 
     log_handler = logging.StreamHandler(sys.stdout)
@@ -70,7 +78,7 @@ def cli(ctx: click.Context, local_websocket_host, local_websocket_port):
     log.addHandler(log_handler)
     log.setLevel(logging.DEBUG)
 
-    serve(local_websocket_host, local_websocket_port, log)
+    serve(host, port, log)
 
 if __name__ == "__main__":
     cli()

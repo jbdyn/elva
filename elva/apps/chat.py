@@ -266,9 +266,15 @@ class UI(App):
         yield self.chat
 
 
-@click.group(invoke_without_command=True)
+@click.command()
+@click.option(
+    "--show-self", "-s", "show_self",
+    help="show your own writing as a future message",
+    is_flag=True,
+    default=False,
+    show_default=True
+)
 @click.pass_context
-@click.option("--show-self", "-s", "show_self", is_flag=True, default=False, show_default=True)
 def cli(ctx, show_self: bool):
     """chat app"""
     

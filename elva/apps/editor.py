@@ -238,11 +238,11 @@ class UI(App):
                 log.info(f"no syntax highlighting available for extension '{extension}'")
 
 
-@click.group(invoke_without_command=True)
+@click.command()
 @click.argument("file", required=False)
 @click.pass_context
 def cli(ctx: click.Context, file: str):
-    """collaborative editor"""
+    """collaborative text editor"""
 
     uri = ctx.obj['uri']
     provider = ctx.obj['provider']

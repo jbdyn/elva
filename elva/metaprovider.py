@@ -161,11 +161,18 @@ async def run(log:Logger|None = None,
     ):
         await asyncio.Future()
 
-@click.group(invoke_without_command=True)
-@click.option("--local_host", "-h", "local_websocket_host", default="localhost", show_default=True)
-@click.option("--local_port", "-p", "local_websocket_port", default=8000, show_default=True)
+
+@click.command()
 @click.pass_context
-def cli(ctx: click.Context, local_websocket_host, local_websocket_port):
+@click.argument(
+    "host",
+    default="localhost"
+)
+@click.argument(
+    "port",
+    default=8000
+)
+def cli(ctx: click.Context, host, port):
     """local meta provider"""
 
     log = getLogger(__name__)
@@ -174,7 +181,7 @@ def cli(ctx: click.Context, local_websocket_host, local_websocket_port):
     log.setLevel(logging.DEBUG)
 
     try:
-        anyio.run(run, log, ctx.obj['server'], local_websocket_host, local_websocket_port)
+        anyio.run(run, log, ctx.obj['server'], host, port)
     except KeyboardInterrupt:
         log.info("server stopped")
 
