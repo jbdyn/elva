@@ -18,7 +18,6 @@ from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import ElvaProvider
 
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
 
 WHITESPACE_ONLY = re.compile(r"^\s*$")
 
@@ -266,7 +265,8 @@ class UI(App):
         yield self.chat
 
 
-@click.command()
+@click.command
+@click.pass_context
 @click.option(
     "--show-self", "-s", "show_self",
     help="show your own writing as a future message",
@@ -274,7 +274,6 @@ class UI(App):
     default=False,
     show_default=True
 )
-@click.pass_context
 def cli(ctx, show_self: bool):
     """chat app"""
     

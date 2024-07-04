@@ -60,7 +60,7 @@ def serve(host, port, log: Logger|None = None):
         click.echo(e)
 
 
-@click.command()
+@click.command
 @click.pass_context
 @click.argument(
     "host",
