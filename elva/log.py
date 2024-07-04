@@ -15,7 +15,7 @@ from pythonjsonlogger.jsonlogger import JsonFormatter as BaseJsonFormatter
 #
 # formatter
 #
-class DefaultFormatter():
+class DefaultFormatter(logging.Formatter):
     def __init__(self):
         fmt ="%(asctime)s - %(levelname)s - (%(name)s) %(component)s %(message)s"
         datefmt = "%Y-%m-%d %H:%M:%S"
