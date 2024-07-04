@@ -12,29 +12,33 @@ from elva.provider import ElvaProvider, WebsocketElvaProvider
 #
 # global defaults
 #
+# names
 APP_NAME = "elva"
 ELVA_DOT_DIR_NAME = "." + APP_NAME
 ELVA_CONFIG_NAME = APP_NAME + ".ini"
 ELVA_LOG_NAME = APP_NAME + ".log"
 #
-# dot dir
+# paths
 def _find_dot_dir():
     cwd = Path.cwd()
     for path in [cwd] + list(cwd.parents):
         dot = path / ELVA_DOT_DIR_NAME
         if dot.exists():
             return dot
-#
-# paths
+
+
 _dot_dir = _find_dot_dir()
+
 ELVA_DATA_PATH = Path(
     _dot_dir \
     or platformdirs.user_data_dir(APP_NAME)
 )
+
 ELVA_CONFIG_PATH = Path(
     _dot_dir \
     or platformdirs.user_config_dir(APP_NAME)
 ) / ELVA_CONFIG_NAME
+
 ELVA_LOG_PATH = Path(
     _dot_dir \
     or platformdirs.user_log_dir(APP_NAME)
@@ -64,6 +68,7 @@ def _handle_data(ctx: click.Context, param: click.Parameter, data: Path):
 def _handle_config(ctx: click.Context, param: click.Parameter, config: Path):
     _ensure_dir(config)
     _add_to_ctx(ctx, "config", config)
+    # TODO: load config here and put entries in `ctx`
     return config
 
 
@@ -94,6 +99,8 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
     show_envvar=True,
     default=ELVA_DATA_PATH,
     show_default=True,
+    # process this first, as it might hold configs as well
+    is_eager=True,
     type=click.Path(path_type=Path, file_okay=False),
     callback=_handle_data,
 )
@@ -138,6 +145,9 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
     default='ElvaProvider',
     help="provider name used to connect to the syncing server"
 )
+#
+# function definition
+#
 def elva(
     ctx: click.Context,
     data: Path,
@@ -157,10 +167,11 @@ def elva(
     settings['server'] = server
 
     if provider.lower() == "elvaprovider":
-        # connect to the remote websocket server directly, without using the metaprovider
+        # connect to the remote websocket server directly,
+        # without using the metaprovider
         uri = server
         Provider: ElvaProvider = ElvaProvider
-    else: #elif settings['server'] == 'local':
+    else:
         # connect to the local metaprovider
         if server[-1] == "/":
             uri = f"{server}{identifier}"
@@ -176,6 +187,10 @@ def elva(
 @click.pass_context
 def config(ctx: click.Context):
     """print the used configuration parameter"""
+    # TODO: print config in INI syntax, so that it can be piped directly
+    # TODO: convert this into a command group, so one gets a git-like
+    #       config interface, e.g.
+    #       $ elva config name "John Doe"
     print(ctx.obj)
 
 @elva.command
