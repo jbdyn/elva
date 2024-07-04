@@ -206,6 +206,7 @@ apps = [
     ("elva.apps.chat", "chat"),
     ("elva.websocket_server", "serve"),
     ("elva.metaprovider", "start"),
+    ("elva.log", "log"),
 ]
 for app, command in apps:
     module = importlib.import_module(app)
