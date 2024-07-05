@@ -1,14 +1,17 @@
 import logging
 import logging.handlers
 import pickle
+import socket
 import socketserver
 import struct
-from logging.handlers import DEFAULT_TCP_LOGGING_PORT
-from logging.handlers import SocketHandler as BaseSocketHandler
+from logging.handlers import SocketHandler
 from pathlib import Path
+from time import sleep
 
 import click
 from pythonjsonlogger.jsonlogger import JsonFormatter as BaseJsonFormatter
+from websockets.client import ClientProtocol
+from websockets.uri import parse_uri
 
 
 ###
@@ -17,7 +20,7 @@ from pythonjsonlogger.jsonlogger import JsonFormatter as BaseJsonFormatter
 #
 class DefaultFormatter(logging.Formatter):
     def __init__(self):
-        fmt ="%(asctime)s - %(levelname)s - (%(name)s) %(component)s %(message)s"
+        fmt = "%(asctime)s - %(levelname)s - (%(name)s) %(component)s %(message)s"
         datefmt = "%Y-%m-%d %H:%M:%S"
         defaults = dict(component=None)
         super().__init__(fmt=fmt, datefmt=datefmt, defaults=defaults)
@@ -25,7 +28,7 @@ class DefaultFormatter(logging.Formatter):
 
 class JsonFormatter(BaseJsonFormatter):
     def __init__(self):
-        fmt ="%(asctime)s %(levelname)s %(name)s %(component)s %(message)s"
+        fmt = "%(asctime)s %(levelname)s %(name)s %(component)s %(message)s"
         datefmt = "%Y-%m-%dT%H:%M:%S"
         defaults = dict(component=None)
         super().__init__(fmt=fmt, datefmt=datefmt, defaults=defaults)
@@ -35,16 +38,107 @@ class JsonFormatter(BaseJsonFormatter):
 #
 # handler
 #
-class SocketHandler(BaseSocketHandler):
-    def __init__(
-        self,
-        host: str = "localhost",
-        port: int = DEFAULT_TCP_LOGGING_PORT
-    ):
-        super().__init__(host, port)
+class WebsocketHandler(SocketHandler):
+    def __init__(self, uri: str):
+        self.uri = parse_uri(uri)
+        self.protocol = ClientProtocol(self.uri)
+        self.events = list()
+        super().__init__(self.uri.host, self.uri.port)
 
-def get_default_handler():
-    return SocketHandler().setFormatter(DefaultFormatter())
+    def makeSocket(self):
+        # open TCP connection
+        self.sock = super().makeSocket()
+        sock = self.sock
+
+        # TODO: perform TLS handshake
+        # if self.uri.secure:
+        #    ...
+
+        # send handshake request
+        protocol = self.protocol
+        request = protocol.connect()
+        protocol.send_request(request)
+        self.send_data()
+
+        # receive data
+        self.receive_data()
+
+        # raise reason if handshake failed
+        if protocol.handshake_exc is not None:
+            self.reset_socket()
+            raise protocol.handshake_exc
+
+        return sock
+
+    def send_data(self):
+        for data in self.protocol.data_to_send():
+            if data:
+                try:
+                    self.sock.sendall(data)
+                except OSError:  # socket closed
+                    self.reset_socket()
+                    break
+            else:
+                # half-close TCP connection
+                self.sock.shutdown(socket.SHUT_WR)
+
+    def receive_data(self):
+        try:
+            data = self.sock.recv(65536)
+        except OSError:  # socket closed
+            data = b""
+        if data:
+            self.protocol.receive_data(data)
+        else:
+            self.protocol.receive_eof()
+
+        # necessary because `websockets` responds to ping frames,
+        # close frames, and incorrect inputs automatically
+        self.send_data()
+
+        self.process_events_received()
+        self.check_close_expected()
+
+    def check_close_expected(self):
+        if self.protocol.close_expected():
+            sleep(5)
+            self.reset_socket()
+
+    def process_events_received(self):
+        # do something with the events,
+        # first event is handshake response
+        events = self.protocol.events_received()
+        self.events.extend(events)
+        print(self.events)
+
+    def close_socket(self):
+        self.protocol.send_close()
+        self.send_data()
+        self.reset_socket()
+
+    def reset_socket(self):
+        self.sock.close()
+        self.sock = None
+
+    def send(self, s):
+        if self.sock is None:
+            self.createSocket()
+
+        if self.sock:
+            self.protocol.send_binary(s)
+            self.send_data()
+
+    def close(self):
+        with self.lock:
+            if self.sock:
+                self.close_socket()
+            logging.Handler.close(self)
+
+
+def get_default_handler(uri):
+    handler = WebsocketHandler(uri)
+    handler.setFormatter(DefaultFormatter())
+    return handler
 
 
 ###
@@ -57,6 +151,7 @@ class LogRecordStreamHandler(socketserver.StreamRequestHandler):
     This basically logs the record using whatever logging policy is
     configured locally.
     """
+
     def __init__(self, filename="elva.log", *args, **kwargs):
         self.logHandler = logging.FileHandler(filename)
         super().__init__(*args, **kwargs)
@@ -71,7 +166,7 @@ class LogRecordStreamHandler(socketserver.StreamRequestHandler):
             chunk = self.connection.recv(4)
             if len(chunk) < 4:
                 break
-            slen = struct.unpack('>L', chunk)[0]
+            slen = struct.unpack(">L", chunk)[0]
             chunk = self.connection.recv(slen)
             while len(chunk) < slen:
                 chunk = chunk + self.connection.recv(slen - len(chunk))
@@ -110,7 +205,7 @@ class LogRecordSocketReceiver(socketserver.ThreadingTCPServer):
         self,
         host="localhost",
         port=logging.handlers.DEFAULT_TCP_LOGGING_PORT,
-        handler=LogRecordStreamHandler
+        handler=LogRecordStreamHandler,
     ):
         super().__init__((host, port), handler)
         self.abort = 0
@@ -119,11 +214,10 @@ class LogRecordSocketReceiver(socketserver.ThreadingTCPServer):
 
     def serve_until_stopped(self):
         import select
+
         abort = 0
         while not abort:
-            rd, wr, ex = select.select([self.socket.fileno()],
-                                       [], [],
-                                       self.timeout)
+            rd, wr, ex = select.select([self.socket.fileno()], [], [], self.timeout)
             if rd:
                 self.handle_request()
             abort = self.abort
@@ -131,19 +225,15 @@ class LogRecordSocketReceiver(socketserver.ThreadingTCPServer):
 
 @click.command
 @click.pass_context
-@click.argument(
-    "file",
-    required=False,
-    type=click.Path(dir_okay=False, path_type=Path)
-)
+@click.argument("file", required=False, type=click.Path(dir_okay=False, path_type=Path))
 def cli(ctx: click.Context, file):
     if file is None:
         file = ctx.obj["log"]
     # TODO: pass file as parameter to server
     tcpserver = LogRecordSocketReceiver()
-    print('About to start TCP server...')
+    print("About to start TCP server...")
     tcpserver.serve_until_stopped()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli()

@@ -7,21 +7,22 @@ import anyio
 import click
 import websockets
 
-from elva.click_utils import elva_app_cli
-
 SOCKETS = set()
+
 
 async def broadcast(receive_stream, log: Logger):
     async with receive_stream:
         async for item in receive_stream:
             message_socket, message = item
-            for socket in SOCKETS.copy():
-                if socket != message_socket:
-                    log.debug(f"> sending {message} to {socket}")
-                    try:
-                        await socket.send(message)
-                    except Exception as e:
-                        log.error(e)
+            log.info(message)
+            # for socket in SOCKETS.copy():
+            #    if socket != message_socket:
+            #        log.debug(f"> sending {message} to {socket}")
+            #        try:
+            #            await socket.send(message)
+            #        except Exception as e:
+            #            log.error(e)
+
 
 async def handler(websocket, send_stream, log: Logger):
     SOCKETS.add(websocket)
@@ -42,12 +43,15 @@ async def handler(websocket, send_stream, log: Logger):
 async def run(host, port, log: Logger):
     send_stream, receive_stream = anyio.create_memory_object_stream()
     async with send_stream:
-        async with websockets.serve(partial(handler, send_stream=send_stream, log=log), host, port) as server:
+        async with websockets.serve(
+            partial(handler, send_stream=send_stream, log=log), host, port
+        ) as server:
             log.info(f"start broadcasting on {host}:{port}")
             await broadcast(receive_stream, log)
 
-def serve(host, port, log: Logger|None = None):
-    log =  log or logging.getLogger(__name__)
+
+def serve(host, port, log: Logger | None = None):
+    log = log or logging.getLogger(__name__)
     try:
         anyio.run(run, host, port, log)
     except KeyboardInterrupt:
@@ -79,6 +83,7 @@ def cli(ctx: click.Context, host: str, port: str):
     log.setLevel(logging.DEBUG)
 
     serve(host, port, log)
+
 
 if __name__ == "__main__":
     cli()
