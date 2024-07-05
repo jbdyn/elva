@@ -17,6 +17,8 @@ APP_NAME = "elva"
 ELVA_DOT_DIR_NAME = "." + APP_NAME
 ELVA_CONFIG_NAME = APP_NAME + ".ini"
 ELVA_LOG_NAME = APP_NAME + ".log"
+
+
 #
 # paths
 def _find_dot_dir():
@@ -29,20 +31,13 @@ def _find_dot_dir():
 
 _dot_dir = _find_dot_dir()
 
-ELVA_DATA_PATH = Path(
-    _dot_dir \
-    or platformdirs.user_data_dir(APP_NAME)
+ELVA_DATA_PATH = Path(_dot_dir or platformdirs.user_data_dir(APP_NAME))
+
+ELVA_CONFIG_PATH = (
+    Path(_dot_dir or platformdirs.user_config_dir(APP_NAME)) / ELVA_CONFIG_NAME
 )
 
-ELVA_CONFIG_PATH = Path(
-    _dot_dir \
-    or platformdirs.user_config_dir(APP_NAME)
-) / ELVA_CONFIG_NAME
-
-ELVA_LOG_PATH = Path(
-    _dot_dir \
-    or platformdirs.user_log_dir(APP_NAME)
-) / ELVA_LOG_NAME
+ELVA_LOG_PATH = Path(_dot_dir or platformdirs.user_log_dir(APP_NAME)) / ELVA_LOG_NAME
 
 
 ###
@@ -85,7 +80,7 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
 @click.group(
     context_settings=dict(
         ignore_unknown_options=True,
-        allow_extra_args=True
+        allow_extra_args=True,
     )
 )
 @click.pass_context
@@ -93,7 +88,9 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
 # paths
 #
 @click.option(
-    "--data", "-d", "data",
+    "--data",
+    "-d",
+    "data",
     help="path to data directory",
     envvar="ELVA_DATA_PATH",
     show_envvar=True,
@@ -105,7 +102,9 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
     callback=_handle_data,
 )
 @click.option(
-    "--config", "-c", "config",
+    "--config",
+    "-c",
+    "config",
     help="path to config file or directory",
     envvar="ELVA_CONFIG_PATH",
     show_envvar=True,
@@ -115,7 +114,9 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
     callback=_handle_config,
 )
 @click.option(
-    "--log", "-l", "log",
+    "--log",
+    "-l",
+    "log",
     help="path to log file or directory",
     envvar="ELVA_LOG_PATH",
     show_envvar=True,
@@ -128,22 +129,30 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
 # connection information
 #
 @click.option(
-    "--name", "-n", "name",
+    "--name",
+    "-n",
+    "name",
     help="username",
-    default=str(uuid.uuid4())
+    default=str(uuid.uuid4()),
 )
 @click.option(
-    "--server", "-s", "server",
-    help="URI of the syncing server"
+    "--server",
+    "-s",
+    "server",
+    help="URI of the syncing server",
 )
 @click.option(
-    "--identifier", "-i", "identifier", 
-    help="identifier for the document"
+    "--identifier",
+    "-i",
+    "identifier",
+    help="identifier for the document",
 )
 @click.option(
-    "--provider", "-p", "provider",
-    default='ElvaProvider',
-    help="provider name used to connect to the syncing server"
+    "--provider",
+    "-p",
+    "provider",
+    help="provider name used to connect to the syncing server",
+    default="ElvaProvider",
 )
 #
 # function definition
@@ -156,15 +165,15 @@ def elva(
     name: str,
     server: str | None,
     identifier: str | None,
-    provider: str
+    provider: str,
 ):
     """ELVA - A suite of real-time collaboration TUI apps."""
 
     ctx.ensure_object(dict)
-    settings = ctx.obj 
-    settings['identifier'] = identifier
-    settings['name'] = name
-    settings['server'] = server
+    settings = ctx.obj
+    settings["identifier"] = identifier
+    settings["name"] = name
+    settings["server"] = server
 
     if provider.lower() == "elvaprovider":
         # connect to the remote websocket server directly,
@@ -177,12 +186,17 @@ def elva(
             uri = f"{server}{identifier}"
         else:
             uri = f"{server}/{identifier}"
-            
+
         Provider: ElvaProvider = WebsocketElvaProvider
 
-    settings['uri'] = uri
-    settings['provider']= Provider
+    settings["uri"] = uri
+    settings["provider"] = Provider
 
+
+###
+#
+# config
+#
 @elva.command
 @click.pass_context
 def config(ctx: click.Context):
@@ -193,6 +207,11 @@ def config(ctx: click.Context):
     #       $ elva config name "John Doe"
     print(ctx.obj)
 
+
+###
+#
+# init
+#
 @elva.command
 def init():
     """initialize a data directory in the current working directory"""
@@ -201,6 +220,10 @@ def init():
     # TODO: call also `git init`
 
 
+###
+#
+# import `cli` functions of apps
+#
 apps = [
     ("elva.apps.editor", "edit"),
     ("elva.apps.chat", "chat"),
@@ -214,4 +237,3 @@ for app, command in apps:
 
 if __name__ == "__main__":
     elva()
-
