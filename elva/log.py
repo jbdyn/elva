@@ -6,6 +6,7 @@ import socketserver
 import struct
 from logging.handlers import SocketHandler
 from pathlib import Path
+from threading import Thread
 from time import sleep
 
 import click
@@ -41,11 +42,11 @@ class JsonFormatter(BaseJsonFormatter):
 class WebsocketHandler(SocketHandler):
     def __init__(self, uri: str):
         self.uri = parse_uri(uri)
-        self.protocol = ClientProtocol(self.uri)
         self.events = list()
         super().__init__(self.uri.host, self.uri.port)
 
     def makeSocket(self):
+        print("make new socket")
         # open TCP connection
         self.sock = super().makeSocket()
         sock = self.sock
@@ -54,8 +55,15 @@ class WebsocketHandler(SocketHandler):
         # if self.uri.secure:
         #    ...
 
-        # send handshake request
+        # init protocol
+        # TODO: Here or in __init__?
+        #       it seems that otherwise messages don't get sent
+        #       on reconnect after a BrokenPipeError
+        self.protocol = ClientProtocol(self.uri)
         protocol = self.protocol
+
+        # send handshake request
+        print("handshake")
         request = protocol.connect()
         protocol.send_request(request)
         self.send_data()
@@ -71,16 +79,17 @@ class WebsocketHandler(SocketHandler):
         return sock
 
     def send_data(self):
-        for data in self.protocol.data_to_send():
-            if data:
-                try:
+        try:
+            for data in self.protocol.data_to_send():
+                if data:
+                    print("send data")
                     self.sock.sendall(data)
-                except OSError:  # socket closed
-                    self.reset_socket()
-                    break
-            else:
-                # half-close TCP connection
-                self.sock.shutdown(socket.SHUT_WR)
+                else:
+                    # half-close TCP connection, i.e. close the write side
+                    print("close write side")
+                    self.sock.shutdown(socket.SHUT_WR)
+        except OSError:
+            self.reset_socket()
 
     def receive_data(self):
         try:
@@ -88,45 +97,69 @@ class WebsocketHandler(SocketHandler):
         except OSError:  # socket closed
             data = b""
         if data:
+            print("receive data")
             self.protocol.receive_data(data)
+            self.process_events_received()
+            self.check_close_expected()
+            # necessary because `websockets` responds to ping frames,
+            # close frames, and incorrect inputs automatically
+            self.send_data()
         else:
+            print("receive EOF")
             self.protocol.receive_eof()
+            self.check_close_expected
+            self.close_socket()
 
-        # necessary because `websockets` responds to ping frames,
-        # close frames, and incorrect inputs automatically
-        self.send_data()
-
-        self.process_events_received()
-        self.check_close_expected()
+    def handleError(self, record):
+        print("HANDLE ERROR")
+        if self.closeOnError and self.sock:
+            self.close_socket()
+        else:
+            logging.Handler.handleError(self, record)
 
     def check_close_expected(self):
+        # TODO: run in separate thread
         if self.protocol.close_expected():
-            sleep(5)
-            self.reset_socket()
+            print("close expected")
+            t = Thread(target=self.close_socket, kwargs=dict(delay=10))
+            t.run()
 
     def process_events_received(self):
         # do something with the events,
         # first event is handshake response
+        print("process events received")
         events = self.protocol.events_received()
+        if events:
+            print("adding new events")
         self.events.extend(events)
-        print(self.events)
 
-    def close_socket(self):
+    def close_socket(self, delay=None):
+        print("close socket")
+        if delay is not None:
+            print("add delay", delay)
+            sleep(delay)
         self.protocol.send_close()
         self.send_data()
         self.reset_socket()
 
     def reset_socket(self):
-        self.sock.close()
-        self.sock = None
+        if self.sock is not None:
+            print("reset socket")
+            self.sock.close()
+            self.sock = None
+            self.protocol = None
 
     def send(self, s):
         if self.sock is None:
             self.createSocket()
 
         if self.sock:
-            self.protocol.send_binary(s)
-            self.send_data()
+            try:
+                self.protocol.send_binary(s)
+                self.send_data()
+            except Exception as exc:
+                print(exc)
+                self.close_socket()
 
     def close(self):
         with self.lock:
@@ -152,9 +185,9 @@ class LogRecordStreamHandler(socketserver.StreamRequestHandler):
     configured locally.
     """
 
-    def __init__(self, filename="elva.log", *args, **kwargs):
-        self.logHandler = logging.FileHandler(filename)
-        super().__init__(*args, **kwargs)
+    # def __init__(self, filename="elva.log", *args, **kwargs):
+    # self.logHandler = logging.FileHandler(filename)
+    #    super().__init__(*args, **kwargs)
 
     def handle(self):
         """
@@ -185,8 +218,6 @@ class LogRecordStreamHandler(socketserver.StreamRequestHandler):
         else:
             name = record.name
         logger = logging.getLogger(name)
-        if not logger.hasHandlers():
-            logger.addHandler(self.logHandler)
         # N.B. EVERY record gets logged. This is because Logger.handle
         # is normally called AFTER logger-level filtering. If you want
         # to do filtering, do it at the client end to save wasting
@@ -229,6 +260,7 @@ class LogRecordSocketReceiver(socketserver.ThreadingTCPServer):
 def cli(ctx: click.Context, file):
     if file is None:
         file = ctx.obj["log"]
+    logging.basicConfig()
     # TODO: pass file as parameter to server
     tcpserver = LogRecordSocketReceiver()
     print("About to start TCP server...")
