@@ -4,6 +4,7 @@ import pickle
 import socket
 import socketserver
 import struct
+import time
 from logging.handlers import SocketHandler
 from pathlib import Path
 from threading import Thread
@@ -12,6 +13,7 @@ from time import sleep
 import click
 from pythonjsonlogger.jsonlogger import JsonFormatter as BaseJsonFormatter
 from websockets.client import ClientProtocol
+from websockets.sync.client import connect
 from websockets.uri import parse_uri
 
 
@@ -39,7 +41,119 @@ class JsonFormatter(BaseJsonFormatter):
 #
 # handler
 #
-class WebsocketHandler(SocketHandler):
+class HackyHandler(SocketHandler):
+    def __init__(self, uri: str):
+        self.uri = parse_uri(uri)
+        super().__init__(self.uri.host, self.uri.port)
+
+
+class WebsocketHandler(logging.Handler):
+    def __init__(self, uri: str):
+        self.uri = uri
+        self.sock = None
+        self.retryTime = None
+        #
+        # Exponential backoff parameters.
+        #
+        self.retryStart = 1.0
+        self.retryMax = 30.0
+        self.retryFactor = 2.0
+
+        super().__init__()
+
+    def makePickle(self, record):
+        """
+        Pickles the record in binary format with a length prefix, and
+        returns it ready for transmission across the socket.
+        """
+        ei = record.exc_info
+        if ei:
+            # just to get traceback text into record.exc_text ...
+            dummy = self.format(record)
+        # See issue #14436: If msg or args are objects, they may not be
+        # available on the receiving end. So we convert the msg % args
+        # to a string, save it as msg and zap the args.
+        d = dict(record.__dict__)
+        d["msg"] = record.getMessage()
+        d["args"] = None
+        d["exc_info"] = None
+        # Issue #25685: delete 'message' if present: redundant with 'msg'
+        d.pop("message", None)
+        s = pickle.dumps(d, 1)
+        slen = struct.pack(">L", len(s))
+        return slen + s
+
+    def createSocket(self):
+        """
+        Try to create a socket, using an exponential backoff with
+        a max retry time. Thanks to Robert Olson for the original patch
+        (SF #815911) which has been slightly refactored.
+        """
+        now = time.time()
+        # Either retryTime is None, in which case this
+        # is the first time back after a disconnect, or
+        # we've waited long enough.
+        if self.retryTime is None:
+            attempt = True
+        else:
+            attempt = now >= self.retryTime
+        if attempt:
+            try:
+                print("try create socket")
+                self.sock = connect(self.uri)
+                print("create socket")
+                self.retryTime = None  # next time, no delay before trying
+            except OSError:
+                # Creation failed, so set the retry time and return.
+                if self.retryTime is None:
+                    self.retryPeriod = self.retryStart
+                else:
+                    self.retryPeriod = self.retryPeriod * self.retryFactor
+                    if self.retryPeriod > self.retryMax:
+                        self.retryPeriod = self.retryMax
+                self.retryTime = now + self.retryPeriod
+
+    def send(self, s):
+        if self.sock is None:
+            self.createSocket()
+
+        if self.sock:
+            try:
+                self.sock.send(s)
+                print("emit")
+            except (Exception, KeyboardInterrupt):
+                self.closeSocket()
+
+    def emit(self, record):
+        try:
+            s = self.makePickle(record)
+            self.send(s)
+        except Exception:
+            self.handleError(record)
+
+    def closeSocket(self):
+        print("close socket")
+        self.sock.close()
+        self.sock = None
+
+    def handleError(self, record):
+        print("HANDLE ERROR")
+        with self.lock:
+            if self.sock:
+                self.closeSocket()
+            else:
+                super().handleError(record)
+
+    def close(self):
+        with self.lock:
+            if self.sock:
+                self.closeSocket()
+
+        super().close()
+        print("close handler")
+
+
+class WebsocketProtocolHandler(SocketHandler):
     def __init__(self, uri: str):
         self.uri = parse_uri(uri)
         self.events = list()
@@ -165,7 +279,8 @@ class WebsocketHandler(SocketHandler):
         with self.lock:
             if self.sock:
                 self.close_socket()
-            logging.Handler.close(self)
+        print("close handler")
+        logging.Handler.close(self)
 
 
 def get_default_handler(uri):
