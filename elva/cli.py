@@ -228,7 +228,7 @@ apps = [
     ("elva.apps.editor", "edit"),
     ("elva.apps.chat", "chat"),
     ("elva.websocket_server", "serve"),
-    ("elva.metaprovider", "start"),
+    ("elva.service", "start"),
     ("elva.log", "log"),
 ]
 for app, command in apps:
