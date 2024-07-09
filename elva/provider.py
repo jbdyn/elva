@@ -5,10 +5,8 @@ import anyio
 import websockets
 from pycrdt import Doc
 
-import elva.log
 from elva.component import Component
-from elva.protocol import (ElvaMessage, YCodec, YIncrementalDecoder,
-                           YIncrementalEncoder)
+from elva.protocol import ElvaMessage, YCodec, YIncrementalDecoder
 
 
 class Connection(Component):
@@ -63,6 +61,8 @@ class Connection(Component):
             self.log.info("cancelled listening for incoming data")
             self.log.debug(f"cancelled due to exception: {exc}")
 
+    async def on_recv(self, data): ...
+
 
 class WebsocketConnection(Connection):
     def __init__(self, uri):
@@ -97,12 +97,11 @@ class WebsocketConnection(Connection):
             self.log.debug("closing connection")
             await self._websocket.close()
 
-    async def on_connect(self):
-        ...
+    async def on_connect(self): ...
 
 
 @dataclass
-class UUIDMessage():
+class UUIDMessage:
     uuid: str
     ydoc: Doc
     payload: bytes
@@ -155,7 +154,7 @@ class ElvaProvider(WebsocketConnection):
         except KeyError:
             self.log.debug(f"no YDoc with UUID {uuid} present")
             return
- 
+
         message = UUIDMessage(uuid, ydoc, message[length:])
         self.log.debug(f"received {message} for {uuid}")
         await self.process(message)
@@ -175,7 +174,7 @@ class ElvaProvider(WebsocketConnection):
     def callback(self, event, uuid):
         try:
             if event.update != b"\x00\x00":
-                message, _  = ElvaMessage.SYNC_UPDATE.encode(event.update)
+                message, _ = ElvaMessage.SYNC_UPDATE.encode(event.update)
                 self.log.debug(f"update message {message} from observer callback")
                 self._task_group.start_soon(self.send_uuid, message, uuid)
         except Exception:
@@ -232,11 +231,11 @@ class ElvaProvider(WebsocketConnection):
 
 class SingleElvaProvider(ElvaProvider):
     def __init__(self, ydocs: dict[str, Doc], uri, without_uuid: bool = False):
-        if without_uuid: 
+        if without_uuid:
             if len(ydocs) != 1:
                 raise Exception("dict ydocs has one than entry")
             self.send_uuid = self.send_without_uuid
-        
+
         super().__init__(ydocs, uri)
 
     async def send_without_uuid(self, message, uuid=None):
@@ -244,6 +243,7 @@ class SingleElvaProvider(ElvaProvider):
             await self.send(message)
         except Exception:
             pass
+
 
 class WebsocketElvaProvider(ElvaProvider):
     def __init__(self, ydocs: dict[str, Doc], uri: str):
