@@ -1,17 +1,23 @@
 import logging
+import pickle
 import sys
-from logging import Logger, getLogger
+from logging import FileHandler, Logger, getLogger
+from pathlib import Path, PurePosixPath
 
 import anyio
 import click
 import websockets
 from pycrdt_websocket.websocket import Websocket
 
+from elva.cli import ELVA_LOG_NAME
+from elva.log import DefaultFormatter
 from elva.protocol import ElvaMessage
 from elva.provider import WebsocketConnection
 
 #
 UUID = str
+SYNC_PATH = PurePosixPath("/sync")
+LOG_PATH = PurePosixPath("/log")
 
 
 class WebsocketMetaProvider(WebsocketConnection):
@@ -83,8 +89,18 @@ class WebsocketMetaProvider(WebsocketConnection):
         return uuid.decode(), message[length:]
 
     async def serve(self, local: Websocket):
+        path = PurePosixPath(local.path)
+        if path.is_relative_to(SYNC_PATH):
+            uuid = str(strip_root(path, SYNC_PATH))
+            await self._send_from_local(local, uuid)
+        elif path.is_relative_to(LOG_PATH):
+            log_path = chroot(path, LOG_PATH)
+            self.log.info(f"+ opening logging connection for {log_path}")
+            await self._log(local, Path(log_path))
+
+    async def _send_from_local(self, local: Websocket, uuid):
         ws_id = get_websocket_identifier(local)
-        uuid = get_uuid_from_local_websocket(local)
+        # uuid = get_uuid_from_local_websocket(local)
         self.log.debug(f"+ [{uuid}] local {ws_id} joined")
 
         # add websocket to set for uuid if  set does not exist create it
@@ -108,6 +124,52 @@ class WebsocketMetaProvider(WebsocketConnection):
             await local.close()
             self.log.debug(f"- closed connection {ws_id}")
             self.log.debug(f"all clients: {self.LOCAL_SOCKETS}")
+
+    async def _log(self, local, log_path):
+        if log_path.is_dir():
+            log_path /= ELVA_LOG_NAME
+
+        if not log_path.parent.exists():
+            self.log.info(
+                f"- closing logging connection. No such directory {log_path.parent}"
+            )
+            await local.close()
+            return
+
+        logger = logging.getLogger(str(log_path))
+
+        if not logger.hasHandlers():
+            file_handler = FileHandler(log_path, mode="w")
+            file_handler.setFormatter(DefaultFormatter())
+            logger.addHandler(file_handler)
+
+        async for data in local:
+            # if len(data) < 4:
+            #    break
+
+            obj = pickle.loads(data)
+            record = logging.makeLogRecord(obj)
+            logger.handle(record)
+
+        self.log.info("- closing logging connection")
+        await local.close()
+
+
+def strip_root(path, root):
+    if path.is_relative_to(root):
+        len_root = len(SYNC_PATH.parts)
+        return PurePosixPath(*path.parts[len_root:])
+    else:
+        return path
+
+
+def chroot(path, root):
+    if path.is_relative_to(root):
+        len_root = len(SYNC_PATH.parts)
+        parts = ("/",) + path.parts[len_root:]
+        return PurePosixPath(*parts)
+    else:
+        return path
 
 
 def get_websocket_identifier(websocket: Websocket) -> str:

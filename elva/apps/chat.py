@@ -12,12 +12,13 @@ from textual.containers import VerticalScroll
 from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent
 
-import elva.log
 from elva.apps.editor import YTextArea, YTextAreaParser
+from elva.log import get_default_handler
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import ElvaProvider
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 WHITESPACE_ONLY = re.compile(r"^\s*$")
 
@@ -92,7 +93,9 @@ class HistoryParser(ArrayEventParser):
             self.widget.mount(message_view)
 
     async def on_delete(self, range_offset, range_length):
-        for message_view in self.widget.children[range_offset:range_offset + range_length]:
+        for message_view in self.widget.children[
+            range_offset : range_offset + range_length
+        ]:
             log.debug("deleting message view in history")
             message_view.remove()
 
@@ -152,7 +155,6 @@ class MessagePreview(Static):
 
 
 def get_chat_provider(Provider: ElvaProvider = ElvaProvider):
-
     class ChatProvider(Provider):
         def __init__(self, ydocs, uri, future, client_id):
             super().__init__(ydocs, uri)
@@ -166,11 +168,11 @@ def get_chat_provider(Provider: ElvaProvider = ElvaProvider):
 
 
 class Chat(Widget):
-    BINDINGS = [
-        ("ctrl+s", "send", "Send currently composed message")
-    ]
+    BINDINGS = [("ctrl+s", "send", "Send currently composed message")]
 
-    def __init__(self, username, uri, Provider: ElvaProvider=ElvaProvider, show_self=True):
+    def __init__(
+        self, username, uri, Provider: ElvaProvider = ElvaProvider, show_self=True
+    ):
         super().__init__()
         self.username = username
 
@@ -184,17 +186,23 @@ class Chat(Widget):
 
         # widgets
         self.history_widget = History(self.history, id="history")
-        self.future_widget = Future(self.future, username, self.client_id, show_self=show_self, id="future")
+        self.future_widget = Future(
+            self.future, username, self.client_id, show_self=show_self, id="future"
+        )
         self.message_widget = YTextArea(self.message["text"], id="editor")
         self.message_widget.language = "markdown"
         self.markdown_widget = MessagePreview(self.message["text"])
 
         # components
         self.history_parser = HistoryParser(self.history, self.history_widget)
-        self.future_parser = FutureParser(self.future, self.future_widget, username, self.client_id, show_self)
+        self.future_parser = FutureParser(
+            self.future, self.future_widget, username, self.client_id, show_self
+        )
         self.message_parser = YTextAreaParser(self.message["text"], self.message_widget)
         ChatProvider = get_chat_provider(Provider)
-        self.provider = ChatProvider({'test.chat': ydoc}, uri, self.future, self.client_id)
+        self.provider = ChatProvider(
+            {"test.chat": ydoc}, uri, self.future, self.client_id
+        )
         self.components = [
             self.history_parser,
             self.future_parser,
@@ -208,11 +216,13 @@ class Chat(Widget):
     def get_message(self, text, message_id=None):
         if message_id is None:
             message_id = self.get_new_id()
-        return Map({
-            "text": Text(text),
-            "author": self.username,
-            "id": message_id,
-        }), message_id
+        return Map(
+            {
+                "text": Text(text),
+                "author": self.username,
+                "id": message_id,
+            }
+        ), message_id
 
     async def run_components(self):
         async with anyio.create_task_group() as self.tg:
@@ -257,7 +267,9 @@ class Chat(Widget):
 class UI(App):
     CSS_PATH = "chat.tcss"
 
-    def __init__(self, username, uri, Provider: ElvaProvider=ElvaProvider, show_self=True):
+    def __init__(
+        self, username, uri, Provider: ElvaProvider = ElvaProvider, show_self=True
+    ):
         super().__init__()
         self.chat = Chat(username, uri, Provider, show_self)
 
@@ -268,18 +280,25 @@ class UI(App):
 @click.command
 @click.pass_context
 @click.option(
-    "--show-self", "-s", "show_self",
+    "--show-self",
+    "-s",
+    "show_self",
     help="show your own writing as a future message",
     is_flag=True,
     default=False,
-    show_default=True
+    show_default=True,
 )
 def cli(ctx, show_self: bool):
     """chat app"""
-    
-    uri = ctx.obj['uri']
-    name = ctx.obj['name']
-    provider = ctx.obj['provider']
+
+    uri = ctx.obj["uri"]
+    name = ctx.obj["name"]
+    provider = ctx.obj["provider"]
+
+    log_path = ctx.obj["log"]
+    log_uri = "ws://localhost:8000/log" + str(log_path)
+    print(log_uri)
+    log.addHandler(get_default_handler(log_uri))
 
     app = UI(name, uri, provider, show_self)
     app.run()

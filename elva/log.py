@@ -69,7 +69,7 @@ class WebsocketHandler(logging.Handler):
         ei = record.exc_info
         if ei:
             # just to get traceback text into record.exc_text ...
-            dummy = self.format(record)
+            self.format(record)
         # See issue #14436: If msg or args are objects, they may not be
         # available on the receiving end. So we convert the msg % args
         # to a string, save it as msg and zap the args.
@@ -80,8 +80,9 @@ class WebsocketHandler(logging.Handler):
         # Issue #25685: delete 'message' if present: redundant with 'msg'
         d.pop("message", None)
         s = pickle.dumps(d, 1)
-        slen = struct.pack(">L", len(s))
-        return slen + s
+        # slen = struct.pack(">L", len(s))
+        # return slen + s
+        return s
 
     def createSocket(self):
         """
@@ -158,6 +159,29 @@ class WebsocketProtocolHandler(SocketHandler):
         self.uri = parse_uri(uri)
         self.events = list()
         super().__init__(self.uri.host, self.uri.port)
+
+    def makePickle(self, record):
+        """
+        Pickles the record in binary format with a length prefix, and
+        returns it ready for transmission across the socket.
+        """
+        ei = record.exc_info
+        if ei:
+            # just to get traceback text into record.exc_text ...
+            self.format(record)
+        # See issue #14436: If msg or args are objects, they may not be
+        # available on the receiving end. So we convert the msg % args
+        # to a string, save it as msg and zap the args.
+        d = dict(record.__dict__)
+        d["msg"] = record.getMessage()
+        d["args"] = None
+        d["exc_info"] = None
+        # Issue #25685: delete 'message' if present: redundant with 'msg'
+        d.pop("message", None)
+        s = pickle.dumps(d, 1)
+        # slen = struct.pack(">L", len(s))
+        # return slen + s
+        return s
 
     def makeSocket(self):
         print("make new socket")
