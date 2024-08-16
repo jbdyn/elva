@@ -1,5 +1,4 @@
 import logging
-import pickle
 import sys
 from functools import partial
 from logging import Logger
@@ -17,16 +16,13 @@ async def broadcast(receive_stream, log: Logger):
     async with receive_stream:
         async for item in receive_stream:
             message_socket, message = item
-            obj = pickle.loads(message)
-            record = logging.makeLogRecord(obj)
-            log.handle(record)
-            # for socket in SOCKETS.copy():
-            #    if socket != message_socket:
-            #        log.debug(f"> sending {message} to {socket}")
-            #        try:
-            #            await socket.send(message)
-            #        except Exception as e:
-            #            log.error(e)
+            for socket in SOCKETS.copy():
+                if socket != message_socket:
+                    log.debug(f"> sending {message} to {socket}")
+                    try:
+                        await socket.send(message)
+                    except Exception as e:
+                        log.error(e)
 
 
 async def handler(websocket, send_stream, log: Logger):
@@ -77,7 +73,7 @@ def serve(host, port, log: Logger | None = None):
 )
 @click.argument(
     "port",
-    default=8000,
+    default=8001,
 )
 def cli(ctx: click.Context, host: str, port: str):
     """local websocket server"""

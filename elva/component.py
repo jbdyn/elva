@@ -1,14 +1,19 @@
 import logging
 from contextlib import AsyncExitStack
 
-from anyio import (TASK_STATUS_IGNORED, CancelScope, Event, Lock,
-                   create_task_group, get_cancelled_exc_class, sleep_forever)
+from anyio import (
+    TASK_STATUS_IGNORED,
+    CancelScope,
+    Event,
+    Lock,
+    create_task_group,
+    get_cancelled_exc_class,
+    sleep_forever,
+)
 from anyio.abc import TaskGroup
 
-import elva.log
 
-
-class Component():
+class Component:
     _started: Event | None = None
     _stopped: Event | None = None
     _task_group: TaskGroup | None = None
@@ -108,12 +113,8 @@ class Component():
         self._task_group.cancel_scope.cancel()
         self.log.debug("cancelled")
 
-    async def before(self):
-        ...
+    async def before(self): ...
 
-    async def run(self):
-        ...
+    async def run(self): ...
 
-    async def cleanup(self):
-        ...
-
+    async def cleanup(self): ...

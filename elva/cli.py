@@ -1,4 +1,5 @@
 import importlib
+import logging
 import uuid
 from pathlib import Path
 
@@ -14,63 +15,74 @@ from elva.provider import ElvaProvider, WebsocketElvaProvider
 #
 # names
 APP_NAME = "elva"
-ELVA_DOT_DIR_NAME = "." + APP_NAME
-ELVA_CONFIG_NAME = APP_NAME + ".ini"
-ELVA_LOG_NAME = APP_NAME + ".log"
+DOT_DIR_NAME = "." + APP_NAME
+CONFIG_NAME = APP_NAME + ".ini"
+LOG_NAME = APP_NAME + ".log"
+
+# sort logging levels by verbosity
+# source: https://docs.python.org/3/library/logging.html#logging-levels
+LEVELS = [
+    # no -v/--verbose flag
+    # different from logging.NOTSET
+    None,
+    # -v
+    logging.CRITICAL,
+    # -vv
+    logging.ERROR,
+    # -vvv
+    logging.WARNING,
+    # -vvvv
+    logging.INFO,
+    # -vvvvv
+    logging.DEBUG,
+]
 
 
 #
-# paths
+# check existence of dot directory
 def _find_dot_dir():
     cwd = Path.cwd()
     for path in [cwd] + list(cwd.parents):
-        dot = path / ELVA_DOT_DIR_NAME
+        dot = path / DOT_DIR_NAME
         if dot.exists():
             return dot
 
 
 _dot_dir = _find_dot_dir()
 
-ELVA_DATA_PATH = Path(_dot_dir or platformdirs.user_data_dir(APP_NAME))
+#
+# data path
+DATA_PATH = Path(_dot_dir or platformdirs.user_data_dir(APP_NAME))
 
-ELVA_CONFIG_PATH = (
-    Path(_dot_dir or platformdirs.user_config_dir(APP_NAME)) / ELVA_CONFIG_NAME
-)
+#
+# config path
+if _dot_dir is not None:
+    # as long as there is no dedicated subcommand similar to `git config`
+    # to edit the configuration, the `elva.ini` config file should reside
+    # next to the `.elva` dot dir and not within it for straight forward
+    # access to the user
+    _config_path = Path(_dot_dir).parent
+else:
+    _config_path = Path(platformdirs.user_config_dir(APP_NAME))
 
-ELVA_LOG_PATH = Path(_dot_dir or platformdirs.user_log_dir(APP_NAME)) / ELVA_LOG_NAME
+CONFIG_PATH = _config_path / CONFIG_NAME
+
+#
+# log path
+LOG_PATH = Path(_dot_dir or platformdirs.user_log_dir(APP_NAME)) / LOG_NAME
 
 
 ###
 #
 # cli input callbacks
 #
-def _ensure_dir(path: Path):
+def ensure_dir(ctx: click.Context, param: click.Parameter, path: Path):
+    path = path.resolve()
     if path.is_dir():
-        path.mkdir(exist_ok=True)
-
-
-def _add_to_ctx(ctx: click.Context, key: str, value):
-    ctx.ensure_object(dict)
-    ctx.obj[key] = value
-
-
-def _handle_data(ctx: click.Context, param: click.Parameter, data: Path):
-    _ensure_dir(data)
-    _add_to_ctx(ctx, "data", data)
-    return data
-
-
-def _handle_config(ctx: click.Context, param: click.Parameter, config: Path):
-    _ensure_dir(config)
-    _add_to_ctx(ctx, "config", config)
-    # TODO: load config here and put entries in `ctx`
-    return config
-
-
-def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
-    _ensure_dir(log)
-    _add_to_ctx(ctx, "log", log)
-    return log
+        path.mkdir(parents=True, exist_ok=True)
+    elif path.is_file():
+        path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 ###
@@ -94,12 +106,12 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
     help="path to data directory",
     envvar="ELVA_DATA_PATH",
     show_envvar=True,
-    default=ELVA_DATA_PATH,
+    default=DATA_PATH,
     show_default=True,
     # process this first, as it might hold a config file
     is_eager=True,
     type=click.Path(path_type=Path, file_okay=False),
-    callback=_handle_data,
+    callback=ensure_dir,
 )
 @click.option(
     "--config",
@@ -108,10 +120,10 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
     help="path to config file or directory",
     envvar="ELVA_CONFIG_PATH",
     show_envvar=True,
-    default=ELVA_CONFIG_PATH,
+    default=CONFIG_PATH,
     show_default=True,
     type=click.Path(path_type=Path),
-    callback=_handle_config,
+    callback=ensure_dir,
 )
 @click.option(
     "--log",
@@ -120,10 +132,21 @@ def _handle_log(ctx: click.Context, param: click.Parameter, log: Path):
     help="path to log file or directory",
     envvar="ELVA_LOG_PATH",
     show_envvar=True,
-    default=ELVA_LOG_PATH,
+    default=LOG_PATH,
     show_default=True,
     type=click.Path(path_type=Path),
-    callback=_handle_log,
+    callback=ensure_dir,
+)
+#
+# behavior
+#
+@click.option(
+    "--verbose",
+    "-v",
+    "verbose",
+    help="verbosity of logging output",
+    count=True,
+    type=click.IntRange(0, 5, clamp=True),
 )
 #
 # connection information
@@ -162,6 +185,7 @@ def elva(
     data: Path,
     config: Path,
     log: Path,
+    verbose: int,
     name: str,
     server: str | None,
     identifier: str | None,
@@ -171,6 +195,21 @@ def elva(
 
     ctx.ensure_object(dict)
     settings = ctx.obj
+
+    # paths
+    settings["project"] = None if _dot_dir is None else _dot_dir.parent
+    settings["data"] = data
+    settings["config"] = config
+    settings["log"] = log
+
+    # logging config
+    level = LEVELS[verbose]
+    settings["level"] = level
+
+    if level is not None:
+        ensure_dir(log)
+
+    # connection
     settings["identifier"] = identifier
     settings["name"] = name
     settings["server"] = server
@@ -213,10 +252,15 @@ def config(ctx: click.Context):
 # init
 #
 @elva.command
-def init():
-    """initialize a data directory in the current working directory"""
-    data = Path.cwd() / ELVA_DOT_DIR_NAME
-    data.mkdir(exist_ok=True)
+@click.argument(
+    "path",
+    default=Path.cwd(),
+    type=click.Path(path_type=Path, file_okay=False),
+)
+def init(path):
+    """initialize a data directory in the current of with PATH specified directory"""
+    data = path / DOT_DIR_NAME
+    data.mkdir(parents=True, exist_ok=True)
     # TODO: call also `git init`
 
 
@@ -227,9 +271,8 @@ def init():
 apps = [
     ("elva.apps.editor", "edit"),
     ("elva.apps.chat", "chat"),
-    ("elva.websocket_server", "serve"),
-    ("elva.service", "service"),
-    ("elva.log", "log"),
+    ("elva.apps.server", "serve"),
+    ("elva.apps.service", "service"),
 ]
 for app, command in apps:
     module = importlib.import_module(app)

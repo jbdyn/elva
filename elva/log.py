@@ -2,15 +2,11 @@ import logging
 import logging.handlers
 import pickle
 import socket
-import socketserver
-import struct
 import time
 from logging.handlers import SocketHandler
-from pathlib import Path
 from threading import Thread
 from time import sleep
 
-import click
 from pythonjsonlogger.jsonlogger import JsonFormatter as BaseJsonFormatter
 from websockets.client import ClientProtocol
 from websockets.sync.client import connect
@@ -41,10 +37,34 @@ class JsonFormatter(BaseJsonFormatter):
 #
 # handler
 #
-class HackyHandler(SocketHandler):
+class SimpleHandler(SocketHandler):
     def __init__(self, uri: str):
         self.uri = parse_uri(uri)
+        self.events = list()
         super().__init__(self.uri.host, self.uri.port)
+
+    def makePickle(self, record):
+        """
+        Pickles the record in binary format
+        """
+        ei = record.exc_info
+        if ei:
+            # just to get traceback text into record.exc_text ...
+            self.format(record)
+        # See issue #14436: If msg or args are objects, they may not be
+        # available on the receiving end. So we convert the msg % args
+        # to a string, save it as msg and zap the args.
+        d = dict(record.__dict__)
+        d["msg"] = record.getMessage()
+        d["args"] = None
+        d["exc_info"] = None
+        # Issue #25685: delete 'message' if present: redundant with 'msg'
+        d.pop("message", None)
+        s = pickle.dumps(d, 1)
+        return s
+
+    def makeSocket(self):
+        return connect(self.uri)
 
 
 class WebsocketHandler(logging.Handler):
@@ -311,100 +331,3 @@ def get_default_handler(uri):
     handler = WebsocketHandler(uri)
     handler.setFormatter(DefaultFormatter())
     return handler
-
-
-###
-#
-# logging TCP server
-#
-class LogRecordStreamHandler(socketserver.StreamRequestHandler):
-    """Handler for a streaming logging request.
-
-    This basically logs the record using whatever logging policy is
-    configured locally.
-    """
-
-    # def __init__(self, filename="elva.log", *args, **kwargs):
-    # self.logHandler = logging.FileHandler(filename)
-    #    super().__init__(*args, **kwargs)
-
-    def handle(self):
-        """
-        Handle multiple requests - each expected to be a 4-byte length,
-        followed by the LogRecord in pickle format. Logs the record
-        according to whatever policy is configured locally.
-        """
-        while True:
-            chunk = self.connection.recv(4)
-            if len(chunk) < 4:
-                break
-            slen = struct.unpack(">L", chunk)[0]
-            chunk = self.connection.recv(slen)
-            while len(chunk) < slen:
-                chunk = chunk + self.connection.recv(slen - len(chunk))
-            obj = self.unPickle(chunk)
-            record = logging.makeLogRecord(obj)
-            self.handleLogRecord(record)
-
-    def unPickle(self, data):
-        return pickle.loads(data)
-
-    def handleLogRecord(self, record):
-        # if a name is specified, we use the named logger rather than the one
-        # implied by the record.
-        if self.server.logname is not None:
-            name = self.server.logname
-        else:
-            name = record.name
-        logger = logging.getLogger(name)
-        # N.B. EVERY record gets logged. This is because Logger.handle
-        # is normally called AFTER logger-level filtering. If you want
-        # to do filtering, do it at the client end to save wasting
-        # cycles and network bandwidth!
-        logger.handle(record)
-
-
-class LogRecordSocketReceiver(socketserver.ThreadingTCPServer):
-    """
-    Simple TCP socket-based logging receiver suitable for testing.
-    """
-
-    allow_reuse_address = True
-
-    def __init__(
-        self,
-        host="localhost",
-        port=logging.handlers.DEFAULT_TCP_LOGGING_PORT,
-        handler=LogRecordStreamHandler,
-    ):
-        super().__init__((host, port), handler)
-        self.abort = 0
-        self.timeout = 1
-        self.logname = None
-
-    def serve_until_stopped(self):
-        import select
-
-        abort = 0
-        while not abort:
-            rd, wr, ex = select.select([self.socket.fileno()], [], [], self.timeout)
-            if rd:
-                self.handle_request()
-            abort = self.abort
-
-
-@click.command
-@click.pass_context
-@click.argument("file", required=False, type=click.Path(dir_okay=False, path_type=Path))
-def cli(ctx: click.Context, file):
-    if file is None:
-        file = ctx.obj["log"]
-    logging.basicConfig()
-    # TODO: pass file as parameter to server
-    tcpserver = LogRecordSocketReceiver()
-    print("About to start TCP server...")
-    tcpserver.serve_until_stopped()
-
-
-if __name__ == "__main__":
-    cli()

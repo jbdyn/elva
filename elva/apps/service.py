@@ -1,7 +1,7 @@
 import logging
 import pickle
 import sys
-from logging import FileHandler, Logger, getLogger
+from logging import FileHandler, getLogger
 from pathlib import Path, PurePosixPath
 
 import anyio
@@ -9,7 +9,7 @@ import click
 import websockets
 from pycrdt_websocket.websocket import Websocket
 
-from elva.cli import ELVA_LOG_NAME
+from elva.cli import LOG_NAME
 from elva.log import DefaultFormatter
 from elva.protocol import ElvaMessage
 from elva.provider import WebsocketConnection
@@ -25,6 +25,7 @@ class WebsocketMetaProvider(WebsocketConnection):
 
     def __init__(self, uri):
         super().__init__(uri)
+        self.log.setLevel(logging.DEBUG)
         self.LOCAL_SOCKETS = dict()
 
     async def on_recv(self, message):
@@ -71,7 +72,7 @@ class WebsocketMetaProvider(WebsocketConnection):
                 # don't send message back to it's origin
                 if websocket == origin_ws:
                     self.log.debug(
-                        f"> [{uuid}] not sending message back to sender: {message}"
+                        f"/ [{uuid}] not sending message back to sender {get_websocket_identifier(websocket)}: {message}"
                     )
                     continue
                 self.log.debug(
@@ -79,13 +80,11 @@ class WebsocketMetaProvider(WebsocketConnection):
                 )
                 await websocket.send(message)
         else:
-            self.log.debug(
-                f"> [{uuid}] no local recipient found for message: {message}"
-            )
+            self.log.info(f"  [{uuid}] no local recipient found for message: {message}")
 
     def process_uuid_message(self, message: bytes) -> tuple[UUID, str]:
         uuid, length = ElvaMessage.ID.decode(message)
-        self.log.debug(f"uuid extracted: {uuid}")
+        self.log.debug(f"  uuid extracted: {uuid}")
         return uuid.decode(), message[length:]
 
     async def serve(self, local: Websocket):
@@ -123,14 +122,14 @@ class WebsocketMetaProvider(WebsocketConnection):
 
             await local.close()
             self.log.debug(f"- closed connection {ws_id}")
-            self.log.debug(f"all clients: {self.LOCAL_SOCKETS}")
+            self.log.debug(f"  all clients: {self.LOCAL_SOCKETS}")
 
     async def _log(self, local, log_path):
         if log_path.is_dir():
-            log_path /= ELVA_LOG_NAME
+            log_path /= LOG_NAME
 
         if not log_path.parent.exists():
-            self.log.info(
+            self.log.warning(
                 f"- closing logging connection. No such directory {log_path.parent}"
             )
             await local.close()
@@ -139,14 +138,11 @@ class WebsocketMetaProvider(WebsocketConnection):
         logger = logging.getLogger(str(log_path))
 
         if not logger.hasHandlers():
-            file_handler = FileHandler(log_path, mode="w")
+            file_handler = FileHandler(log_path)
             file_handler.setFormatter(DefaultFormatter())
             logger.addHandler(file_handler)
 
         async for data in local:
-            # if len(data) < 4:
-            #    break
-
             obj = pickle.loads(data)
             record = logging.makeLogRecord(obj)
             logger.handle(record)
@@ -183,10 +179,9 @@ def get_uuid_from_local_websocket(websocket: Websocket) -> UUID:
 
 
 async def run(
-    log: Logger | None = None,
-    remote_websocket_server: str = "wss://example.com/sync/",
-    local_websocket_host: str = "localhost",
-    local_websocket_port: int = 8000,
+    remote_websocket_server: str,
+    local_websocket_host: str,
+    local_websocket_port: int,
 ):
     server = WebsocketMetaProvider(remote_websocket_server)
 
@@ -211,9 +206,9 @@ def cli(ctx: click.Context, host, port):
     log.setLevel(logging.DEBUG)
 
     try:
-        anyio.run(run, log, ctx.obj["server"], host, port)
+        anyio.run(run, ctx.obj["server"], host, port)
     except KeyboardInterrupt:
-        log.info("server stopped")
+        log.info("service stopped")
 
 
 if __name__ == "__main__":

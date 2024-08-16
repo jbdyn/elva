@@ -1,23 +1,30 @@
 import asyncio
-import anyio
-from pathlib import Path
-from typing import Optional, Protocol
-import logging
-import time
-import sys
+import json
 import os
+from pathlib import Path
+from typing import Optional
 
+import anyio
+from base import BaseApp
+from pycrdt import Doc, Map
+from pycrdt_websocket.ystore import FileYStore
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from pycrdt import Doc, Map
-from base import BaseApp
-from utils import print_tree, print_event
-from pycrdt_websocket.ystore import FileYStore
+
+def pprint_json(json_str):
+    print(json.dumps(json.loads(json_str), indent=4, sort_keys=True))
+
+
+def print_tree(tree):
+    pprint_json(tree.to_json())
+
 
 # source: https://gist.github.com/mivade/f4cb26c282d421a62e8b9a341c7c65f6
 class AsyncQueueEventHandler(FileSystemEventHandler):
-    def __init__(self, queue: asyncio.Queue, loop: asyncio.BaseEventLoop, *args, **kwargs):
+    def __init__(
+        self, queue: asyncio.Queue, loop: asyncio.BaseEventLoop, *args, **kwargs
+    ):
         self._loop = loop
         self._queue = queue
         super(*args, **kwargs)
@@ -27,7 +34,9 @@ class AsyncQueueEventHandler(FileSystemEventHandler):
 
 
 class AsyncQueueIterator:
-    def __init__(self, queue: asyncio.Queue, loop: Optional[asyncio.BaseEventLoop] = None):
+    def __init__(
+        self, queue: asyncio.Queue, loop: Optional[asyncio.BaseEventLoop] = None
+    ):
         self.queue = queue
 
     def __aiter__(self):
@@ -46,18 +55,18 @@ class Drive(BaseApp):
     def __init__(self, path=None, doc=None):
         super().__init__(doc)
 
-        self.path = Path(path) if path is not None else Path('.')
+        self.path = Path(path) if path is not None else Path(".")
 
         self.loop = asyncio.get_event_loop()
         self.doc_queue = asyncio.Queue()
-        
+
         self.METHOD_EVENT_MAP = {
             "created": self.on_created,
             "deleted": self.on_deleted,
             "modified": self.on_modified,
             "moved": self.on_moved,
             "opened": self.on_opened,
-            "closed": self.on_closed
+            "closed": self.on_closed,
         }
 
     def callback(self, event):
@@ -76,14 +85,13 @@ class Drive(BaseApp):
                     await yfile.apply_updates(doc)
                     self.tree.update(self.tree_entry(file_path, doc))
                 else:
-                    if not os.path.exists(file_path + '.y'):
+                    if not os.path.exists(file_path + ".y"):
                         doc = Doc()
                         doc["source"] = Map()
-                        with open(file_path, 'rb') as file_buffer:
+                        with open(file_path, "rb") as file_buffer:
                             doc["source"]["bytes"] = file_buffer.read()
                         self.tree.update(self.tree_entry(file_path, doc))
-   
- 
+
     async def start(self):
         async with anyio.create_task_group() as self.tg:
             self.tg.start_soon(self.read_tree)
@@ -118,10 +126,16 @@ class Drive(BaseApp):
         self.tree.pop(event.src_path)
         self.tree.update(self.tree_entry(event.dest_path))
 
-    async def _watch(self, path: Path, queue: asyncio.Queue, loop: asyncio.BaseEventLoop, recursive: bool = False) -> None:
+    async def _watch(
+        self,
+        path: Path,
+        queue: asyncio.Queue,
+        loop: asyncio.BaseEventLoop,
+        recursive: bool = False,
+    ) -> None:
         """Watch a directory for changes."""
         handler = AsyncQueueEventHandler(queue, loop)
-    
+
         observer = Observer()
         observer.schedule(handler, str(path), recursive=recursive)
         observer.start()
@@ -141,6 +155,7 @@ class Drive(BaseApp):
 async def main():
     drive_handler = Drive()
     await drive_handler.start()
+
 
 if __name__ == "__main__":
     anyio.run(main)

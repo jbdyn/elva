@@ -1,9 +1,6 @@
-import logging
-
 import sqlite_anyio as sqlite
 from anyio import Event, Lock, Path, create_memory_object_stream
 
-import elva.log
 from elva.component import Component
 
 
@@ -26,7 +23,7 @@ class SQLiteStore(Component):
             )
             await self.db.commit()
             self.log.debug("provided table")
-        
+
     async def _init_db(self):
         self.log.debug("initializing database")
         self.initialized = Event()
@@ -43,7 +40,9 @@ class SQLiteStore(Component):
         self.ydoc.observe(self.callback)
 
     async def run(self):
-        self.stream_send, self.stream_recv = create_memory_object_stream(max_buffer_size=65543)
+        self.stream_send, self.stream_recv = create_memory_object_stream(
+            max_buffer_size=65543
+        )
         async with self.stream_send, self.stream_recv:
             async for data in self.stream_recv:
                 await self._write(data)
@@ -61,9 +60,7 @@ class SQLiteStore(Component):
         await self.wait_running()
 
         async with self.lock:
-            await self.cursor.execute(
-                "SELECT yupdate FROM yupdates"
-            )
+            await self.cursor.execute("SELECT yupdate FROM yupdates")
             for update, *rest in await self.cursor.fetchall():
                 self.ydoc.apply_update(update)
 
@@ -73,10 +70,11 @@ class SQLiteStore(Component):
         async with self.lock:
             self.log.debug(f"writing {data}")
             await self.cursor.execute(
-                "INSERT INTO yupdates VALUES (?)", [data],
+                "INSERT INTO yupdates VALUES (?)",
+                [data],
             )
             await self.db.commit()
 
     async def write(self, data):
         await self.stream_send.send(data)
-        #self.stream_send.send_nowait(data)
+        # self.stream_send.send_nowait(data)

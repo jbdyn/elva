@@ -1,6 +1,7 @@
 import logging
 import re
 import uuid
+from pathlib import Path
 
 import anyio
 import click
@@ -13,12 +14,11 @@ from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent
 
 from elva.apps.editor import YTextArea, YTextAreaParser
-from elva.log import get_default_handler
+from elva.log import DefaultFormatter, WebsocketHandler
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import ElvaProvider
 
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
 
 WHITESPACE_ONLY = re.compile(r"^\s*$")
 
@@ -291,15 +291,30 @@ class UI(App):
 def cli(ctx, show_self: bool):
     """chat app"""
 
+    # logging
+    log_path = ctx.obj["log"]
+    level = ctx.obj["level"]
+
+    if level is not None:
+        log_uri = "ws://localhost:8000/log" + str(log_path)
+        print(log_uri)
+
+        try:
+            handler = WebsocketHandler(log_uri)
+        except Exception:
+            handler = logging.FileHandler(Path.cwd() / "chat.log")
+
+        handler.setFormatter(DefaultFormatter())
+
+        log.addHandler(handler)
+        log.setLevel(level)
+
+    # connection
     uri = ctx.obj["uri"]
     name = ctx.obj["name"]
     provider = ctx.obj["provider"]
 
-    log_path = ctx.obj["log"]
-    log_uri = "ws://localhost:8000/log" + str(log_path)
-    print(log_uri)
-    log.addHandler(get_default_handler(log_uri))
-
+    # init and run app
     app = UI(name, uri, provider, show_self)
     app.run()
 
