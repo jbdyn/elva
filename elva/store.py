@@ -8,7 +8,7 @@ class SQLiteStore(Component):
     def __init__(self, ydoc, path):
         self.ydoc = ydoc
         self.path = Path(path)
-        self.db_path = Path(path + ".y")
+        self.db_path = self.path.with_suffix(".y")
         self.initialized = None
         self.lock = Lock()
 
