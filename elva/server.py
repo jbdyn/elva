@@ -10,7 +10,7 @@ from websockets import ConnectionClosed, broadcast, serve
 
 from elva.component import Component
 from elva.log import DefaultFormatter
-from elva.protocol import YMessage
+from elva.protocol import ElvaMessage, YMessage
 from elva.store import SQLiteStore
 
 
@@ -23,50 +23,50 @@ class Room(Component):
     ):
         self.identifier = identifier
         self.persistent = persistent
-        print(path, type(path))
+
         if path is not None:
             print(identifier)
             print(path / identifier)
             self.path = path / identifier
         else:
             self.path = None
-        print(self.path, type(self.path))
 
-        self.clients = list()
+        self.clients = set()
 
         if persistent:
             self.ydoc = Doc()
             if path is not None:
                 self.store = SQLiteStore(self.ydoc, self.path)
 
-    def callback(self, event):
-        if event.update != b"\x00\x00":
-            message, _ = YMessage.SYNC_UPDATE.encode(event.update)
-            broadcast(self.clients, message)
-
-    async def run(self):
+    async def before(self):
         if self.persistent and self.path is not None:
-            self.ydoc.observe(self.callback)
             await self._task_group.start(self.store.start)
 
     async def cleanup(self):
         async with anyio.create_task_group() as tg:
-            tg.start_soon(self.close_all)
-            if self.persistent and self.path is not None:
-                tg.start_soon(self.store.stop)
+            # close all clients
+            for client in self.clients:
+                tg.start_soon(client.close)
 
-    async def close_all(self):
-        for client in self.clients:
-            await client.close()
         self.log.debug("all clients closed")
 
     def add(self, client):
-        self.clients.append(client)
-        self.log.debug(f"added {client} to room ID {self.identifier}")
+        self.clients.add(client)
+        self.log.debug(f"added {client} to room {self.identifier}")
 
     def remove(self, client):
         self.clients.remove(client)
-        self.log.debug(f"removed {client} from room ID {self.identifier}")
+        self.log.debug(f"removed {client} from room {self.identifier}")
+
+    def broadcast(self, data, client):
+        # copy current state of clients and remove calling client
+        clients = self.clients.copy()
+        clients.remove(client)
+
+        # broadcast to all other clients
+        # TODO: set raise_exceptions=True and catch with ExceptionGroup
+        broadcast(clients, data)
+        self.log.debug(f"broadcasted {data} from {client} to {clients}")
 
     async def process(self, data, client):
         if self.persistent:
@@ -82,16 +82,6 @@ class Room(Component):
         else:
             # simply forward incoming messages to all other clients
             self.broadcast(data, client)
-
-    def broadcast(self, data, client):
-        # copy current state of clients and remove calling client
-        clients = self.clients[:]
-        clients.remove(client)
-
-        # broadcast to all other clients
-        # TODO: set raise_exceptions=True and catch with ExceptionGroup
-        broadcast(clients, data)
-        self.log.debug(f"broadcasted {data} from {client} to {clients}")
 
     async def process_sync_step1(self, payload, client):
         # answer with sync step 2
@@ -112,8 +102,8 @@ class Room(Component):
 
             # reencode sync update message and selectively broadcast
             # to all other clients
-            # message, _ = YMessage.SYNC_UPDATE.encode(update)
-            # self.broadcast(message, client)
+            message, _ = YMessage.SYNC_UPDATE.encode(update)
+            self.broadcast(message, client)
 
     async def process_awareness(self, payload, client):
         self.log.debug(f"got AWARENESS message {payload} from {client}, do nothing")
@@ -136,18 +126,38 @@ class WebsocketServer(Component):
 
     async def run(self):
         async with serve(self.handle, self.host, self.port):
+            # startup info
             self.log.info(f"server started on {self.host}:{self.port}")
+
+            if self.persistent:
+                message_template = "persistence: storing content in {}"
+                if self.path is None:
+                    location = "volatile memory"
+                else:
+                    location = self.path
+                self.log.info(message_template.format(location))
+            else:
+                self.log.info(
+                    "persistence: broadcast only and no content will be stored"
+                )
+
+            # keep the server active indefinitely
             await anyio.sleep_forever()
 
-    async def handle(self, websocket):
-        identifier = websocket.path[1:]  # remove leading '/'
-
-        if identifier in self.rooms.keys():
+    async def get_room(self, identifier):
+        try:
             room = self.rooms[identifier]
-        else:
+        except KeyError:
             room = Room(identifier, persistent=self.persistent, path=self.path)
             self.rooms[identifier] = room
             await self._task_group.start(room.start)
+
+        return room
+
+    async def handle(self, websocket):
+        # use the connection path as identifier with leading `/` removed
+        identifier = websocket.path[1:]
+        room = await self.get_room(identifier)
 
         room.add(websocket)
 
@@ -158,9 +168,42 @@ class WebsocketServer(Component):
             self.log.info("connection closed")
         except Exception as exc:
             self.log.error(f"unexpected exception: {exc}")
+            await websocket.close()
+            self.log.error(f"closed {websocket}")
         finally:
             room.remove(websocket)
             self.log.debug(f" [{identifier}] removed {websocket}")
+
+
+class ElvaWebsocketServer(WebsocketServer):
+    async def handle(self, websocket):
+        try:
+            async for data in websocket:
+                # use the identifier from the received message
+                identifier, length = ElvaMessage.decode(data)
+
+                # get the room
+                room = await self.get_room(identifier)
+
+                # room.clients is a set, so no duplicates
+                room.add(websocket)
+
+                # cut off the identifier part and process the rest
+                message = data[length:]
+                await room.process(message, websocket)
+        except ConnectionClosed:
+            self.log.info(f"{websocket} remotely closed")
+        except Exception as exc:
+            self.log.error(f"unexpected exception: {exc}")
+            await websocket.close()
+            self.log.error(f"closed {websocket}")
+        finally:
+            for room in self.rooms:
+                try:
+                    room.remove(websocket)
+                    self.log.debug(f" [{room.identifier}] removed {websocket}")
+                except KeyError:
+                    pass
 
 
 async def main(host, port, persistent, path):
@@ -180,14 +223,45 @@ async def main(host, port, persistent, path):
 
 
 @click.command()
+@click.pass_context
 @click.argument("host", default="localhost")
 @click.argument("port", default=8000)
-@click.option("--persistent", is_flag=True)
 @click.option(
-    "--path", type=click.Path(path_type=Path, file_okay=False, resolve_path=True)
+    "--persistent",
+    # one needs to set this manually here since one cannot use
+    # the keyword argument `type=click.Path(...)` as it would collide
+    # with `flag_value=""`
+    metavar="[DIRECTORY]",
+    help=(
+        "Hold the received content in a local YDoc in volatile memory "
+        "or also save it under DIRECTORY if given."
+        "Without this flag, the server simply broadcasts all incoming messages "
+        "within the respective room."
+    ),
+    # explicitely stating that the argument to this option is optional
+    # see: https://github.com/pallets/click/pull/1618#issue-649167183
+    is_flag=False,
+    # used when no argument is given to flag
+    flag_value="",
 )
-def cli(host, port, persistent, path):
-    print(host, port, persistent, path)
+def cli(ctx: click.Context, host, port, persistent):
+    match persistent:
+        # no flag given
+        case None:
+            path = None
+        # flag given, but without a path
+        case "":
+            path = None
+            persistent = True
+        # anything else, i.e. a flag given with a path
+        case _:
+            path = Path(persistent).resolve()
+            if path.exists() and not path.is_dir():
+                raise click.BadArgumentUsage(
+                    f"the given path '{path}' is not a directory", ctx
+                )
+            path.mkdir(exist_ok=True, parents=True)
+            persistent = True
 
     # logging
     log = logging.getLogger(__name__)
