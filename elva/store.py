@@ -31,8 +31,8 @@ class SQLiteStore(Component):
         self.cursor = await self.db.cursor()
         self.log.debug(f"connected to database {self.path}")
         await self._provide_table()
-        self.log.info("database initialized")
         self.initialized.set()
+        self.log.info("database initialized")
 
     async def before(self):
         await self._init_db()
@@ -50,6 +50,7 @@ class SQLiteStore(Component):
     async def cleanup(self):
         if self.initialized.is_set():
             await self.db.close()
+            self.log.debug("closed database")
 
     async def wait_running(self):
         if self.started is None:
@@ -61,19 +62,21 @@ class SQLiteStore(Component):
 
         async with self.lock:
             await self.cursor.execute("SELECT yupdate FROM yupdates")
+            self.log.debug("read updates from file")
             for update, *rest in await self.cursor.fetchall():
                 self.ydoc.apply_update(update)
+            self.log.debug("applied updates to YDoc")
 
     async def _write(self, data):
         await self.wait_running()
 
         async with self.lock:
-            self.log.debug(f"writing {data}")
             await self.cursor.execute(
                 "INSERT INTO yupdates VALUES (?)",
                 [data],
             )
             await self.db.commit()
+            self.log.debug(f"wrote {data} to file {self.db_path}")
 
     async def write(self, data):
         await self.stream_send.send(data)

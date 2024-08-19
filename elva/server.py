@@ -25,8 +25,6 @@ class Room(Component):
         self.persistent = persistent
 
         if path is not None:
-            print(identifier)
-            print(path / identifier)
             self.path = path / identifier
         else:
             self.path = None

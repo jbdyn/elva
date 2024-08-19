@@ -55,7 +55,7 @@ class Component:
             self._task_group = await self._exit_stack.enter_async_context(
                 create_task_group()
             )
-            self._task_group.start_soon(self._run)
+            await self._task_group.start(self._run)
 
         return self
 
@@ -63,13 +63,14 @@ class Component:
         await self.stop()
         return await self._exit_stack.__aexit__(exc_type, exc_value, exc_tb)
 
-    async def _run(self):
+    async def _run(self, task_status):
         """Handle the `run` method gracefully."""
 
         # start runner and do a shielded cleanup on cancellation
         try:
             await self.before()
             self.started.set()
+            task_status.started()
             self.log.info("started")
 
             await self.run()
@@ -102,7 +103,7 @@ class Component:
                 raise RuntimeError(f"{self} already running")
 
             async with create_task_group() as self._task_group:
-                self._task_group.start_soon(self._run)
+                await self._task_group.start(self._run)
                 task_status.started()
 
     async def stop(self):
