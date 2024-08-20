@@ -1,6 +1,4 @@
-import logging
 import signal
-import sys
 from pathlib import Path
 
 import anyio
@@ -9,7 +7,6 @@ from pycrdt import Doc
 from websockets import ConnectionClosed, broadcast, serve
 
 from elva.component import Component
-from elva.log import DefaultFormatter
 from elva.protocol import ElvaMessage, YMessage
 from elva.store import SQLiteStore
 
@@ -243,6 +240,7 @@ async def main(host, port, persistent, path):
     flag_value="",
 )
 def cli(ctx: click.Context, host, port, persistent):
+    """start a Websocket server"""
     match persistent:
         # no flag given
         case None:
@@ -261,12 +259,16 @@ def cli(ctx: click.Context, host, port, persistent):
             path.mkdir(exist_ok=True, parents=True)
             persistent = True
 
+    # TODO: Get loggers from elva.apps.server.WebsocketServer (this module),
+    #       elva.apps.server.Room AND elva.store.SQLiteStore together.
+    #       Maybe restructuring project in elva/<app>.py and elva/lib/<store,...>.py
+    #
     # logging
-    log = logging.getLogger(__name__)
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(DefaultFormatter())
-    log.addHandler(handler)
-    log.setLevel(logging.DEBUG)
+    # log = logging.getLogger("elva")
+    # handler = logging.StreamHandler(sys.stdout)
+    # handler.setFormatter(DefaultFormatter())
+    # log.addHandler(handler)
+    # log.setLevel(logging.DEBUG)
 
     anyio.run(main, host, port, persistent, path)
 

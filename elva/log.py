@@ -19,18 +19,16 @@ from websockets.uri import parse_uri
 #
 class DefaultFormatter(logging.Formatter):
     def __init__(self):
-        fmt = "%(asctime)s - %(levelname)s - (%(name)s) %(component)s %(message)s"
+        fmt = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
         datefmt = "%Y-%m-%d %H:%M:%S"
-        defaults = dict(component=None)
-        super().__init__(fmt=fmt, datefmt=datefmt, defaults=defaults)
+        super().__init__(fmt=fmt, datefmt=datefmt)
 
 
 class JsonFormatter(BaseJsonFormatter):
     def __init__(self):
-        fmt = "%(asctime)s %(levelname)s %(name)s %(component)s %(message)s"
+        fmt = "%(asctime)s %(levelname)s %(name)s %(message)s"
         datefmt = "%Y-%m-%dT%H:%M:%S"
-        defaults = dict(component=None)
-        super().__init__(fmt=fmt, datefmt=datefmt, defaults=defaults)
+        super().__init__(fmt=fmt, datefmt=datefmt)
 
 
 ###

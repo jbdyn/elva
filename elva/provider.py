@@ -8,6 +8,10 @@ from pycrdt import Doc
 from elva.component import Component
 from elva.protocol import ElvaMessage, YCodec, YIncrementalDecoder
 
+# TODO: rewrite Yjs provider with single YDoc
+# TODO: rewrite ELVA provider with single YDoc
+# TODO: write multi-YDoc ELVA provider as metaprovider, i.e. service
+
 
 class Connection(Component):
     _connected = None

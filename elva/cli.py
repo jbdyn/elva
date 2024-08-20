@@ -207,7 +207,7 @@ def elva(
     settings["level"] = level
 
     if level is not None:
-        ensure_dir(log)
+        ensure_dir(ctx, None, log)
 
     # connection
     settings["identifier"] = identifier

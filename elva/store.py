@@ -3,6 +3,8 @@ from anyio import Event, Lock, Path, create_memory_object_stream
 
 from elva.component import Component
 
+# TODO: check performance
+
 
 class SQLiteStore(Component):
     def __init__(self, ydoc, path):

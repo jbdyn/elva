@@ -11,6 +11,7 @@ def write_var_uint(data):
     res.append(num)
     return bytes(res) + data, len(data)
 
+
 def read_var_uint(data):
     uint = 0
     bit = 0
@@ -26,10 +27,10 @@ def read_var_uint(data):
 
 
 class YCodec(Codec):
-    def encode(self, payload, errors='strict'):
+    def encode(self, payload, errors="strict"):
         return write_var_uint(payload)
 
-    def decode(self, message, errors='strict'):
+    def decode(self, message, errors="strict"):
         return read_var_uint(message)
 
 
@@ -55,7 +56,7 @@ class YIncrementalDecoder(IncrementalDecoder):
     state = 0
 
     def decode(self, message):
-        payload, length = read_var_uint(message[self.state:])
+        payload, length = read_var_uint(message[self.state :])
         self.state += length
         return payload, length
 
@@ -76,17 +77,17 @@ class Message(YCodec, Enum):
     def __repr__(self):
         return f"{self.__class__.__name__}.{self.name}"
 
-    def encode(self, payload, errors='strict'):
+    def encode(self, payload, errors="strict"):
         message, length = super().encode(payload, errors=errors)
         return self.magic_bytes + message, length
 
-    def decode(self, message, errors='strict'):
+    def decode(self, message, errors="strict"):
         message = message.removeprefix(self.magic_bytes)
         payload, length = super().decode(message, errors=errors)
         return payload, length + len(self.magic_bytes)
 
     @classmethod
-    def infer_and_decode(cls, message, errors='strict'):
+    def infer_and_decode(cls, message, errors="strict"):
         first = message[0]
         match first:
             case 0:
@@ -100,23 +101,23 @@ class Message(YCodec, Enum):
 
 
 class YMessage(Message):
-    SYNC_STEP1  = (0, 0)
-    SYNC_STEP2  = (0, 1)
+    SYNC_STEP1 = (0, 0)
+    SYNC_STEP2 = (0, 1)
     SYNC_UPDATE = (0, 2)
-    AWARENESS   = (1,)
+    AWARENESS = (1,)
 
 
+# TODO: rewrite with letter magic bytes
 class ElvaMessage(Message):
-    SYNC_STEP1    = (0, 0)
-    SYNC_STEP2    = (0, 1)
-    SYNC_UPDATE   = (0, 2)
-    SYNC_CROSS    = (0, 3)
-    AWARENESS     = (1,)
-    ID            = (2, 0)
-    READ          = (2, 1)
-    READ_WRITE    = (2, 2)
-    DATA_REQUEST  = (3, 0)
-    DATA_OFFER    = (3, 1)
-    DATA_ORDER    = (3, 2)
+    SYNC_STEP1 = (0, 0)
+    SYNC_STEP2 = (0, 1)
+    SYNC_UPDATE = (0, 2)
+    SYNC_CROSS = (0, 3)
+    AWARENESS = (1,)
+    ID = (2, 0)
+    READ = (2, 1)
+    READ_WRITE = (2, 2)
+    DATA_REQUEST = (3, 0)
+    DATA_OFFER = (3, 1)
+    DATA_ORDER = (3, 2)
     DATA_TRANSFER = (3, 3)
-
