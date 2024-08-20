@@ -1,12 +1,11 @@
-import pytest
 import random
-import threading
 import signal
+import threading
 
 import anyio
+import pytest
 
 from elva.component import Component
-
 
 pytestmark = pytest.mark.anyio
 
@@ -63,7 +62,7 @@ async def test_start_stop_context_manager():
         await component.started.wait()
         assert component.placeholder == ["run"]
 
-    assert component.stopped.is_set() == True
+    assert component.stopped.is_set()
     assert component.placeholder == ["run", "cleanup"]
 
     async with WaitingPlaceholder() as component:
@@ -71,15 +70,15 @@ async def test_start_stop_context_manager():
         await anyio.sleep(component.seconds + 0.1)
         assert component.placeholder == ["run"]
 
-    assert component.stopped.is_set() == True
+    assert component.stopped.is_set()
     assert component.placeholder == ["run", "cleanup"]
 
 
 async def test_start_stop_context_manager_nested():
     placeholder = list()
-    async with NamedPlaceholder(1, placeholder=placeholder) as comp1:
-        async with NamedPlaceholder(2, placeholder=placeholder) as comp2:
-            async with NamedPlaceholder(3, placeholder=placeholder) as comp3:
+    async with NamedPlaceholder(1, placeholder=placeholder):
+        async with NamedPlaceholder(2, placeholder=placeholder):
+            async with NamedPlaceholder(3, placeholder=placeholder):
                 pass
 
     assert placeholder == [
@@ -91,7 +90,7 @@ async def test_start_stop_context_manager_nested():
         (1, "cleanup"),
     ]
 
-        
+
 async def test_start_stop_methods():
     component = Placeholder()
 
@@ -107,7 +106,10 @@ async def test_start_stop_methods():
 async def test_start_stop_methods_concurrent():
     placeholder = list()
     num_comps = 5
-    comps = [(i, NamedPlaceholder(i, placeholder=placeholder)) for i in range(1, num_comps + 1)]
+    comps = [
+        (i, NamedPlaceholder(i, placeholder=placeholder))
+        for i in range(1, num_comps + 1)
+    ]
 
     events = list()
 
@@ -147,6 +149,7 @@ async def test_start_stop_nested_concurrent_mixed_1():
         ("cm", "cleanup"),
     ]
 
+
 async def test_start_stop_nested_concurrent_mixed_2():
     placeholder = list()
     cm = NamedPlaceholder("cm", placeholder=placeholder)
@@ -168,6 +171,7 @@ async def test_start_stop_nested_concurrent_mixed_2():
         ("cm", "cleanup"),
     ]
 
+
 async def test_interrupt_with_method():
     async with WaitingPlaceholder() as comp:
         await comp.started.wait()
@@ -175,7 +179,7 @@ async def test_interrupt_with_method():
         await comp.stop()
         assert comp.placeholder == []
 
-    assert comp.stopped.is_set() == True
+    assert comp.stopped.is_set()
     assert comp.placeholder == ["cleanup"]
 
 
@@ -193,8 +197,8 @@ async def interrupt_by_signal():
 
     thread = threading.Thread(target=worker, args=[comp], name="interrupt")
     thread.start()
-    assert thread.is_alive() == True
+    assert thread.is_alive()
     await anyio.sleep(1)
     signal.pthread_kill(thread.ident, signal.SIGTERM)
-    
+
     assert comp.placeholder == [("thread", "cleanup")]
