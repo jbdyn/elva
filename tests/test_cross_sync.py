@@ -4,10 +4,12 @@ from pycrdt import Doc, Text
 STATE_ZERO = b"\x00\x00"
 
 
-def set_state(doc, method):
+def get_state(doc, method):
     match method:
+        # simulate a sync step 1 + sync step 2 synchronization
         case "get_state":
             return doc.get_state()
+        # simulate a sync-step-2-only synchronization, skipping sync step 1
         case "state_zero":
             return STATE_ZERO
 
@@ -45,7 +47,7 @@ def test_cross_sync(foo_state_method, bar_state_method):
     ##
     # one-sided sync
     # foo gets update from bar
-    foo_state = set_state(foo, foo_state_method)
+    foo_state = get_state(foo, foo_state_method)
     bar_update = bar.get_update(foo_state)
     foo.apply_update(bar_update)
 
@@ -55,6 +57,7 @@ def test_cross_sync(foo_state_method, bar_state_method):
     assert str(bar["text"]) == "bar"
 
     # save the actual state of foo_text
+    # one of "foobar" or "barfoo"
     choice = str(foo["text"])
 
     ##
@@ -77,7 +80,7 @@ def test_cross_sync(foo_state_method, bar_state_method):
     ##
     # one-sided sync, now in the opposite way,
     # now bar gets update from foo
-    bar_state = set_state(bar, bar_state_method)
+    bar_state = get_state(bar, bar_state_method)
     foo_update = foo.get_update(bar_state)
     bar.apply_update(foo_update)
 
