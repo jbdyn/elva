@@ -9,9 +9,8 @@ from textual.app import App
 from textual.binding import Binding
 from textual.widgets import Label, TextArea
 
-import elva.log
 from elva.parser import TextEventParser
-from elva.provider import ElvaProvider
+from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
 
@@ -39,7 +38,7 @@ class YTextAreaParser(TextEventParser):
         await super().run()
 
     def callback(self, event):
-        #self._task_group.start_soon(self.parse, event)
+        # self._task_group.start_soon(self.parse, event)
         self.parse_nowait(event)
 
     def location(self, index):
@@ -61,8 +60,8 @@ class YTextAreaParser(TextEventParser):
     async def on_delete(self, range_offset, range_length):
         # adapt range_offset and range_length to UTF-8 encoding
         btext_start = self.btext[:range_offset]
-        btext_range = self.btext[range_offset:range_offset +  range_length]
-        btext_rest = self.btext[range_offset + range_length:]
+        btext_range = self.btext[range_offset : range_offset + range_length]
+        btext_rest = self.btext[range_offset + range_length :]
         range_offset = len(btext_start.decode())
         range_length = len(btext_range.decode())
 
@@ -89,8 +88,12 @@ class YTextArea(TextArea):
 
     def get_slice_from_selection(self, selection):
         start, end = selection
-        unicode_slice = sorted([self.document.get_index_from_location(loc) for loc in (start, end)])
-        return tuple(self.get_utf8_index(unicode_index) for unicode_index in unicode_slice)
+        unicode_slice = sorted(
+            [self.document.get_index_from_location(loc) for loc in (start, end)]
+        )
+        return tuple(
+            self.get_utf8_index(unicode_index) for unicode_index in unicode_slice
+        )
 
     def on_mount(self):
         self.load_text(str(self.ytext))
@@ -100,7 +103,7 @@ class YTextArea(TextArea):
         log.debug(f"got event {event}")
         key = event.key
         insert_values = {
-            #"tab": " " * self._find_columns_to_next_tab_stop(),
+            # "tab": " " * self._find_columns_to_next_tab_stop(),
             "tab": "\t",
             "enter": "\n",
         }
@@ -153,11 +156,9 @@ class YTextArea(TextArea):
 class UI(App):
     CSS_PATH = "editor.tcss"
 
-    BINDINGS = [
-        Binding("ctrl+s", "save")
-    ]
+    BINDINGS = [Binding("ctrl+s", "save")]
 
-    def __init__(self, filename, uri, Provider: ElvaProvider = ElvaProvider):
+    def __init__(self, filename, uri, identifier, message_encoding):
         super().__init__()
         self.filename = filename
 
@@ -167,13 +168,20 @@ class UI(App):
         self.ydoc["ytext"] = self.ytext
 
         # widgets
-        self.ytext_area = YTextArea(self.ytext, tab_behavior='indent', show_line_numbers=True, id="editor")
+        self.ytext_area = YTextArea(
+            self.ytext, tab_behavior="indent", show_line_numbers=True, id="editor"
+        )
 
         # components
         self.store = SQLiteStore(self.ydoc, filename)
         self.parser = YTextAreaParser(self.ytext, self.ytext_area)
         self.renderer = TextRenderer(self.ytext, filename)
-        self.provider = Provider({filename: self.ydoc}, uri)
+        match message_encoding:
+            case "yjs":
+                self.provider = WebsocketProvider(self.ydoc, uri)
+            case "elva":
+                self.provider = ElvaWebsocketProvider(self.ydoc, identifier, uri)
+
         self.components = [
             self.renderer,
             self.store,
@@ -235,7 +243,9 @@ class UI(App):
             try:
                 self.ytext_area.language = LANGUAGES[extension]
             except Exception:
-                log.info(f"no syntax highlighting available for extension '{extension}'")
+                log.info(
+                    f"no syntax highlighting available for extension '{extension}'"
+                )
 
 
 @click.command()
@@ -244,15 +254,17 @@ class UI(App):
 def cli(ctx: click.Context, file: str):
     """collaborative text editor"""
 
-    uri = ctx.obj['uri']
-    provider = ctx.obj['provider']
+    uri = ctx.obj["uri"]
+    identifier = ctx.obj["identifier"]
+    message_encoding = ctx.obj["message_encoding"]
 
     if file is None:
         file = str(uuid.uuid4())
 
     # run app
-    ui = UI(file, uri, provider)
+    ui = UI(file, uri, identifier, message_encoding)
     ui.run()
+
 
 if __name__ == "__main__":
     cli()

@@ -1,13 +1,12 @@
 import importlib
 import logging
-import uuid
 from pathlib import Path
 
 import click
 import platformdirs
 from rich import print
 
-from elva.provider import ElvaProvider, WebsocketElvaProvider
+from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 
 ###
 #
@@ -152,11 +151,16 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: Path):
 # connection information
 #
 @click.option(
-    "--name",
-    "-n",
-    "name",
+    "--user",
+    "-u",
+    "user",
     help="username",
-    default=str(uuid.uuid4()),
+)
+@click.option(
+    "--password",
+    "-p",
+    "password",
+    help="password",
 )
 @click.option(
     "--server",
@@ -171,11 +175,15 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: Path):
     help="identifier for the document",
 )
 @click.option(
-    "--provider",
-    "-p",
-    "provider",
-    help="provider name used to connect to the syncing server",
-    default="ElvaProvider",
+    "--message-encoding",
+    "-m",
+    "message_encoding",
+    help="protocol used to connect to the syncing server",
+    envvar="ELVA_PROTOCOL",
+    show_envvar=True,
+    default="yjs",
+    show_default=True,
+    type=click.Choice(["yjs", "elva"], case_sensitive=False),
 )
 #
 # function definition
@@ -186,10 +194,11 @@ def elva(
     config: Path,
     log: Path,
     verbose: int,
-    name: str,
+    user: str,
+    password: str,
     server: str | None,
     identifier: str | None,
-    provider: str,
+    message_encoding: str,
 ):
     """ELVA - A suite of real-time collaboration TUI apps."""
 
@@ -211,25 +220,26 @@ def elva(
 
     # connection
     settings["identifier"] = identifier
-    settings["name"] = name
+    settings["user"] = user
     settings["server"] = server
 
-    if provider.lower() == "elvaprovider":
-        # connect to the remote websocket server directly,
-        # without using the metaprovider
-        uri = server
-        Provider: ElvaProvider = ElvaProvider
-    else:
-        # connect to the local metaprovider
-        if server[-1] == "/":
-            uri = f"{server}{identifier}"
-        else:
-            uri = f"{server}/{identifier}"
+    match message_encoding.lower():
+        case "yjs":
+            provider = WebsocketProvider
+            if server is not None:
+                if server[-1] == "/":
+                    uri = f"{server}{identifier}"
+                else:
+                    uri = f"{server}/{identifier}"
+            else:
+                uri = server
+        case "elva":
+            provider = ElvaWebsocketProvider
+            uri = server
 
-        Provider: ElvaProvider = WebsocketElvaProvider
-
+    settings["message_encoding"] = message_encoding.lower()
     settings["uri"] = uri
-    settings["provider"] = Provider
+    settings["provider"] = provider
 
 
 ###

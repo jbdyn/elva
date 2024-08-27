@@ -16,7 +16,7 @@ from textual.widgets import Rule, Static, TabbedContent
 from elva.apps.editor import YTextArea, YTextAreaParser
 from elva.log import DefaultFormatter, WebsocketHandler
 from elva.parser import ArrayEventParser, MapEventParser
-from elva.provider import ElvaProvider
+from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 
 log = logging.getLogger(__name__)
 
@@ -154,15 +154,28 @@ class MessagePreview(Static):
         self.update(RichMarkdown(emoji.emojize(str(self.ytext))))
 
 
-def get_chat_provider(Provider: ElvaProvider = ElvaProvider):
-    class ChatProvider(Provider):
-        def __init__(self, ydocs, uri, future, client_id):
-            super().__init__(ydocs, uri)
-            self.future = future
-            self.client_id = client_id
+def get_chat_provider(message_encoding):
+    match message_encoding:
+        case "yjs":
 
-        async def cleanup(self):
-            self.future.pop(self.client_id)
+            class ChatProvider(WebsocketProvider):
+                def __init__(self, ydoc, uri, future, client_id):
+                    super().__init__(ydoc, uri)
+                    self.future = future
+                    self.client_id = client_id
+
+                async def cleanup(self):
+                    self.future.pop(self.client_id)
+        case "elva":
+
+            class ChatProvider(ElvaWebsocketProvider):
+                def __init__(self, ydoc, identifier, uri, future, client_id):
+                    super().__init__(ydoc, identifier, uri)
+                    self.future = future
+                    self.client_id = client_id
+
+                async def cleanup(self):
+                    self.future.pop(self.client_id)
 
     return ChatProvider
 
@@ -170,9 +183,7 @@ def get_chat_provider(Provider: ElvaProvider = ElvaProvider):
 class Chat(Widget):
     BINDINGS = [("ctrl+s", "send", "Send currently composed message")]
 
-    def __init__(
-        self, username, uri, Provider: ElvaProvider = ElvaProvider, show_self=True
-    ):
+    def __init__(self, username, uri, identifier, message_encoding, show_self=True):
         super().__init__()
         self.username = username
 
@@ -199,10 +210,14 @@ class Chat(Widget):
             self.future, self.future_widget, username, self.client_id, show_self
         )
         self.message_parser = YTextAreaParser(self.message["text"], self.message_widget)
-        ChatProvider = get_chat_provider(Provider)
-        self.provider = ChatProvider(
-            {"test.chat": ydoc}, uri, self.future, self.client_id
-        )
+        ChatProvider = get_chat_provider(message_encoding)
+        match message_encoding:
+            case "yjs":
+                self.provider = ChatProvider(ydoc, uri, self.future, self.client_id)
+            case "elva":
+                self.provider = ChatProvider(
+                    ydoc, identifier, uri, self.future, self.client_id
+                )
         self.components = [
             self.history_parser,
             self.future_parser,
@@ -267,11 +282,9 @@ class Chat(Widget):
 class UI(App):
     CSS_PATH = "chat.tcss"
 
-    def __init__(
-        self, username, uri, Provider: ElvaProvider = ElvaProvider, show_self=True
-    ):
+    def __init__(self, username, uri, identifier, provider, show_self=True):
         super().__init__()
-        self.chat = Chat(username, uri, Provider, show_self)
+        self.chat = Chat(username, uri, identifier, provider, show_self)
 
     def compose(self):
         yield self.chat
@@ -311,11 +324,12 @@ def cli(ctx, show_self: bool):
 
     # connection
     uri = ctx.obj["uri"]
-    name = ctx.obj["name"]
-    provider = ctx.obj["provider"]
+    user = ctx.obj["user"]
+    identifier = ctx.obj["identifier"]
+    message_encoding = ctx.obj["message_encoding"]
 
     # init and run app
-    app = UI(name, uri, provider, show_self)
+    app = UI(user, uri, identifier, message_encoding, show_self)
     app.run()
 
 

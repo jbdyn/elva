@@ -153,7 +153,7 @@ class WebsocketMetaProvider(WebsocketConnection):
 
 def strip_root(path, root):
     if path.is_relative_to(root):
-        len_root = len(SYNC_PATH.parts)
+        len_root = len(root.parts)
         return PurePosixPath(*path.parts[len_root:])
     else:
         return path
@@ -161,7 +161,7 @@ def strip_root(path, root):
 
 def chroot(path, root):
     if path.is_relative_to(root):
-        len_root = len(SYNC_PATH.parts)
+        len_root = len(root.parts)
         parts = ("/",) + path.parts[len_root:]
         return PurePosixPath(*parts)
     else:
@@ -202,6 +202,7 @@ def cli(ctx: click.Context, host, port):
 
     log = getLogger(__name__)
     log_handler = logging.StreamHandler(sys.stdout)
+    log_handler.setFormatter(DefaultFormatter())
     log.addHandler(log_handler)
     log.setLevel(logging.DEBUG)
 

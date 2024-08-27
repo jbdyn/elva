@@ -6,7 +6,7 @@ import websockets
 from pycrdt import Doc
 
 from elva.component import Component
-from elva.protocol import ElvaMessage, YCodec, YIncrementalDecoder
+from elva.protocol import ElvaMessage, YCodec, YIncrementalDecoder, YMessage
 
 # TODO: rewrite Yjs provider with single YDoc
 # TODO: rewrite ELVA provider with single YDoc
@@ -102,6 +102,143 @@ class WebsocketConnection(Connection):
             await self._websocket.close()
 
     async def on_connect(self): ...
+
+
+class WebsocketProvider(WebsocketConnection):
+    def __init__(self, ydoc, uri):
+        self.ydoc = ydoc
+        super().__init__(uri)
+
+    async def run(self):
+        self.ydoc.observe(self.callback)
+        await super().run()
+
+    def callback(self, event):
+        if event.update != b"\x00\x00":
+            message, _ = YMessage.SYNC_UPDATE.encode(event.update)
+            self.log.debug("callback with non-empty update triggered")
+            self._task_group.start_soon(self.send, message)
+
+    async def on_connect(self):
+        # init sync
+        state = self.ydoc.get_state()
+        step1, _ = YMessage.SYNC_STEP1.encode(state)
+        await self.send(step1)
+
+        # proactive cross sync
+        update = self.ydoc.get_update(b"\x00")
+        step2, _ = YMessage.SYNC_STEP2.encode(update)
+        await self.send(step2)
+
+    async def on_recv(self, data):
+        try:
+            message_type, payload, _ = YMessage.infer_and_decode(data)
+        except Exception as exc:
+            self.log.debug(f"failed to infer message: {exc}")
+            return
+
+        match message_type:
+            case YMessage.SYNC_STEP1:
+                await self.on_sync_step1(payload)
+            case YMessage.SYNC_STEP2 | YMessage.SYNC_UPDATE:
+                await self.on_sync_update(payload)
+            case YMessage.AWARENESS:
+                await self.on_awareness(payload)
+            case _:
+                self.log.warning(
+                    f"message type '{message_type}' does not match any YMessage"
+                )
+
+    async def on_sync_step1(self, state):
+        update = self.ydoc.get_update(state)
+        step2, _ = YMessage.SYNC_STEP2.encode(update)
+        await self.send(step2)
+
+    async def on_sync_update(self, update):
+        if update != b"\x00\x00":
+            self.ydoc.apply_update(update)
+
+    # TODO: add awareness functionality
+    async def on_awareness(self, state): ...
+
+
+class ElvaWebsocketProvider(WebsocketConnection):
+    def __init__(self, ydoc, identifier, uri):
+        self.ydoc = ydoc
+        self.identifier = identifier
+        self.uuid, _ = ElvaMessage.ID.encode(self.identifier.encode())
+        super().__init__(uri)
+
+    async def run(self):
+        self.ydoc.observe(self.callback)
+        await super().run()
+
+    async def send(self, data):
+        message = self.uuid + data
+        await super().send(message)
+
+    def callback(self, event):
+        if event != b"\x00\x00":
+            message, _ = ElvaMessage.SYNC_UPDATE.encode(event.update)
+            self.log.debug("callback with non-empty update triggered")
+            self._task_group.start_soon(self.send, message)
+
+    async def on_connect(self):
+        state = self.ydoc.get_state()
+        step1, _ = ElvaMessage.SYNC_STEP1.encode(state)
+        await self.send(step1)
+
+        # proactive cross sync
+        update = self.ydoc.get_update(b"\x00")
+        step2, _ = ElvaMessage.SYNC_STEP2.encode(update)
+        await self.send(step2)
+
+    async def on_recv(self, data):
+        try:
+            uuid, length = ElvaMessage.ID.decode(data)
+        except ValueError as exc:
+            self.log.debug(f"expected ID message: {exc}")
+            return
+
+        uuid = uuid.decode()
+
+        if uuid != self.identifier:
+            self.log.debug(
+                f"received message for ID '{uuid}' instead of '{self.identifier}'"
+            )
+            return
+
+        data = data[length:]
+
+        try:
+            message_type, payload, _ = ElvaMessage.infer_and_decode(data)
+        except Exception as exc:
+            self.log.debug(f"failed to infer message: {exc}")
+            return
+
+        match message_type:
+            case ElvaMessage.SYNC_STEP1:
+                await self.on_sync_step1(payload)
+            case ElvaMessage.SYNC_STEP2 | ElvaMessage.SYNC_UPDATE:
+                await self.on_sync_update(payload)
+            case ElvaMessage.AWARENESS:
+                await self.on_awareness(payload)
+            case _:
+                self.log.debug(
+                    f"message type '{message_type}' does not match any ElvaMessage"
+                )
+
+    async def on_sync_step1(self, state):
+        update = self.ydoc.get_update(state)
+        step2, _ = ElvaMessage.SYNC_STEP2.encode(update)
+        await self.send(step2)
+
+    async def on_sync_update(self, update):
+        if update != b"\x00\x00":
+            self.ydoc.apply_update(update)
+
+    # TODO: add awareness functionality
+    async def on_awareness(self, state): ...
 
 
 @dataclass
