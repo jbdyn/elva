@@ -6,8 +6,6 @@ import click
 import platformdirs
 from rich import print
 
-from elva.provider import ElvaWebsocketProvider, WebsocketProvider
-
 ###
 #
 # global defaults
@@ -175,11 +173,11 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: Path):
     help="identifier for the document",
 )
 @click.option(
-    "--message-encoding",
+    "--message-type",
     "-m",
-    "message_encoding",
+    "message_type",
     help="protocol used to connect to the syncing server",
-    envvar="ELVA_PROTOCOL",
+    envvar="ELVA_MESSAGE_TYPE",
     show_envvar=True,
     default="yjs",
     show_default=True,
@@ -198,7 +196,7 @@ def elva(
     password: str,
     server: str | None,
     identifier: str | None,
-    message_encoding: str,
+    message_type: str,
 ):
     """ELVA - A suite of real-time collaboration TUI apps."""
 
@@ -223,9 +221,8 @@ def elva(
     settings["user"] = user
     settings["server"] = server
 
-    match message_encoding.lower():
+    match message_type.lower():
         case "yjs":
-            provider = WebsocketProvider
             if server is not None:
                 if server[-1] == "/":
                     uri = f"{server}{identifier}"
@@ -234,12 +231,10 @@ def elva(
             else:
                 uri = server
         case "elva":
-            provider = ElvaWebsocketProvider
             uri = server
 
-    settings["message_encoding"] = message_encoding.lower()
+    settings["message_type"] = message_type.lower()
     settings["uri"] = uri
-    settings["provider"] = provider
 
 
 ###

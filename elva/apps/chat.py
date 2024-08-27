@@ -154,8 +154,8 @@ class MessagePreview(Static):
         self.update(RichMarkdown(emoji.emojize(str(self.ytext))))
 
 
-def get_chat_provider(message_encoding):
-    match message_encoding:
+def get_chat_provider(message_type):
+    match message_type:
         case "yjs":
 
             class ChatProvider(WebsocketProvider):
@@ -183,7 +183,7 @@ def get_chat_provider(message_encoding):
 class Chat(Widget):
     BINDINGS = [("ctrl+s", "send", "Send currently composed message")]
 
-    def __init__(self, username, uri, identifier, message_encoding, show_self=True):
+    def __init__(self, username, uri, identifier, message_type, show_self=True):
         super().__init__()
         self.username = username
 
@@ -210,8 +210,8 @@ class Chat(Widget):
             self.future, self.future_widget, username, self.client_id, show_self
         )
         self.message_parser = YTextAreaParser(self.message["text"], self.message_widget)
-        ChatProvider = get_chat_provider(message_encoding)
-        match message_encoding:
+        ChatProvider = get_chat_provider(message_type)
+        match message_type:
             case "yjs":
                 self.provider = ChatProvider(ydoc, uri, self.future, self.client_id)
             case "elva":
@@ -326,10 +326,10 @@ def cli(ctx, show_self: bool):
     uri = ctx.obj["uri"]
     user = ctx.obj["user"]
     identifier = ctx.obj["identifier"]
-    message_encoding = ctx.obj["message_encoding"]
+    message_type = ctx.obj["message_type"]
 
     # init and run app
-    app = UI(user, uri, identifier, message_encoding, show_self)
+    app = UI(user, uri, identifier, message_type, show_self)
     app.run()
 
 

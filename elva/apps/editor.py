@@ -158,7 +158,7 @@ class UI(App):
 
     BINDINGS = [Binding("ctrl+s", "save")]
 
-    def __init__(self, filename, uri, identifier, message_encoding):
+    def __init__(self, filename, uri, identifier, message_type):
         super().__init__()
         self.filename = filename
 
@@ -176,7 +176,7 @@ class UI(App):
         self.store = SQLiteStore(self.ydoc, filename)
         self.parser = YTextAreaParser(self.ytext, self.ytext_area)
         self.renderer = TextRenderer(self.ytext, filename)
-        match message_encoding:
+        match message_type:
             case "yjs":
                 self.provider = WebsocketProvider(self.ydoc, uri)
             case "elva":
@@ -256,13 +256,13 @@ def cli(ctx: click.Context, file: str):
 
     uri = ctx.obj["uri"]
     identifier = ctx.obj["identifier"]
-    message_encoding = ctx.obj["message_encoding"]
+    message_type = ctx.obj["message_type"]
 
     if file is None:
         file = str(uuid.uuid4())
 
     # run app
-    ui = UI(file, uri, identifier, message_encoding)
+    ui = UI(file, uri, identifier, message_type)
     ui.run()
 
 
