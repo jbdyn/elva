@@ -2,6 +2,7 @@ import base64
 
 import anyio
 import websockets
+from websockets.exceptions import InvalidStatusCode
 
 
 async def loop(ws):
@@ -11,19 +12,29 @@ async def loop(ws):
 
 
 async def main():
-    user = "johndoe"
+    user = "johndo"
     password = "janedoe"
     value = "{}:{}".format(user, password).encode()
     b64value = base64.b64encode(value).decode()
     assert type(b64value) is str
     headers = dict(Authorization="Basic " + b64value)
     print(headers)
-    async for ws in websockets.connect("ws://johndoe:janedoe@localhost:8000"):
+    uri = "ws://{user}:{password}@localhost:8000"
+    while True:
+        exceptions = (InvalidStatusCode,)
         try:
-            await loop(ws)
-        except Exception as e:
-            print(e)
-            print(ws)
+            async with websockets.connect(
+                uri.format(user=user, password=password)
+            ) as ws:
+                await loop(ws)
+        except exceptions as exc:
+            print(exc)
+            print("exiting")
+            break
 
 
-anyio.run(main)
+try:
+    anyio.run(main)
+except KeyboardInterrupt:
+    print("exiting")
+    exit()
