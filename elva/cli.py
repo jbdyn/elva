@@ -14,7 +14,6 @@ from rich import print
 APP_NAME = "elva"
 DOT_DIR_NAME = "." + APP_NAME
 CONFIG_NAME = APP_NAME + ".ini"
-LOG_NAME = APP_NAME + ".log"
 
 # sort logging levels by verbosity
 # source: https://docs.python.org/3/library/logging.html#logging-levels
@@ -35,6 +34,9 @@ LEVELS = [
 ]
 
 
+###
+#
+# paths
 #
 # check existence of dot directory
 def _find_dot_dir():
@@ -47,26 +49,28 @@ def _find_dot_dir():
 
 _dot_dir = _find_dot_dir()
 
-#
-# data path
-DATA_PATH = Path(_dot_dir or platformdirs.user_data_dir(APP_NAME))
 
 #
-# config path
+# path naming
 if _dot_dir is not None:
+    _data_path = _dot_dir / "data"
     # as long as there is no dedicated subcommand similar to `git config`
     # to edit the configuration, the `elva.ini` config file should reside
     # next to the `.elva` dot dir and not within it for straight forward
     # access to the user
-    _config_path = Path(_dot_dir).parent
+    _config_path = _dot_dir.parent
+    _log_path = _dot_dir / "log"
 else:
+    _data_path = Path(platformdirs.user_data_dir(APP_NAME))
     _config_path = Path(platformdirs.user_config_dir(APP_NAME))
+    _log_path = Path(platformdirs.user_log_dir(APP_NAME))
 
-CONFIG_PATH = _config_path / CONFIG_NAME
 
 #
-# log path
-LOG_PATH = Path(_dot_dir or platformdirs.user_log_dir(APP_NAME)) / LOG_NAME
+# expose
+DATA_PATH = _data_path
+CONFIG_PATH = _config_path / CONFIG_NAME
+LOG_PATH = _log_path
 
 
 ###
@@ -243,10 +247,34 @@ def elva(
 #
 @elva.command
 @click.pass_context
-def config(ctx: click.Context):
+@click.argument(
+    "file",
+    required=False,
+    type=click.Path(path_type=Path, dir_okay=False),
+)
+def config(ctx: click.Context, file: Path):
     """print the used configuration parameter"""
+    if file is not None:
+        # resolve to absolute, direct path
+        file = file.resolve()
+
+        # set project folder or user's $HOME as anchor
+        project = ctx.obj["project"]
+        root = project or Path.home()
+
+        # strip anchor from file path
+        file_relative = file.relative_to(root)
+
+        # update data and log paths
+        data_file = ctx.obj["data"] / file_relative
+        ctx.obj["data"] = Path(str(data_file) + ".y")
+        ctx.obj["log"] /= Path(str(file_relative) + ".log")
+
+        # TODO: read UUID
+        # if data_file.exists():
+
     # TODO: print config in INI syntax, so that it can be piped directly
-    # TODO: convert this into a command group, so one gets a git-like
+    # TODO: (optional) convert this into a command group, so one gets a git-like
     #       config interface, e.g.
     #       $ elva config name "John Doe"
     print(ctx.obj)
