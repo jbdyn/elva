@@ -38,7 +38,7 @@ async def main():
         "localhost",
         8000,
         process_request=DummyBasicAuth("dummy").authenticate,
-        # process_request=TUBLDAPBasicAuth("tub", LDAP_SERVER, LDAP_BASE),
+        # process_request=LDAPBasicAuth("tub", LDAP_SERVER, LDAP_BASE),
     ):
         print("serving...")
         await asyncio.Future()  # run forever
