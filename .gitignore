@@ -5,3 +5,4 @@ dist
 .vagrant
 __pycache__
 _version.py
+elva.toml
