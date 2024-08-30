@@ -14,11 +14,13 @@ from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent
 
 from elva.apps.editor import YTextArea, YTextAreaParser
+from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 from elva.utils import gather_context_information
 
+LOGGER_NAME.set(__name__)
 log = logging.getLogger(__name__)
 
 WHITESPACE_ONLY = re.compile(r"^\s*$")

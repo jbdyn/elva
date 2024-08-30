@@ -8,6 +8,7 @@ from textual.app import App
 from textual.binding import Binding
 from textual.widgets import Label, TextArea
 
+from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
 from elva.parser import TextEventParser
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
@@ -15,6 +16,7 @@ from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
 from elva.utils import FILE_SUFFIX, gather_context_information
 
+LOGGER_NAME.set(__name__)
 log = logging.getLogger(__name__)
 
 LANGUAGES = {
@@ -215,7 +217,6 @@ class UI(App):
     async def run_components(self):
         async with anyio.create_task_group() as self.tg:
             for component in self.components:
-                component.log = log
                 await self.tg.start(component.start)
 
     async def on_mount(self):

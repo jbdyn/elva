@@ -1,5 +1,6 @@
 import logging
 from contextlib import AsyncExitStack
+from contextvars import ContextVar
 
 from anyio import (
     TASK_STATUS_IGNORED,
@@ -12,6 +13,8 @@ from anyio import (
 )
 from anyio.abc import TaskGroup
 
+LOGGER_NAME = ContextVar("logger_name")
+
 
 class Component:
     _started: Event | None = None
@@ -21,7 +24,8 @@ class Component:
 
     def __new__(cls, *args, **kwargs):
         self = super().__new__(cls)
-        self.log = logging.getLogger(f"{self.__module__}.{self.__class__.__name__}")
+        name = LOGGER_NAME.get(self.__module__)
+        self.log = logging.getLogger(f"{name}.{self.__class__.__name__}")
         return self
 
     def __str__(self):
