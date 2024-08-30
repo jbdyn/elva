@@ -14,9 +14,10 @@ from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent
 
 from elva.apps.editor import YTextArea, YTextAreaParser
-from elva.log import DefaultFormatter, WebsocketHandler
+from elva.log import DefaultFormatter
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
+from elva.utils import gather_context_information
 
 log = logging.getLogger(__name__)
 
@@ -157,25 +158,18 @@ class MessagePreview(Static):
 def get_chat_provider(message_type):
     match message_type:
         case "yjs":
-
-            class ChatProvider(WebsocketProvider):
-                def __init__(self, ydoc, uri, future, client_id):
-                    super().__init__(ydoc, uri)
-                    self.future = future
-                    self.client_id = client_id
-
-                async def cleanup(self):
-                    self.future.pop(self.client_id)
+            BaseProvider = WebsocketProvider
         case "elva":
+            BaseProvider = ElvaWebsocketProvider
 
-            class ChatProvider(ElvaWebsocketProvider):
-                def __init__(self, ydoc, identifier, uri, future, client_id):
-                    super().__init__(ydoc, identifier, uri)
-                    self.future = future
-                    self.client_id = client_id
+    class ChatProvider(BaseProvider):
+        def __init__(self, ydoc, identifier, server, future, client_id):
+            super().__init__(ydoc, identifier, server)
+            self.future = future
+            self.client_id = client_id
 
-                async def cleanup(self):
-                    self.future.pop(self.client_id)
+        async def cleanup(self):
+            self.future.pop(self.client_id)
 
     return ChatProvider
 
@@ -183,7 +177,14 @@ def get_chat_provider(message_type):
 class Chat(Widget):
     BINDINGS = [("ctrl+s", "send", "Send currently composed message")]
 
-    def __init__(self, username, uri, identifier, message_type, show_self=True):
+    def __init__(
+        self,
+        username,
+        server,
+        identifier,
+        message_type,
+        show_self=True,
+    ):
         super().__init__()
         self.username = username
 
@@ -211,13 +212,9 @@ class Chat(Widget):
         )
         self.message_parser = YTextAreaParser(self.message["text"], self.message_widget)
         ChatProvider = get_chat_provider(message_type)
-        match message_type:
-            case "yjs":
-                self.provider = ChatProvider(ydoc, uri, self.future, self.client_id)
-            case "elva":
-                self.provider = ChatProvider(
-                    ydoc, identifier, uri, self.future, self.client_id
-                )
+        self.provider = ChatProvider(
+            ydoc, identifier, server, self.future, self.client_id
+        )
         self.components = [
             self.history_parser,
             self.future_parser,
@@ -282,9 +279,16 @@ class Chat(Widget):
 class UI(App):
     CSS_PATH = "chat.tcss"
 
-    def __init__(self, username, uri, identifier, provider, show_self=True):
+    def __init__(
+        self,
+        username,
+        server,
+        identifier,
+        provider,
+        show_self=True,
+    ):
         super().__init__()
-        self.chat = Chat(username, uri, identifier, provider, show_self)
+        self.chat = Chat(username, server, identifier, provider, show_self)
 
     def compose(self):
         yield self.chat
@@ -301,35 +305,36 @@ class UI(App):
     default=False,
     show_default=True,
 )
-def cli(ctx, show_self: bool):
+@click.argument(
+    "file",
+    required=False,
+    type=click.Path(path_type=Path, dir_okay=False),
+)
+def cli(ctx, show_self: bool, file: None | Path):
     """chat app"""
 
+    gather_context_information(ctx, file)
+
+    c = ctx.obj
+
     # logging
-    log_path = ctx.obj["log"]
-    level = ctx.obj["level"]
+    log_path = c["log"]
+    level = c["level"]
 
-    if level is not None:
-        log_uri = "ws://localhost:8000/log" + str(log_path)
-        print(log_uri)
-
-        try:
-            handler = WebsocketHandler(log_uri)
-        except Exception:
-            handler = logging.FileHandler(Path.cwd() / "chat.log")
-
+    if level is not None and log_path is not None:
+        handler = logging.FileHandler(log_path)
         handler.setFormatter(DefaultFormatter())
-
         log.addHandler(handler)
         log.setLevel(level)
 
-    # connection
-    uri = ctx.obj["uri"]
-    user = ctx.obj["user"]
-    identifier = ctx.obj["identifier"]
-    message_type = ctx.obj["message_type"]
-
     # init and run app
-    app = UI(user, uri, identifier, message_type, show_self)
+    app = UI(
+        c["user"],
+        c["server"],
+        c["identifier"],
+        c["message_type"],
+        show_self,
+    )
     app.run()
 
 

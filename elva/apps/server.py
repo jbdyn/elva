@@ -34,7 +34,7 @@ class Room(Component):
         if persistent:
             self.ydoc = Doc()
             if path is not None:
-                self.store = SQLiteStore(self.ydoc, self.path)
+                self.store = SQLiteStore(self.ydoc, identifier, self.path)
 
     async def before(self):
         if self.persistent and self.path is not None:
@@ -268,8 +268,12 @@ class ElvaWebsocketServer(WebsocketServer):
                     pass
 
 
-async def main(host, port, persistent, path):
-    server = ElvaWebsocketServer(host, port, persistent, path)
+async def main(host, port, persistent, path, message_type):
+    match message_type:
+        case "yjs":
+            server = WebsocketServer(host, port, persistent, path)
+        case "elva":
+            server = ElvaWebsocketServer(host, port, persistent, path)
 
     async with anyio.create_task_group() as tg:
         await tg.start(server.start)
@@ -326,6 +330,8 @@ def cli(ctx: click.Context, host, port, persistent):
             path.mkdir(exist_ok=True, parents=True)
             persistent = True
 
+    c = ctx.obj
+
     # TODO: Get loggers from elva.apps.server.WebsocketServer (this module),
     #       elva.apps.server.Room AND elva.store.SQLiteStore together.
     #       Maybe restructuring project in elva/<app>.py and elva/lib/<store,...>.py
@@ -337,7 +343,7 @@ def cli(ctx: click.Context, host, port, persistent):
     log.addHandler(handler)
     log.setLevel(logging.DEBUG)
 
-    anyio.run(main, host, port, persistent, path)
+    anyio.run(main, host, port, persistent, path, c["message_type"])
 
 
 if __name__ == "__main__":

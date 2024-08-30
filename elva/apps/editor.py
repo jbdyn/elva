@@ -1,5 +1,4 @@
 import logging
-import uuid
 from pathlib import Path
 
 import anyio
@@ -9,10 +8,12 @@ from textual.app import App
 from textual.binding import Binding
 from textual.widgets import Label, TextArea
 
+from elva.log import DefaultFormatter
 from elva.parser import TextEventParser
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
+from elva.utils import FILE_SUFFIX, gather_context_information
 
 log = logging.getLogger(__name__)
 
@@ -158,9 +159,18 @@ class UI(App):
 
     BINDINGS = [Binding("ctrl+s", "save")]
 
-    def __init__(self, filename, uri, identifier, message_type):
+    def __init__(
+        self,
+        file_path: None | Path = None,
+        render_path: None | Path = None,
+        server: None | Path = None,
+        identifier: None | Path = None,
+        message_type: str = "yjs",
+    ):
         super().__init__()
-        self.filename = filename
+        self.file_path = file_path
+        self.render_path = render_path
+        self.identifier = identifier
 
         # document structure
         self.ydoc = Doc()
@@ -173,21 +183,31 @@ class UI(App):
         )
 
         # components
-        self.store = SQLiteStore(self.ydoc, filename)
         self.parser = YTextAreaParser(self.ytext, self.ytext_area)
-        self.renderer = TextRenderer(self.ytext, filename)
-        match message_type:
-            case "yjs":
-                self.provider = WebsocketProvider(self.ydoc, uri)
-            case "elva":
-                self.provider = ElvaWebsocketProvider(self.ydoc, identifier, uri)
 
         self.components = [
-            self.renderer,
-            self.store,
             self.parser,
-            self.provider,
         ]
+
+        if file_path is not None:
+            self.store = SQLiteStore(self.ydoc, identifier, file_path)
+            self.components.append(self.store)
+
+            self.identifier = self.store.identifier
+
+        if server is not None and identifier is not None:
+            match message_type:
+                case "yjs":
+                    Provider = WebsocketProvider
+                case "elva":
+                    Provider = ElvaWebsocketProvider
+
+            self.provider = Provider(self.ydoc, identifier, server)
+            self.components.append(self.provider)
+
+        if render_path is not None:
+            self.renderer = TextRenderer(self.ytext, render_path)
+            self.components.append(self.renderer)
 
         # other stuff
         self.set_language()
@@ -195,18 +215,22 @@ class UI(App):
     async def run_components(self):
         async with anyio.create_task_group() as self.tg:
             for component in self.components:
+                component.log = log
                 await self.tg.start(component.start)
 
     async def on_mount(self):
         # check existence of files before anything is changed on disk
-        path = Path(self.filename)
-        db_path = Path(self.filename + ".y")
-        if path.exists() and not db_path.exists():
-            add_content = True
-            async with await anyio.open_file(path, "r") as file:
-                text = await file.read()
-        else:
-            add_content = False
+        if self.render_path is not None:
+            try:
+                no_file = not self.file_path.exists()
+            except Exception:
+                no_file = True
+            if self.render_path.exists() and no_file:
+                add_content = True
+                async with await anyio.open_file(self.render_path, "r") as file:
+                    text = await file.read()
+            else:
+                add_content = False
 
         # run components
         self.run_worker(self.run_components())
@@ -217,9 +241,10 @@ class UI(App):
                 tg.start_soon(component.started.wait)
 
         # add content of pre-existing text files
-        if add_content:
-            log.debug("waiting for store to be initialized")
-            await self.store.wait_running()
+        if self.render_path is not None and add_content:
+            if self.file_path is not None:
+                log.debug("waiting for store to be initialized")
+                await self.store.wait_running()
             log.debug("reading in already present text file")
             self.ytext += text
 
@@ -230,39 +255,72 @@ class UI(App):
 
     def compose(self):
         yield self.ytext_area
-        yield Label(f"file: {self.filename}")
+        yield Label(f"identifier: {self.identifier}")
 
     def action_save(self):
-        self.run_worker(self.renderer.write())
+        if self.render_path is not None:
+            self.run_worker(self.renderer.write())
 
     def set_language(self):
-        extension = self.filename.split(".")[-1]
-        if extension == self.filename:
-            log.info("continuing without syntax highlighting")
-        else:
-            try:
-                self.ytext_area.language = LANGUAGES[extension]
-            except Exception:
-                log.info(
-                    f"no syntax highlighting available for extension '{extension}'"
-                )
+        if self.file_path is not None:
+            suffix = (
+                "".join(self.file_path.suffixes).split(FILE_SUFFIX)[0].removeprefix(".")
+            )
+            if str(self.file_path).endswith(suffix):
+                log.info("continuing without syntax highlighting")
+            else:
+                try:
+                    lang = LANGUAGES[suffix]
+                    self.ytext_area.language = lang
+                    log.info(f"enabled {lang} syntax highlighting")
+                except KeyError:
+                    log.info(
+                        f"no syntax highlighting available for file type '{suffix}'"
+                    )
 
 
 @click.command()
-@click.argument("file", required=False)
+@click.option(
+    "--render",
+    "-r",
+    "render",
+    is_flag=True,
+    help="Enable rendering the file",
+)
+@click.argument(
+    "file",
+    required=False,
+    type=click.Path(path_type=Path, dir_okay=False),
+)
 @click.pass_context
-def cli(ctx: click.Context, file: str):
+def cli(ctx: click.Context, render: bool, file: None | Path):
     """collaborative text editor"""
 
-    uri = ctx.obj["uri"]
-    identifier = ctx.obj["identifier"]
-    message_type = ctx.obj["message_type"]
+    c = ctx.obj
 
-    if file is None:
-        file = str(uuid.uuid4())
+    # gather info
+    gather_context_information(ctx, file)
+
+    if not render:
+        c["render"] = None
+
+    # logging
+    level = c["level"]
+    log_path = c["log"]
+    if level is not None and log_path is not None:
+        handler = logging.FileHandler(log_path)
+        handler.setFormatter(DefaultFormatter())
+        log.addHandler(handler)
+        log.setLevel(level)
 
     # run app
-    ui = UI(file, uri, identifier, message_type)
+    ui = UI(
+        c["file"],
+        c["render"],
+        c["server"],
+        c["identifier"],
+        c["message_type"],
+    )
     ui.run()
 
 

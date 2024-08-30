@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from functools import partial
+from urllib.parse import urljoin
 
 import anyio
 import websockets
@@ -105,8 +106,9 @@ class WebsocketConnection(Connection):
 
 
 class WebsocketProvider(WebsocketConnection):
-    def __init__(self, ydoc, uri):
+    def __init__(self, ydoc, identifier, server):
         self.ydoc = ydoc
+        uri = urljoin(server, identifier)
         super().__init__(uri)
 
     async def run(self):
@@ -163,11 +165,11 @@ class WebsocketProvider(WebsocketConnection):
 
 
 class ElvaWebsocketProvider(WebsocketConnection):
-    def __init__(self, ydoc, identifier, uri):
+    def __init__(self, ydoc, identifier, server):
         self.ydoc = ydoc
         self.identifier = identifier
         self.uuid, _ = ElvaMessage.ID.encode(self.identifier.encode())
-        super().__init__(uri)
+        super().__init__(server)
 
     async def run(self):
         self.ydoc.observe(self.callback)

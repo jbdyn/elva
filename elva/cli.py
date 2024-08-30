@@ -6,18 +6,19 @@ import click
 import platformdirs
 from rich import print
 
+from elva.utils import gather_context_information
+
 ###
 #
 # global defaults
 #
 # names
 APP_NAME = "elva"
-DOT_DIR_NAME = "." + APP_NAME
-CONFIG_NAME = APP_NAME + ".ini"
+CONFIG_NAME = APP_NAME + ".toml"
 
 # sort logging levels by verbosity
 # source: https://docs.python.org/3/library/logging.html#logging-levels
-LEVELS = [
+LEVEL = [
     # no -v/--verbose flag
     # different from logging.NOTSET
     None,
@@ -38,51 +39,35 @@ LEVELS = [
 #
 # paths
 #
-# check existence of dot directory
-def _find_dot_dir():
+def find_config_path():
     cwd = Path.cwd()
     for path in [cwd] + list(cwd.parents):
-        dot = path / DOT_DIR_NAME
-        if dot.exists():
-            return dot
+        config = path / CONFIG_NAME
+        if config.exists():
+            return config
 
 
-_dot_dir = _find_dot_dir()
-
-
-#
-# path naming
-if _dot_dir is not None:
-    _data_path = _dot_dir / "data"
-    # as long as there is no dedicated subcommand similar to `git config`
-    # to edit the configuration, the `elva.ini` config file should reside
-    # next to the `.elva` dot dir and not within it for straight forward
-    # access to the user
-    _config_path = _dot_dir.parent
-    _log_path = _dot_dir / "log"
+config_path = find_config_path()
+if config_path is not None:
+    project_path = config_path.parent
 else:
-    _data_path = Path(platformdirs.user_data_dir(APP_NAME))
-    _config_path = Path(platformdirs.user_config_dir(APP_NAME))
-    _log_path = Path(platformdirs.user_log_dir(APP_NAME))
+    project_path = None
 
-
-#
-# expose
-DATA_PATH = _data_path
-CONFIG_PATH = _config_path / CONFIG_NAME
-LOG_PATH = _log_path
+default_config_path = Path(platformdirs.user_config_dir(APP_NAME)) / CONFIG_NAME
+CONFIG_PATH = config_path or default_config_path
 
 
 ###
 #
 # cli input callbacks
 #
-def ensure_dir(ctx: click.Context, param: click.Parameter, path: Path):
-    path = path.resolve()
-    if path.is_dir():
-        path.mkdir(parents=True, exist_ok=True)
-    elif path.is_file():
-        path.parent.mkdir(parents=True, exist_ok=True)
+def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
+    if path is not None:
+        path = path.resolve()
+        if path.is_dir():
+            path.mkdir(parents=True, exist_ok=True)
+        elif path.is_file():
+            path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
 
@@ -101,20 +86,6 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: Path):
 # paths
 #
 @click.option(
-    "--data",
-    "-d",
-    "data",
-    help="path to data directory",
-    envvar="ELVA_DATA_PATH",
-    show_envvar=True,
-    default=DATA_PATH,
-    show_default=True,
-    # process this first, as it might hold a config file
-    is_eager=True,
-    type=click.Path(path_type=Path, file_okay=False),
-    callback=ensure_dir,
-)
-@click.option(
     "--config",
     "-c",
     "config",
@@ -130,17 +101,11 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: Path):
     "--log",
     "-l",
     "log",
-    help="path to log file or directory",
-    envvar="ELVA_LOG_PATH",
-    show_envvar=True,
-    default=LOG_PATH,
-    show_default=True,
-    type=click.Path(path_type=Path),
+    help="path to logging file",
+    type=click.Path(path_type=Path, dir_okay=False),
     callback=ensure_dir,
 )
-#
-# behavior
-#
+# logging
 @click.option(
     "--verbose",
     "-v",
@@ -192,7 +157,6 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: Path):
 #
 def elva(
     ctx: click.Context,
-    data: Path,
     config: Path,
     log: Path,
     verbose: int,
@@ -205,40 +169,24 @@ def elva(
     """ELVA - A suite of real-time collaboration TUI apps."""
 
     ctx.ensure_object(dict)
-    settings = ctx.obj
+    c = ctx.obj
 
     # paths
-    settings["project"] = None if _dot_dir is None else _dot_dir.parent
-    settings["data"] = data
-    settings["config"] = config
-    settings["log"] = log
+    c["project"] = project_path
+    c["config"] = config
+    c["file"] = None
+    c["render"] = None
+    c["log"] = log
 
-    # logging config
-    level = LEVELS[verbose]
-    settings["level"] = level
-
-    if level is not None:
-        ensure_dir(ctx, None, log)
+    # logging
+    c["level"] = LEVEL[verbose]
 
     # connection
-    settings["identifier"] = identifier
-    settings["user"] = user
-    settings["server"] = server
-
-    match message_type.lower():
-        case "yjs":
-            if server is not None:
-                if server[-1] == "/":
-                    uri = f"{server}{identifier}"
-                else:
-                    uri = f"{server}/{identifier}"
-            else:
-                uri = server
-        case "elva":
-            uri = server
-
-    settings["message_type"] = message_type.lower()
-    settings["uri"] = uri
+    c["user"] = user
+    c["password"] = password
+    c["identifier"] = identifier
+    c["server"] = server
+    c["message_type"] = message_type.lower()
 
 
 ###
@@ -252,49 +200,20 @@ def elva(
     required=False,
     type=click.Path(path_type=Path, dir_okay=False),
 )
-def config(ctx: click.Context, file: Path):
-    """print the used configuration parameter"""
-    if file is not None:
-        # resolve to absolute, direct path
-        file = file.resolve()
+def context(ctx: click.Context, file: None | Path):
+    """print the context passed to subcommands"""
+    c = ctx.obj
 
-        # set project folder or user's $HOME as anchor
-        project = ctx.obj["project"]
-        root = project or Path.home()
+    gather_context_information(ctx, file)
 
-        # strip anchor from file path
-        file_relative = file.relative_to(root)
+    # sanitize password output
+    password = c["password"]
+    if password is not None:
+        del password
+        c["password"] = "[REDACTED]"
 
-        # update data and log paths
-        data_file = ctx.obj["data"] / file_relative
-        ctx.obj["data"] = Path(str(data_file) + ".y")
-        ctx.obj["log"] /= Path(str(file_relative) + ".log")
-
-        # TODO: read UUID
-        # if data_file.exists():
-
-    # TODO: print config in INI syntax, so that it can be piped directly
-    # TODO: (optional) convert this into a command group, so one gets a git-like
-    #       config interface, e.g.
-    #       $ elva config name "John Doe"
-    print(ctx.obj)
-
-
-###
-#
-# init
-#
-@elva.command
-@click.argument(
-    "path",
-    default=Path.cwd(),
-    type=click.Path(path_type=Path, file_okay=False),
-)
-def init(path):
-    """initialize a data directory in the current of with PATH specified directory"""
-    data = path / DOT_DIR_NAME
-    data.mkdir(parents=True, exist_ok=True)
-    # TODO: call also `git init`
+    # TODO: print config in TOML syntax, so that it can be piped directly
+    print(c)
 
 
 ###
