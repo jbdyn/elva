@@ -1,8 +1,16 @@
+# build
 *.egg-info
 build
 dist
+_version.py
+__pycache__
+
+# PDM
+.pdm-python
+
+# virtual env
 *env*
 .vagrant
-__pycache__
-_version.py
+
+# ELVA
 elva.toml
