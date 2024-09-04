@@ -35,7 +35,7 @@ classifiers = [
   "Programming Language :: Python :: 3"
 ]
 dependencies = [
-    "websockets>=13.0.1",
+    "websockets @ git+https://github.com/python-websockets/websockets.git",
     "pycrdt>=0.9.8",
     "pycrdt-websocket>=0.14.2",
     "anyio>=4.4.0",
