@@ -48,8 +48,6 @@ def abort_basic_auth(
 
 
 class BasicAuth:
-    scheme = "Basic"
-
     def __init__(self, realm):
         self.realm = realm
 
@@ -94,6 +92,16 @@ def ldap_self_bind(username, password, server, ldap_base):
     except LDAPException:
         # print("Unable to connect to LDAP server")
         return False
+
+
+class LDAPBasicAuth(BasicAuth):
+    def __init__(self, realm, server, base):
+        super().__init__(realm)
+        self.server = ldap3.Server(server, use_ssl=True)
+        self.base = base
+
+    def verify(self, username, password):
+        return ldap_self_bind(username, password, self.server, self.base)
 
 
 if __name__ == "__main__":

@@ -2,26 +2,15 @@
 
 import asyncio
 
-import ldap3
 from websockets import serve
 
-from elva.auth import BasicAuth, ldap_self_bind
+from elva.auth import BasicAuth  # , LDAPBasicAuth
 
 
 class DummyBasicAuth(BasicAuth):
     def verify(self, username, password):
         print(username, password)
         return username == "janedoe" and password == "johndoe"
-
-
-class LDAPBasicAuth(BasicAuth):
-    def __init__(self, realm, server, base):
-        super().__init__(realm)
-        self.server = ldap3.Server(server, use_ssl=True)
-        self.base = base
-
-    def verify(self, username, password):
-        return ldap_self_bind(username, password, self.server, self.base)
 
 
 async def print_message(websocket):
@@ -33,8 +22,8 @@ async def print_message(websocket):
 
 
 async def main():
-    LDAP_SERVER = "example-ldap.com"
-    LDAP_BASE = "ou=user,dc=example,dc=com"
+    # LDAP_SERVER = "example-ldap.com"
+    # LDAP_BASE = "ou=user,dc=example,dc=com"
 
     async with serve(
         print_message,
