@@ -1,4 +1,4 @@
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from getpass import getpass
 from http import HTTPStatus
 
@@ -10,6 +10,13 @@ AUTH_SCHEME = [
     "Digest",
     "Negotiate",
 ]
+
+
+def basic_authorization_header(username, password):
+    bvalue = f"{username}:{password}".encode()
+    b64bvalue = b64encode(bvalue).decode()
+
+    return {"Authorization": f"Basic {b64bvalue}"}
 
 
 def process_authorization_header(request_headers):
@@ -50,17 +57,21 @@ class BasicAuth:
         try:
             scheme, credentials = process_authorization_header(request_headers)
         except KeyError:
+            print("missing")
             return self.abort("missing Authorization header")
         except ValueError:
+            print("malformed")
             return self.abort("malformed Authorization header")
 
         match scheme:
             case "Basic":
                 username, password = process_basic_auth_credentials(credentials)
             case _:
+                print("unsupported")
                 return self.abort("unsupported Authorization scheme")
 
         if not self.verify(username, password):
+            print("invalid")
             return self.abort("invalid credentials")
 
     def abort(self, reason=None, status=None):
