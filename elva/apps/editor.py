@@ -3,11 +3,16 @@ from pathlib import Path
 
 import anyio
 import click
+import websockets.exceptions as wsexc
 from pycrdt import Doc, Text
+from rich.text import Text as RichText
 from textual.app import App
 from textual.binding import Binding
-from textual.widgets import Label, TextArea
+from textual.containers import Grid
+from textual.screen import ModalScreen
+from textual.widgets import Button, Input, Label, Static, TextArea
 
+from elva.auth import basic_authorization_header
 from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
 from elva.parser import TextEventParser
@@ -27,6 +32,31 @@ LANGUAGES = {
     "rs": "rust",
     "yml": "yaml",
 }
+
+
+class CredentialScreen(ModalScreen):
+    def __init__(self, options, body=None, username=None):
+        super().__init__(id="credentialscreen")
+        self.options = options
+        self.body = Static(RichText(body, justify="center"), id="body")
+
+        self.username = Input(placeholder="user name", id="username")
+        if username is not None:
+            self.username.value = username
+        self.password = Input(placeholder="password", password=True, id="password")
+
+    def compose(self):
+        with Grid(id="form"):
+            yield self.body
+            yield self.username
+            yield self.password
+            yield Button("Confirm", id="confirm")
+
+    def on_button_pressed(self, event):
+        credentials = (self.username.value, self.password.value)
+        header = basic_authorization_header(*credentials)
+        self.options["additional_headers"] = header
+        self.dismiss(credentials)
 
 
 class YTextAreaParser(TextEventParser):
@@ -168,11 +198,15 @@ class UI(App):
         server: None | Path = None,
         identifier: None | Path = None,
         message_type: str = "yjs",
+        user: str | None = None,
+        password: str | None = None,
     ):
         super().__init__()
         self.file_path = file_path
         self.render_path = render_path
         self.identifier = identifier
+        self.user = user
+        self.password = password
 
         # document structure
         self.ydoc = Doc()
@@ -204,7 +238,17 @@ class UI(App):
                 case "elva":
                     Provider = ElvaWebsocketProvider
 
-            self.provider = Provider(self.ydoc, identifier, server)
+            self.provider = Provider(
+                self.ydoc, identifier, server, on_exception=self.on_exception
+            )
+            # save as attribute to be able to update the response `body`
+            self.credential_screen = CredentialScreen(
+                self.provider.options, "", self.user
+            )
+            # install the screen so that unique IDs are respected
+            self.install_screen(self.credential_screen, name="credential_screen")
+            self.tried_auto = False
+            self.tried_modal = False
             self.components.append(self.provider)
 
         if render_path is not None:
@@ -213,6 +257,39 @@ class UI(App):
 
         # other stuff
         self.set_language()
+
+    async def on_exception(self, exc):
+        match type(exc):
+            case wsexc.InvalidStatus:
+                if (
+                    self.user is not None
+                    and self.password is not None
+                    # we tried this branch already with these credentials
+                    and not self.tried_auto
+                    # these credentials have been supplied via CredentialScreen and are incorrect,
+                    # go directly to modal screen again
+                    and not self.tried_modal
+                ):
+                    header = basic_authorization_header(self.user, self.password)
+                    self.provider.options["additional_headers"] = header
+                    self.tried_auto = True
+                else:
+                    body = exc.response.body.decode()
+                    # update manually
+                    self.credential_screen.body.update(RichText(body, justify="center"))
+                    self.credential_screen.username.clear()
+                    self.credential_screen.username.insert_text_at_cursor(self.user)
+                    # push via screen name
+                    await self.push_screen(
+                        "credential_screen",
+                        self.update_credentials,
+                        # wait for connection retry after screen has been closed
+                        wait_for_dismiss=True,
+                    )
+                    self.tried_modal = True
+
+    def update_credentials(self, credentials):
+        self.user, self.password = credentials
 
     async def run_components(self):
         async with anyio.create_task_group() as self.tg:
@@ -321,6 +398,8 @@ def cli(ctx: click.Context, render: bool, file: None | Path):
         c["server"],
         c["identifier"],
         c["message_type"],
+        c["user"],
+        c["password"],
     )
     ui.run()
 

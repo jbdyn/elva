@@ -73,6 +73,8 @@ class WebsocketConnection(Connection):
         self.uri = uri
         self._websocket = None
         self.on_exception = on_exception
+
+        # construct a dictionary of args and kwargs
         sig = signature(connect)
         self._arguments = sig.bind(uri, *args, **kwargs)
         self.options = self._arguments.arguments
@@ -114,7 +116,10 @@ class WebsocketConnection(Connection):
             # considered invalid
             except (InvalidStatus, InvalidURI) as exc:
                 self.log.info(exc)
-                await self.on_exception(exc)
+                if self.on_exception is not None:
+                    await self.on_exception(exc)
+                else:
+                    raise exc
 
     async def cleanup(self):
         if self._websocket is not None:
@@ -125,10 +130,10 @@ class WebsocketConnection(Connection):
 
 
 class WebsocketProvider(WebsocketConnection):
-    def __init__(self, ydoc, identifier, server):
+    def __init__(self, ydoc, identifier, server, on_exception=None):
         self.ydoc = ydoc
         uri = urljoin(server, identifier)
-        super().__init__(uri)
+        super().__init__(uri, on_exception=on_exception)
 
     async def run(self):
         self.ydoc.observe(self.callback)
@@ -184,11 +189,11 @@ class WebsocketProvider(WebsocketConnection):
 
 
 class ElvaWebsocketProvider(WebsocketConnection):
-    def __init__(self, ydoc, identifier, server):
+    def __init__(self, ydoc, identifier, server, on_exception=None):
         self.ydoc = ydoc
         self.identifier = identifier
         self.uuid, _ = ElvaMessage.ID.encode(self.identifier.encode())
-        super().__init__(server)
+        super().__init__(server, on_exception=on_exception)
 
     async def run(self):
         self.ydoc.observe(self.callback)

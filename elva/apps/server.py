@@ -8,10 +8,16 @@ import click
 from pycrdt import Doc
 from websockets import ConnectionClosed, broadcast, serve
 
+from elva.auth import BasicAuth
 from elva.component import Component
 from elva.log import DefaultFormatter
 from elva.protocol import ElvaMessage, YMessage
 from elva.store import SQLiteStore
+
+
+class DummyAuth(BasicAuth):
+    def verify(self, username, password):
+        return username == "janedoe" and password == "johndoe"
 
 
 class Room(Component):
@@ -167,16 +173,23 @@ class WebsocketServer(Component):
         port: int,
         persistent: bool = False,
         path: None | Path = None,
+        process_request: None = None,
     ):
         self.host = host
         self.port = port
         self.persistent = persistent
         self.path = path
+        self.process_request = process_request
 
         self.rooms = dict()
 
     async def run(self):
-        async with serve(self.handle, self.host, self.port):
+        async with serve(
+            self.handle,
+            self.host,
+            self.port,
+            process_request=self.process_request,
+        ):
             # startup info
             self.log.info(f"server started on {self.host}:{self.port}")
 
@@ -269,11 +282,18 @@ class ElvaWebsocketServer(WebsocketServer):
 
 
 async def main(host, port, persistent, path, message_type):
+    options = dict(
+        host=host,
+        port=port,
+        persistent=persistent,
+        path=path,
+        process_request=DummyAuth("dummy").authenticate,
+    )
     match message_type:
         case "yjs":
-            server = WebsocketServer(host, port, persistent, path)
+            server = WebsocketServer(**options)
         case "elva":
-            server = ElvaWebsocketServer(host, port, persistent, path)
+            server = ElvaWebsocketServer(**options)
 
     async with anyio.create_task_group() as tg:
         await tg.start(server.start)
