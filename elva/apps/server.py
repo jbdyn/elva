@@ -8,11 +8,14 @@ import click
 from pycrdt import Doc
 from websockets import ConnectionClosed, broadcast, serve
 
-from elva.auth import BasicAuth
-from elva.component import Component
+from elva.auth import BasicAuth, LDAPBasicAuth
+from elva.component import LOGGER_NAME, Component
 from elva.log import DefaultFormatter
 from elva.protocol import ElvaMessage, YMessage
 from elva.store import SQLiteStore
+
+LOGGER_NAME.set(__name__)
+log = logging.getLogger(__name__)
 
 
 class DummyAuth(BasicAuth):
@@ -287,7 +290,9 @@ async def main(host, port, persistent, path, message_type):
         port=port,
         persistent=persistent,
         path=path,
-        process_request=DummyAuth("dummy").authenticate,
+        process_request=LDAPBasicAuth(
+            "elva", "example-ldap.com", "ou=user,dc=example,dc=com"
+        ).authenticate,
     )
     match message_type:
         case "yjs":
@@ -357,7 +362,6 @@ def cli(ctx: click.Context, host, port, persistent):
     #       Maybe restructuring project in elva/<app>.py and elva/lib/<store,...>.py
     #
     # logging
-    log = logging.getLogger("elva")
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(DefaultFormatter())
     log.addHandler(handler)

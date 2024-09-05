@@ -1,9 +1,11 @@
+import logging
 from base64 import b64decode, b64encode
-from getpass import getpass
 from http import HTTPStatus
 
 import ldap3
 from ldap3.core.exceptions import LDAPException
+
+from elva.component import LOGGER_NAME
 
 AUTH_SCHEME = [
     "Basic",
@@ -37,17 +39,24 @@ def process_basic_auth_credentials(credentials: str):
 
 def abort_basic_auth(
     realm: str,
-    reason: None | str = None,
-    status: None | HTTPStatus = None,
+    body: None | str = None,
+    status: HTTPStatus = HTTPStatus.UNAUTHORIZED,
 ):
-    status = status or HTTPStatus.UNAUTHORIZED
+    status = status
     headers = {"WWW-Authenticate": f"Basic realm={realm}"}
-    if reason:
-        reason = reason.encode()
-    return status, headers, reason
+    if body:
+        body = body.encode()
+    return status, headers, body
 
 
 class BasicAuth:
+    def __new__(cls, *args, **kwargs):
+        self = super().__new__(cls)
+        self.log = logging.getLogger(
+            f"{LOGGER_NAME.get(__name__)}.{self.__class__.__name__}"
+        )
+        return self
+
     def __init__(self, realm):
         self.realm = realm
 
@@ -55,43 +64,27 @@ class BasicAuth:
         try:
             scheme, credentials = process_authorization_header(request_headers)
         except KeyError:
-            print("missing")
-            return self.abort("missing Authorization header")
+            return self._log_and_abort("missing Authorization header")
         except ValueError:
-            print("malformed")
-            return self.abort("malformed Authorization header")
+            return self._log_and_abort("malformed Authorization header")
 
         match scheme:
             case "Basic":
                 username, password = process_basic_auth_credentials(credentials)
             case _:
-                print("unsupported")
-                return self.abort("unsupported Authorization scheme")
+                return self._log_and_abort("unsupported Authorization scheme")
 
         if not self.verify(username, password):
-            print("invalid")
-            return self.abort("invalid credentials")
+            return self._log_and_abort("invalid credentials")
 
-    def abort(self, reason=None, status=None):
-        return abort_basic_auth(self.realm, reason=reason, status=status)
+    def _abort(self, body=None, status=HTTPStatus.UNAUTHORIZED):
+        return abort_basic_auth(self.realm, body=body, status=status)
+
+    def _log_and_abort(self, msg):
+        self.log.debug(msg)
+        return self._abort(msg)
 
     def verify(self, username, password): ...
-
-
-# code from https://stackoverflow.com/a/65907735
-def ldap_self_bind(username, password, server, ldap_base):
-    try:
-        user = f"uid={username},{ldap_base}"
-        with ldap3.Connection(
-            server,
-            user=user,
-            password=password,
-        ):  # as conn
-            # res = conn.result["description"]  # "success" if bind is ok
-            return True
-    except LDAPException:
-        # print("Unable to connect to LDAP server")
-        return False
 
 
 class LDAPBasicAuth(BasicAuth):
@@ -99,15 +92,19 @@ class LDAPBasicAuth(BasicAuth):
         super().__init__(realm)
         self.server = ldap3.Server(server, use_ssl=True)
         self.base = base
+        self.log.info(f"server: {self.server.name}, base: {base}")
 
     def verify(self, username, password):
-        return ldap_self_bind(username, password, self.server, self.base)
-
-
-if __name__ == "__main__":
-    ldap_server = "example-ldap.com"
-    ldap_base = "ou=user,dc=example,dc=com"
-
-    server = ldap3.Server(ldap_server, use_ssl=True)
-
-    ldap_self_bind(input("Username: "), getpass(), server, ldap_base)
+        user = f"uid={username},{self.base}"
+        try:
+            with ldap3.Connection(
+                self.server,
+                user=user,
+                password=password,
+            ):  # as conn
+                # res = conn.result["description"]  # "success" if bind is ok
+                self.log.debug(f"successful self-bind with {user}")
+                return True
+        except LDAPException:
+            self.log.debug(f"unable to connect with {user}")
+            return False
