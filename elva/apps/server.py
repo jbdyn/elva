@@ -284,21 +284,27 @@ class ElvaWebsocketServer(WebsocketServer):
                     pass
 
 
-async def main(host, port, persistent, path, message_type):
+async def main(message_type, host, port, persistent, path, ldap):
+    if ldap is not None:
+        process_request = LDAPBasicAuth(*ldap).authenticate
+    else:
+        process_request = None
+
     options = dict(
         host=host,
         port=port,
         persistent=persistent,
         path=path,
-        process_request=LDAPBasicAuth(
-            "elva", "example-ldap.com", "ou=user,dc=example,dc=com"
-        ).authenticate,
+        process_request=process_request,
     )
+
     match message_type:
         case "yjs":
-            server = WebsocketServer(**options)
+            Server = WebsocketServer
         case "elva":
-            server = ElvaWebsocketServer(**options)
+            Server = ElvaWebsocketServer
+
+    server = Server(**options)
 
     async with anyio.create_task_group() as tg:
         await tg.start(server.start)
@@ -325,7 +331,7 @@ async def main(host, port, persistent, path, message_type):
     metavar="[DIRECTORY]",
     help=(
         "Hold the received content in a local YDoc in volatile memory "
-        "or also save it under DIRECTORY if given."
+        "or also save it under DIRECTORY if given. "
         "Without this flag, the server simply broadcasts all incoming messages "
         "within the respective room."
     ),
@@ -335,8 +341,26 @@ async def main(host, port, persistent, path, message_type):
     # used when no argument is given to flag
     flag_value="",
 )
-def cli(ctx: click.Context, host, port, persistent):
-    """start a Websocket server"""
+@click.option(
+    "--ldap",
+    metavar="REALM SERVER BASE",
+    help="Enable Basic Authentication via LDAP self bind.",
+    nargs=3,
+    type=str,
+)
+def cli(ctx: click.Context, host, port, persistent, ldap):
+    """
+    Run a websocket server.
+
+    Arguments:
+
+        [HOST]  hostname or IP address of the server. [default: localhost]
+        [PORT]  port the server listens on. [default: 8000]
+
+    Context:
+
+        [-m/--message-type]
+    """
     match persistent:
         # no flag given
         case None:
@@ -357,18 +381,10 @@ def cli(ctx: click.Context, host, port, persistent):
 
     c = ctx.obj
 
-    # TODO: Get loggers from elva.apps.server.WebsocketServer (this module),
-    #       elva.apps.server.Room AND elva.store.SQLiteStore together.
-    #       Maybe restructuring project in elva/<app>.py and elva/lib/<store,...>.py
-    #
     # logging
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(DefaultFormatter())
     log.addHandler(handler)
     log.setLevel(logging.DEBUG)
 
-    anyio.run(main, host, port, persistent, path, c["message_type"])
-
-
-if __name__ == "__main__":
-    cli()
+    anyio.run(main, c["message_type"], host, port, persistent, path, ldap)
