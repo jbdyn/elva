@@ -11,7 +11,6 @@ from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
 from elva.server import ElvaWebsocketServer, WebsocketServer
 
-LOGGER_NAME.set(__name__)
 log = logging.getLogger(__name__)
 
 
@@ -113,6 +112,7 @@ def cli(ctx: click.Context, host, port, persistent, ldap):
     c = ctx.obj
 
     # logging
+    LOGGER_NAME.set(__name__)
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(DefaultFormatter())
     log.addHandler(handler)

@@ -21,7 +21,6 @@ from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
 from elva.utils import FILE_SUFFIX, gather_context_information
 
-LOGGER_NAME.set(__name__)
 log = logging.getLogger(__name__)
 
 LANGUAGES = {
@@ -383,6 +382,7 @@ def cli(ctx: click.Context, render: bool, file: None | Path):
         c["render"] = None
 
     # logging
+    LOGGER_NAME.set(__name__)
     level = c["level"]
     log_path = c["log"]
     if level is not None and log_path is not None:

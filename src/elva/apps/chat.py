@@ -24,7 +24,6 @@ from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 from elva.store import SQLiteStore
 from elva.utils import gather_context_information
 
-LOGGER_NAME.set(__name__)
 log = logging.getLogger(__name__)
 
 WHITESPACE_ONLY = re.compile(r"^\s*$")
@@ -366,6 +365,7 @@ def cli(ctx, show_self: bool, file: None | Path):
     c = ctx.obj
 
     # logging
+    LOGGER_NAME.set(__name__)
     log_path = c["log"]
     level = c["level"]
 
