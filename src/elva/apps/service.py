@@ -7,6 +7,8 @@ import click
 import websockets
 from pycrdt_websocket.websocket import Websocket
 
+from elva.auth import basic_authorization_header
+from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
 from elva.protocol import ElvaMessage
 from elva.provider import WebsocketConnection
@@ -14,12 +16,14 @@ from elva.provider import WebsocketConnection
 #
 UUID = str
 
+log = getLogger(__name__)
+
 
 class WebsocketMetaProvider(WebsocketConnection):
     LOCAL_SOCKETS: dict[UUID, set[Websocket]]
 
-    def __init__(self, uri):
-        super().__init__(uri)
+    def __init__(self, uri, on_exception=None):
+        super().__init__(uri, on_exception=on_exception)
         self.log.setLevel(logging.DEBUG)
         self.LOCAL_SOCKETS = dict()
 
@@ -130,6 +134,8 @@ def get_uuid_from_local_websocket(websocket: Websocket) -> UUID:
 
 
 async def run(
+    user,
+    password,
     remote_websocket_server: str,
     local_websocket_host: str,
     local_websocket_port: int,
@@ -137,6 +143,20 @@ async def run(
     server = WebsocketMetaProvider(remote_websocket_server)
 
     async with anyio.create_task_group() as tg:
+        tried_once = False
+
+        async def on_exception(exc):
+            nonlocal tried_once
+            if user is not None and password is not None and not tried_once:
+                header = basic_authorization_header(user, password)
+                server.options["additional_headers"] = header
+                tried_once = True
+            else:
+                log.error(f"{exc}: {exc.response.body.decode()}")
+                tg.cancel_scope.cancel()
+
+        server.on_exception = on_exception
+
         await tg.start(server.start)
         async with websockets.serve(
             server.serve, local_websocket_host, local_websocket_port
@@ -151,14 +171,16 @@ async def run(
 def cli(ctx: click.Context, host, port):
     """local meta provider"""
 
-    log = getLogger(__name__)
+    LOGGER_NAME.set(__name__)
     log_handler = logging.StreamHandler(sys.stdout)
     log_handler.setFormatter(DefaultFormatter())
     log.addHandler(log_handler)
     log.setLevel(logging.DEBUG)
 
+    c = ctx.obj
+
     try:
-        anyio.run(run, ctx.obj["server"], host, port)
+        anyio.run(run, c["user"], c["password"], c["server"], host, port)
     except KeyboardInterrupt:
         log.info("service stopped")
 
