@@ -6,18 +6,22 @@ from pathlib import Path
 import anyio
 import click
 import emoji
+import websockets.exceptions as wsexc
 from pycrdt import Array, Doc, Map, Text
 from rich.markdown import Markdown as RichMarkdown
+from rich.text import Text as RichText
 from textual.app import App
 from textual.containers import VerticalScroll
 from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent
 
-from elva.apps.editor import YTextArea, YTextAreaParser
+from elva.apps.editor import CredentialScreen, YTextArea, YTextAreaParser
+from elva.auth import basic_authorization_header
 from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
+from elva.store import SQLiteStore
 from elva.utils import gather_context_information
 
 LOGGER_NAME.set(__name__)
@@ -104,25 +108,25 @@ class HistoryParser(ArrayEventParser):
 
 
 class Future(MessageList):
-    def __init__(self, messages, username, client_id, show_self=False, **kwargs):
+    def __init__(self, messages, user, client_id, show_self=False, **kwargs):
         super().__init__(messages, **kwargs)
-        self.username = username
+        self.user = user
         self.client_id = client_id
         self.show_self = show_self
 
     def compose(self):
         for message_id, message in self.messages.items():
-            if not self.show_self and message["author"] == self.username:
+            if not self.show_self and message["author"] == self.user:
                 continue
             else:
                 yield self.mount_message_view(message, message_id="id" + message_id)
 
 
 class FutureParser(MapEventParser):
-    def __init__(self, future, widget, username, client_id, show_self):
+    def __init__(self, future, widget, user, client_id, show_self):
         self.future = future
         self.widget = widget
-        self.username = username
+        self.user = user
         self.client_id = client_id
         self.show_self = show_self
 
@@ -135,7 +139,7 @@ class FutureParser(MapEventParser):
         await super().run()
 
     async def on_add(self, key, new_value):
-        if not self.show_self and new_value["author"] == self.username:
+        if not self.show_self and new_value["author"] == self.user:
             return
 
         message_view = self.widget.mount_message_view(new_value, message_id="id" + key)
@@ -165,8 +169,8 @@ def get_chat_provider(message_type):
             BaseProvider = ElvaWebsocketProvider
 
     class ChatProvider(BaseProvider):
-        def __init__(self, ydoc, identifier, server, future, client_id):
-            super().__init__(ydoc, identifier, server)
+        def __init__(self, ydoc, identifier, server, on_exception, future, client_id):
+            super().__init__(ydoc, identifier, server, on_exception=on_exception)
             self.future = future
             self.client_id = client_id
 
@@ -176,19 +180,24 @@ def get_chat_provider(message_type):
     return ChatProvider
 
 
-class Chat(Widget):
+class UI(App):
+    CSS_PATH = "chat.tcss"
+
     BINDINGS = [("ctrl+s", "send", "Send currently composed message")]
 
     def __init__(
         self,
-        username,
+        user,
+        password,
         server,
         identifier,
         message_type,
+        file_path,
         show_self=True,
     ):
         super().__init__()
-        self.username = username
+        self.user = user
+        self.password = password
 
         # structure
         ydoc = Doc()
@@ -201,7 +210,7 @@ class Chat(Widget):
         # widgets
         self.history_widget = History(self.history, id="history")
         self.future_widget = Future(
-            self.future, username, self.client_id, show_self=show_self, id="future"
+            self.future, user, self.client_id, show_self=show_self, id="future"
         )
         self.message_widget = YTextArea(self.message["text"], id="editor")
         self.message_widget.language = "markdown"
@@ -210,19 +219,45 @@ class Chat(Widget):
         # components
         self.history_parser = HistoryParser(self.history, self.history_widget)
         self.future_parser = FutureParser(
-            self.future, self.future_widget, username, self.client_id, show_self
+            self.future,
+            self.future_widget,
+            user,
+            self.client_id,
+            show_self,
         )
         self.message_parser = YTextAreaParser(self.message["text"], self.message_widget)
-        ChatProvider = get_chat_provider(message_type)
-        self.provider = ChatProvider(
-            ydoc, identifier, server, self.future, self.client_id
-        )
+
         self.components = [
             self.history_parser,
             self.future_parser,
             self.message_parser,
-            self.provider,
         ]
+
+        if server is not None and identifier is not None:
+            Provider = get_chat_provider(message_type)
+            self.provider = Provider(
+                ydoc,
+                identifier,
+                server,
+                self.on_exception,
+                self.future,
+                self.client_id,
+            )
+
+            self.credential_screen = CredentialScreen(
+                self.provider.options, "", self.user
+            )
+
+            self.install_screen(self.credential_screen, name="credential_screen")
+
+            self.tried_auto = False
+            self.tried_modal = False
+
+            self.components.append(self.provider)
+
+        if file_path is not None:
+            self.store = SQLiteStore(self.ydoc, identifier, file_path)
+            self.components.append(self.store)
 
     def get_new_id(self):
         return str(uuid.uuid4())
@@ -233,10 +268,39 @@ class Chat(Widget):
         return Map(
             {
                 "text": Text(text),
-                "author": self.username,
+                "author": self.user,
                 "id": message_id,
             }
         ), message_id
+
+    async def on_exception(self, exc):
+        match type(exc):
+            case wsexc.InvalidStatus:
+                if (
+                    self.user is not None
+                    and self.password is not None
+                    and not self.tried_auto
+                    and not self.tried_modal
+                ):
+                    header = basic_authorization_header(self.user, self.password)
+
+                    self.provider.options["additional_headers"] = header
+                    self.tried_auto = True
+                else:
+                    body = exc.response.body.decode()
+                    self.credential_screen.body.update(RichText(body, justify="center"))
+                    self.credential_screen.user.clear()
+                    self.credential_screen.user.insert_text_at_cursor(self.user or "")
+
+                    await self.push_screen(
+                        self.credential_screen,
+                        self.update_credentials,
+                        wait_for_dismiss=True,
+                    )
+                    self.tried_modal = True
+
+    def update_credentials(self, credentials):
+        self.user, self.password = credentials
 
     async def run_components(self):
         async with anyio.create_task_group() as self.tg:
@@ -278,24 +342,6 @@ class Chat(Widget):
             self.message["id"] = self.get_new_id()
 
 
-class UI(App):
-    CSS_PATH = "chat.tcss"
-
-    def __init__(
-        self,
-        username,
-        server,
-        identifier,
-        provider,
-        show_self=True,
-    ):
-        super().__init__()
-        self.chat = Chat(username, server, identifier, provider, show_self)
-
-    def compose(self):
-        yield self.chat
-
-
 @click.command
 @click.pass_context
 @click.option(
@@ -332,9 +378,11 @@ def cli(ctx, show_self: bool, file: None | Path):
     # init and run app
     app = UI(
         c["user"],
+        c["password"],
         c["server"],
         c["identifier"],
         c["message_type"],
+        file,
         show_self,
     )
     app.run()

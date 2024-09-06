@@ -7,11 +7,6 @@ Screen {
   max-height: 30%;
 }
 
-#editor {
-  border: none;
-  padding: 0;
-}
-
 #tabview {
   height: 30%;
   min-height: 10;
@@ -22,4 +17,36 @@ Screen {
   height: auto;
   /* layout: horizontal; */
   padding: 0 3 1 2; /* top right bottom left */
+}
+
+#editor {
+  border: none;
+  padding: 0;
+}
+
+#credentialscreen {
+  align: center middle;
+}
+
+#credentialscreen #body {
+  column-span: 2;
+}
+
+#credentialscreen #form {
+  grid-size: 2 3;
+  grid-gutter: 1 2;
+  grid-rows: 5;
+  border: thick $background 80%;
+  height: auto;
+  width: 80;
+  padding: 2;
+  background: $surface;
+}
+
+#credentialscreen #confirm {
+  background: green;
+  column-span: 2;
+  width: 100%;
+  height: 3;
+  margin: 1;
 }

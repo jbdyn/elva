@@ -35,25 +35,25 @@ LANGUAGES = {
 
 
 class CredentialScreen(ModalScreen):
-    def __init__(self, options, body=None, username=None):
+    def __init__(self, options, body=None, user=None):
         super().__init__(id="credentialscreen")
         self.options = options
         self.body = Static(RichText(body, justify="center"), id="body")
 
-        self.username = Input(placeholder="user name", id="username")
-        if username is not None:
-            self.username.value = username
+        self.user = Input(placeholder="user", id="user")
+        if user is not None:
+            self.user.value = user
         self.password = Input(placeholder="password", password=True, id="password")
 
     def compose(self):
         with Grid(id="form"):
             yield self.body
-            yield self.username
+            yield self.user
             yield self.password
             yield Button("Confirm", id="confirm")
 
     def on_button_pressed(self, event):
-        credentials = (self.username.value, self.password.value)
+        credentials = (self.user.value, self.password.value)
         header = basic_authorization_header(*credentials)
         self.options["additional_headers"] = header
         self.dismiss(credentials)
@@ -277,8 +277,8 @@ class UI(App):
                     body = exc.response.body.decode()
                     # update manually
                     self.credential_screen.body.update(RichText(body, justify="center"))
-                    self.credential_screen.username.clear()
-                    self.credential_screen.username.insert_text_at_cursor(self.user)
+                    self.credential_screen.user.clear()
+                    self.credential_screen.user.insert_text_at_cursor(self.user or "")
                     # push via screen name
                     await self.push_screen(
                         "credential_screen",
