@@ -76,8 +76,5 @@ dev = [
 [project.scripts]
 elva = "elva.cli:elva"
 
-[tool.setuptools]
-packages = ["elva"]
-
 [tool.pdm]
 distribution = true
