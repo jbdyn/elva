@@ -24,16 +24,11 @@ Screen {
   padding: 0;
 }
 
-#credentialscreen {
+.modalscreen {
   align: center middle;
 }
 
-#credentialscreen #body {
-  column-span: 2;
-}
-
-#credentialscreen #form {
-  grid-size: 2 3;
+.modalscreen .form {
   grid-gutter: 1 2;
   grid-rows: 5;
   border: thick $background 80%;
@@ -43,10 +38,25 @@ Screen {
   background: $surface;
 }
 
-#credentialscreen #confirm {
-  background: green;
+#credentialscreen #body {
   column-span: 2;
+}
+
+#credentialscreen .form {
+  grid-size: 2 3;
+}
+
+#errorscreen .form {
+  grid-size: 1 3;
+}
+
+.modalscreen .confirm {
+  background: green;
   width: 100%;
   height: 3;
   margin: 1;
+}
+
+#credentialscreen .confirm {
+  column-span: 2;
 }

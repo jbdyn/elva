@@ -1,10 +1,13 @@
 import logging
 import sys
+from http import HTTPStatus
 from logging import getLogger
+from urllib.parse import urlparse
 
 import anyio
 import click
 import websockets
+import websockets.exceptions as wsexc
 from pycrdt_websocket.websocket import Websocket
 
 from elva.auth import basic_authorization_header
@@ -12,6 +15,7 @@ from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
 from elva.protocol import ElvaMessage
 from elva.provider import WebsocketConnection
+from elva.utils import update_context_with_config
 
 #
 UUID = str
@@ -19,12 +23,19 @@ UUID = str
 log = getLogger(__name__)
 
 
+def missing_identifier(path, request):
+    if path[1:] == "":
+        return HTTPStatus.FORBIDDEN, {}, b""
+
+
 class WebsocketMetaProvider(WebsocketConnection):
     LOCAL_SOCKETS: dict[UUID, set[Websocket]]
 
-    def __init__(self, uri, on_exception=None):
-        super().__init__(uri, on_exception=on_exception)
-        self.log.setLevel(logging.DEBUG)
+    def __init__(self, user, password, uri):
+        super().__init__(uri)
+        self.user = user
+        self.password = password
+        self.tried_once = False
         self.LOCAL_SOCKETS = dict()
 
     async def on_recv(self, message):
@@ -36,7 +47,12 @@ class WebsocketMetaProvider(WebsocketConnection):
         encoded_uuid, _ = ElvaMessage.ID.encode(uuid.encode())
         return encoded_uuid + message
 
-    async def _send(self, message, uuid, origin_ws: Websocket | None = None) -> None:
+    async def _send(
+        self,
+        message,
+        uuid,
+        origin_ws: Websocket | None = None,
+    ) -> None:
         if origin_ws is not None:
             # if message comes from a local client (origin_ws != None)
             # send to other local clients if they exist and remote
@@ -54,7 +70,11 @@ class WebsocketMetaProvider(WebsocketConnection):
             await self._send_to_local(message, uuid, origin_ws, origin_name)
 
     async def _send_to_remote(
-        self, message: str, uuid: UUID, origin_ws: Websocket | None, origin_name: str
+        self,
+        message: str,
+        uuid: UUID,
+        origin_ws: Websocket | None,
+        origin_name: str,
     ):
         # send message to self.remote
         message = self.create_uuid_message(message, uuid)
@@ -62,7 +82,11 @@ class WebsocketMetaProvider(WebsocketConnection):
         await self.send(message)
 
     async def _send_to_local(
-        self, message: str, uuid: UUID, origin_ws: Websocket | None, origin_name: str
+        self,
+        message: str,
+        uuid: UUID,
+        origin_ws: Websocket | None,
+        origin_name: str,
     ):
         # check if any local client subscribed to the uuid
         if uuid in self.LOCAL_SOCKETS.keys():
@@ -88,11 +112,6 @@ class WebsocketMetaProvider(WebsocketConnection):
 
     async def serve(self, local: Websocket):
         uuid = local.path[1:]
-        # don't accept "unnamed lobby"
-        #
-        # TODO: check for proper UUID with regex matching etc.
-        if not uuid:
-            await local.close()
         await self._send_from_local(local, uuid)
 
     async def _send_from_local(self, local: Websocket, uuid):
@@ -122,6 +141,26 @@ class WebsocketMetaProvider(WebsocketConnection):
             self.log.debug(f"- closed connection {ws_id}")
             self.log.debug(f"  all clients: {self.LOCAL_SOCKETS}")
 
+    async def on_exception(self, exc):
+        match type(exc):
+            case wsexc.InvalidStatus:
+                if (
+                    exc.respsone.status_code == 401
+                    and self.user is not None
+                    and self.password is not None
+                    and not self.tried_once
+                ):
+                    header = basic_authorization_header(self.user, self.password)
+                    self.options["additional_headers"] = header
+                    self.tried_once = True
+                    return
+
+                self.log.error(f"{exc}: {exc.response.body.decode()}")
+                raise exc
+            case wsexc.InvalidURI:
+                self.log.error(exc)
+                raise exc
+
 
 def get_websocket_identifier(websocket: Websocket) -> str:
     # use memory address of websocket connection as identifier
@@ -133,35 +172,12 @@ def get_uuid_from_local_websocket(websocket: Websocket) -> UUID:
     return websocket.path[1:]
 
 
-async def run(
-    user,
-    password,
-    remote_websocket_server: str,
-    local_websocket_host: str,
-    local_websocket_port: int,
-):
-    server = WebsocketMetaProvider(remote_websocket_server)
-
-    async with anyio.create_task_group() as tg:
-        tried_once = False
-
-        async def on_exception(exc):
-            nonlocal tried_once
-            if user is not None and password is not None and not tried_once:
-                header = basic_authorization_header(user, password)
-                server.options["additional_headers"] = header
-                tried_once = True
-            else:
-                log.error(f"{exc}: {exc.response.body.decode()}")
-                tg.cancel_scope.cancel()
-
-        server.on_exception = on_exception
-
-        await tg.start(server.start)
-        async with websockets.serve(
-            server.serve, local_websocket_host, local_websocket_port
-        ):
-            await anyio.sleep_forever()
+async def main(server, host, port):
+    async with websockets.serve(
+        server.serve, host, port, process_request=missing_identifier
+    ):
+        async with anyio.create_task_group() as tg:
+            await tg.start(server.start)
 
 
 @click.command()
@@ -171,18 +187,34 @@ async def run(
 def cli(ctx: click.Context, host, port):
     """local meta provider"""
 
+    update_context_with_config(ctx)
+    c = ctx.obj
+
+    # checks
+    pr = urlparse(c["server"])
+    if pr.hostname == host and pr.port == port:
+        raise click.BadArgumentUsage(
+            f"remote server address '{c["server"]}' is identical to service address 'ws://{host}:{port}'"
+        )
+
+    # logging
     LOGGER_NAME.set(__name__)
     log_handler = logging.StreamHandler(sys.stdout)
     log_handler.setFormatter(DefaultFormatter())
     log.addHandler(log_handler)
     log.setLevel(logging.DEBUG)
 
-    c = ctx.obj
+    server = WebsocketMetaProvider(
+        c["user"],
+        c["password"],
+        c["server"],
+    )
 
     try:
-        anyio.run(run, c["user"], c["password"], c["server"], host, port)
+        anyio.run(main, server, host, port)
     except KeyboardInterrupt:
-        log.info("service stopped")
+        pass
+    log.info("service stopped")
 
 
 if __name__ == "__main__":

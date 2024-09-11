@@ -35,7 +35,7 @@ LANGUAGES = {
 
 class CredentialScreen(ModalScreen):
     def __init__(self, options, body=None, user=None):
-        super().__init__(id="credentialscreen")
+        super().__init__(classes="modalscreen", id="credentialscreen")
         self.options = options
         self.body = Static(RichText(body, justify="center"), id="body")
 
@@ -45,17 +45,43 @@ class CredentialScreen(ModalScreen):
         self.password = Input(placeholder="password", password=True, id="password")
 
     def compose(self):
-        with Grid(id="form"):
+        with Grid(classes="form"):
             yield self.body
             yield self.user
             yield self.password
-            yield Button("Confirm", id="confirm")
+            yield Button("Confirm", classes="confirm")
 
-    def on_button_pressed(self, event):
+    def update_and_return_credentials(self):
         credentials = (self.user.value, self.password.value)
         header = basic_authorization_header(*credentials)
         self.options["additional_headers"] = header
         self.dismiss(credentials)
+
+    def on_button_pressed(self, event):
+        self.update_and_return_credentials()
+
+    def key_enter(self):
+        self.update_and_return_credentials()
+
+
+class ErrorScreen(ModalScreen):
+    def __init__(self, exc):
+        super().__init__(classes="modalscreen", id="errorscreen")
+        self.exc = exc
+
+    def compose(self):
+        with Grid(classes="form"):
+            yield Static(
+                RichText(
+                    "The following error occured and the app will close now:",
+                    justify="center",
+                )
+            )
+            yield Static(RichText(str(self.exc), justify="center"))
+            yield Button("OK", classes="confirm")
+
+    def on_button_pressed(self, event):
+        self.dismiss()
 
 
 class YTextAreaParser(TextEventParser):
@@ -237,9 +263,8 @@ class UI(App):
                 case "elva":
                     Provider = ElvaWebsocketProvider
 
-            self.provider = Provider(
-                self.ydoc, identifier, server, on_exception=self.on_exception
-            )
+            self.provider = Provider(self.ydoc, identifier, server)
+            self.provider.on_exception = self.on_exception
             # save as attribute to be able to update the response `body`
             self.credential_screen = CredentialScreen(
                 self.provider.options, "", self.user
@@ -260,32 +285,54 @@ class UI(App):
     async def on_exception(self, exc):
         match type(exc):
             case wsexc.InvalidStatus:
-                if (
-                    self.user is not None
-                    and self.password is not None
-                    # we tried this branch already with these credentials
-                    and not self.tried_auto
-                    # these credentials have been supplied via CredentialScreen and are incorrect,
-                    # go directly to modal screen again
-                    and not self.tried_modal
-                ):
-                    header = basic_authorization_header(self.user, self.password)
-                    self.provider.options["additional_headers"] = header
-                    self.tried_auto = True
+                if exc.response.status_code == 401:
+                    if (
+                        self.user is not None
+                        and self.password is not None
+                        # we tried this branch already with these credentials
+                        and not self.tried_auto
+                        # these credentials have been supplied via CredentialScreen and are incorrect,
+                        # go directly to modal screen again
+                        and not self.tried_modal
+                    ):
+                        header = basic_authorization_header(self.user, self.password)
+                        self.provider.options["additional_headers"] = header
+                        self.tried_auto = True
+                    else:
+                        body = exc.response.body.decode()
+                        # update manually
+                        self.credential_screen.body.update(
+                            RichText(body, justify="center")
+                        )
+                        self.credential_screen.user.clear()
+                        self.credential_screen.user.insert_text_at_cursor(
+                            self.user or ""
+                        )
+                        # push via screen name
+                        await self.push_screen(
+                            "credential_screen",
+                            self.update_credentials,
+                            # wait for connection retry after screen has been closed
+                            wait_for_dismiss=True,
+                        )
+                        self.tried_modal = True
                 else:
-                    body = exc.response.body.decode()
-                    # update manually
-                    self.credential_screen.body.update(RichText(body, justify="center"))
-                    self.credential_screen.user.clear()
-                    self.credential_screen.user.insert_text_at_cursor(self.user or "")
-                    # push via screen name
                     await self.push_screen(
-                        "credential_screen",
-                        self.update_credentials,
-                        # wait for connection retry after screen has been closed
+                        ErrorScreen(exc),
+                        self.quit_on_error,
                         wait_for_dismiss=True,
                     )
-                    self.tried_modal = True
+                    raise exc
+            case wsexc.InvalidURI:
+                await self.push_screen(
+                    ErrorScreen(exc),
+                    self.quit_on_error,
+                    wait_for_dismiss=True,
+                )
+                raise exc
+
+    def quit_on_error(self, error):
+        self.exit()
 
     def update_credentials(self, credentials):
         self.user, self.password = credentials

@@ -6,7 +6,7 @@ from pathlib import Path
 import anyio
 import click
 
-from elva.auth import LDAPBasicAuth
+from elva.auth import DummyAuth, LDAPBasicAuth
 from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
 from elva.server import ElvaWebsocketServer, WebsocketServer
@@ -14,9 +14,11 @@ from elva.server import ElvaWebsocketServer, WebsocketServer
 log = logging.getLogger(__name__)
 
 
-async def main(message_type, host, port, persistent, path, ldap):
+async def main(message_type, host, port, persistent, path, ldap, dummy):
     if ldap is not None:
         process_request = LDAPBasicAuth(*ldap).authenticate
+    elif dummy:
+        process_request = DummyAuth("dummy").authenticate
     else:
         process_request = None
 
@@ -78,7 +80,12 @@ async def main(message_type, host, port, persistent, path, ldap):
     nargs=3,
     type=str,
 )
-def cli(ctx: click.Context, host, port, persistent, ldap):
+@click.option(
+    "--dummy",
+    help="Enable Dummy Basic Authentication. DO NOT USE IN PRODUCTION.",
+    is_flag=True,
+)
+def cli(ctx: click.Context, host, port, persistent, ldap, dummy):
     """
     Run a websocket server.
 
@@ -118,4 +125,4 @@ def cli(ctx: click.Context, host, port, persistent, ldap):
     log.addHandler(handler)
     log.setLevel(logging.DEBUG)
 
-    anyio.run(main, c["message_type"], host, port, persistent, path, ldap)
+    anyio.run(main, c["message_type"], host, port, persistent, path, ldap, dummy)

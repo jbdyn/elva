@@ -54,11 +54,15 @@ def update_context_with_file(ctx, file):
             update_none_only(c, key, value)
 
 
-def update_context_with_config(ctx, config):
-    if not config.exists():
+def update_context_with_config(ctx):
+    c = ctx.obj
+    config = c["config"]
+
+    if config is None:
         return
 
-    c = ctx.obj
+    if not config.exists():
+        return
 
     with open(config, "rb") as f:
         data = tomllib.load(f)
@@ -69,12 +73,14 @@ def update_context_with_config(ctx, config):
 
 def gather_context_information(ctx, file=None):
     c = ctx.obj
-    config = c["config"]
 
+    # file settings have highest priority
     if file is not None:
         update_context_with_file(ctx, file)
 
+    # generate an identifier if not present in the file or given via CLI
     update_none_only(c, "identifier", str(uuid.uuid4()))
 
-    if config is not None:
-        update_context_with_config(ctx, config)
+    # config has lowest priority and
+    # identifier in config is ambiguous
+    update_context_with_config(ctx)

@@ -69,10 +69,9 @@ class Connection(Component):
 
 
 class WebsocketConnection(Connection):
-    def __init__(self, uri, *args, on_exception=None, **kwargs):
+    def __init__(self, uri, *args, **kwargs):
         self.uri = uri
         self._websocket = None
-        self.on_exception = on_exception
 
         # construct a dictionary of args and kwargs
         sig = signature(connect)
@@ -115,11 +114,17 @@ class WebsocketConnection(Connection):
             # expect only errors occur due to malformed URI or HTTP status code
             # considered invalid
             except (InvalidStatus, InvalidURI) as exc:
-                self.log.info(exc)
-                if self.on_exception is not None:
-                    await self.on_exception(exc)
-                else:
-                    raise exc
+                try:
+                    options = await self.on_exception(exc)
+                    if options:
+                        self.options.update(options)
+                except Exception as exc:
+                    self.log.error(f"abort due to raised exception {exc}")
+                    break
+
+        # when reached this point, something clearly went wrong,
+        # so we need to stop the connection
+        await self.stop()
 
     async def cleanup(self):
         if self._websocket is not None:
@@ -128,12 +133,15 @@ class WebsocketConnection(Connection):
 
     async def on_connect(self): ...
 
+    async def on_exception(self, exc):
+        raise exc
+
 
 class WebsocketProvider(WebsocketConnection):
-    def __init__(self, ydoc, identifier, server, on_exception=None):
+    def __init__(self, ydoc, identifier, server):
         self.ydoc = ydoc
         uri = urljoin(server, identifier)
-        super().__init__(uri, on_exception=on_exception)
+        super().__init__(uri)
 
     async def run(self):
         self.ydoc.observe(self.callback)
@@ -189,11 +197,11 @@ class WebsocketProvider(WebsocketConnection):
 
 
 class ElvaWebsocketProvider(WebsocketConnection):
-    def __init__(self, ydoc, identifier, server, on_exception=None):
+    def __init__(self, ydoc, identifier, server):
         self.ydoc = ydoc
         self.identifier = identifier
         self.uuid, _ = ElvaMessage.ID.encode(self.identifier.encode())
-        super().__init__(server, on_exception=on_exception)
+        super().__init__(server)
 
     async def run(self):
         self.ydoc.observe(self.callback)

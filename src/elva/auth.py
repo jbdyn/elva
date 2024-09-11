@@ -87,6 +87,11 @@ class BasicAuth:
     def verify(self, username, password): ...
 
 
+class DummyAuth(BasicAuth):
+    def verify(self, username, password):
+        return username == password
+
+
 class LDAPBasicAuth(BasicAuth):
     def __init__(self, realm, server, base):
         super().__init__(realm)

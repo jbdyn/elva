@@ -1,3 +1,4 @@
+from http import HTTPStatus
 from pathlib import Path
 
 import anyio
@@ -7,6 +8,17 @@ from websockets import ConnectionClosed, broadcast, serve
 from elva.component import Component
 from elva.protocol import ElvaMessage, YMessage
 from elva.store import SQLiteStore
+
+
+class RequestProcesser:
+    def __init__(self, *funcs):
+        self.funcs = funcs
+
+    def process_request(self, path, request):
+        for func in self.funcs:
+            out = func(path, request)
+            if out is not None:
+                return out
 
 
 class Room(Component):
@@ -168,7 +180,13 @@ class WebsocketServer(Component):
         self.port = port
         self.persistent = persistent
         self.path = path
-        self.process_request = process_request
+
+        if process_request is None:
+            self.process_request = self.check_path
+        else:
+            self.process_request = RequestProcesser(
+                self.check_path, process_request
+            ).process_request
 
         self.rooms = dict()
 
@@ -183,19 +201,21 @@ class WebsocketServer(Component):
             self.log.info(f"server started on {self.host}:{self.port}")
 
             if self.persistent:
-                message_template = "persistence: storing content in {}"
+                message_template = "storing content in {}"
                 if self.path is None:
                     location = "volatile memory"
                 else:
                     location = self.path
                 self.log.info(message_template.format(location))
             else:
-                self.log.info(
-                    "persistence: broadcast only and no content will be stored"
-                )
+                self.log.info("broadcast only and no content will be stored")
 
             # keep the server active indefinitely
             await anyio.sleep_forever()
+
+    def check_path(self, path, request):
+        if path[1:] == "":
+            return HTTPStatus.FORBIDDEN, {}, b""
 
     async def get_room(self, identifier):
         try:
@@ -229,6 +249,10 @@ class WebsocketServer(Component):
 
 
 class ElvaWebsocketServer(WebsocketServer):
+    def check_path(self, path, request):
+        if path[1:] != "":
+            return HTTPStatus.FORBIDDEN, {}, b""
+
     async def get_room(self, identifier):
         try:
             room = self.rooms[identifier]

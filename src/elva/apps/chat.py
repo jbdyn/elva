@@ -12,10 +12,11 @@ from rich.markdown import Markdown as RichMarkdown
 from rich.text import Text as RichText
 from textual.app import App
 from textual.containers import VerticalScroll
+from textual.css.query import NoMatches
 from textual.widget import Widget
-from textual.widgets import Rule, Static, TabbedContent
+from textual.widgets import Rule, Static, TabbedContent, TabPane
 
-from elva.apps.editor import CredentialScreen, YTextArea, YTextAreaParser
+from elva.apps.editor import CredentialScreen, ErrorScreen, YTextArea, YTextAreaParser
 from elva.auth import basic_authorization_header
 from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
@@ -146,9 +147,12 @@ class FutureParser(MapEventParser):
         self.widget.mount(message_view)
 
     async def on_delete(self, key, old_value):
-        message = self.widget.query_one("#id" + key)
-        log.debug("deleting message view in future")
-        message.remove()
+        try:
+            message = self.widget.query_one("#id" + key)
+            log.debug("deleting message view in future")
+            message.remove()
+        except NoMatches:
+            pass
 
 
 class MessagePreview(Static):
@@ -168,11 +172,13 @@ def get_chat_provider(message_type):
             BaseProvider = ElvaWebsocketProvider
 
     class ChatProvider(BaseProvider):
-        def __init__(self, ydoc, identifier, server, on_exception, future, client_id):
-            super().__init__(ydoc, identifier, server, on_exception=on_exception)
+        def __init__(self, ydoc, identifier, server, future, client_id):
+            super().__init__(ydoc, identifier, server)
             self.future = future
             self.client_id = client_id
 
+        # TODO: hangs randomly, FutureParser maybe?
+        # causes "Transaction.__exit__ return exception set"
         async def cleanup(self):
             self.future.pop(self.client_id)
 
@@ -208,9 +214,11 @@ class UI(App):
 
         # widgets
         self.history_widget = History(self.history, id="history")
+        self.history_widget.can_focus = False
         self.future_widget = Future(
             self.future, user, self.client_id, show_self=show_self, id="future"
         )
+        self.future_widget.can_focus = False
         self.message_widget = YTextArea(self.message["text"], id="editor")
         self.message_widget.language = "markdown"
         self.markdown_widget = MessagePreview(self.message["text"])
@@ -238,10 +246,10 @@ class UI(App):
                 ydoc,
                 identifier,
                 server,
-                self.on_exception,
                 self.future,
                 self.client_id,
             )
+            self.provider.on_exception = self.on_exception
 
             self.credential_screen = CredentialScreen(
                 self.provider.options, "", self.user
@@ -275,31 +283,53 @@ class UI(App):
     async def on_exception(self, exc):
         match type(exc):
             case wsexc.InvalidStatus:
-                if (
-                    self.user is not None
-                    and self.password is not None
-                    and not self.tried_auto
-                    and not self.tried_modal
-                ):
-                    header = basic_authorization_header(self.user, self.password)
+                if exc.response.status_code == 401:
+                    if (
+                        self.user is not None
+                        and self.password is not None
+                        and not self.tried_auto
+                        and not self.tried_modal
+                    ):
+                        header = basic_authorization_header(self.user, self.password)
 
-                    self.provider.options["additional_headers"] = header
-                    self.tried_auto = True
+                        self.provider.options["additional_headers"] = header
+                        self.tried_auto = True
+                    else:
+                        body = exc.response.body.decode()
+                        self.credential_screen.body.update(
+                            RichText(body, justify="center")
+                        )
+                        self.credential_screen.user.clear()
+                        self.credential_screen.user.insert_text_at_cursor(
+                            self.user or ""
+                        )
+
+                        await self.push_screen(
+                            self.credential_screen,
+                            self.update_credentials,
+                            wait_for_dismiss=True,
+                        )
+                        self.tried_modal = True
                 else:
-                    body = exc.response.body.decode()
-                    self.credential_screen.body.update(RichText(body, justify="center"))
-                    self.credential_screen.user.clear()
-                    self.credential_screen.user.insert_text_at_cursor(self.user or "")
-
                     await self.push_screen(
-                        self.credential_screen,
-                        self.update_credentials,
+                        ErrorScreen(exc),
+                        self.quit_on_error,
                         wait_for_dismiss=True,
                     )
-                    self.tried_modal = True
+                    raise exc
+            case wsexc.InvalidURI:
+                await self.push_screen(
+                    ErrorScreen(exc),
+                    self.quit_on_error,
+                    wait_for_dismiss=True,
+                )
+                raise exc
 
     def update_credentials(self, credentials):
         self.user, self.password = credentials
+
+    async def quit_on_error(self, error):
+        self.exit()
 
     async def run_components(self):
         async with anyio.create_task_group() as self.tg:
@@ -308,6 +338,8 @@ class UI(App):
 
     async def on_mount(self):
         self.run_worker(self.run_components())
+        self.message_widget.focus()
+
         async with anyio.create_task_group() as tg:
             for comp in self.components:
                 tg.start_soon(comp.started.wait)
@@ -321,15 +353,12 @@ class UI(App):
         yield self.history_widget
         yield Rule()
         yield self.future_widget
-        with TabbedContent("Message", "Preview", id="tabview"):
-            yield self.message_widget
-            with VerticalScroll():
-                yield self.markdown_widget
-
-    async def on_key(self, event):
-        if event.is_printable or event.key in ["tab", "enter"]:
-            self.message_widget.post_message(event)
-            self.message_widget.focus()
+        with TabbedContent(id="tabview"):
+            with TabPane("Message", id="tab-message"):
+                yield self.message_widget
+            with TabPane("Preview", id="tab-preview"):
+                with VerticalScroll():
+                    yield self.markdown_widget
 
     async def action_send(self):
         text = str(self.message["text"])
@@ -339,6 +368,10 @@ class UI(App):
 
             self.message["text"].clear()
             self.message["id"] = self.get_new_id()
+
+    def on_tabbed_content_tab_activated(self, event):
+        if event.pane.id == "tab-message":
+            self.message_widget.focus()
 
 
 @click.command
