@@ -61,6 +61,19 @@ CONFIG_PATH = config_path or default_config_path
 #
 # cli input callbacks
 #
+def log_callback_order(ctx: click.Context, param: click.Parameter, value):
+    ctx.ensure_object(dict)
+    c = ctx.obj
+    name = param.name
+
+    try:
+        c["order"].append(name)
+    except KeyError:
+        c["order"] = [name]
+
+    return value
+
+
 def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
     if path is not None:
         path = path.resolve()
@@ -68,7 +81,8 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
             path.mkdir(parents=True, exist_ok=True)
         elif path.is_file():
             path.parent.mkdir(parents=True, exist_ok=True)
-    return path
+
+    return log_callback_order(ctx, param, path)
 
 
 ###
@@ -122,24 +136,28 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
     "-u",
     "user",
     help="username",
+    callback=log_callback_order,
 )
 @click.option(
     "--password",
     "-p",
     "password",
     help="password",
+    callback=log_callback_order,
 )
 @click.option(
     "--server",
     "-s",
     "server",
     help="URI of the syncing server",
+    callback=log_callback_order,
 )
 @click.option(
     "--identifier",
     "-i",
     "identifier",
     help="identifier for the document",
+    callback=log_callback_order,
 )
 @click.option(
     "--message-type",
@@ -151,6 +169,7 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
     default="yjs",
     show_default=True,
     type=click.Choice(["yjs", "elva"], case_sensitive=False),
+    callback=log_callback_order,
 )
 #
 # function definition
@@ -207,9 +226,7 @@ def context(ctx: click.Context, file: None | Path):
     gather_context_information(ctx, file)
 
     # sanitize password output
-    password = c["password"]
-    if password is not None:
-        del password
+    if c["password"] is not None:
         c["password"] = "[REDACTED]"
 
     # TODO: print config in TOML syntax, so that it can be piped directly
