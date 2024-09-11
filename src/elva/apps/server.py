@@ -14,7 +14,7 @@ from elva.server import ElvaWebsocketServer, WebsocketServer
 log = logging.getLogger(__name__)
 
 
-async def main(message_type, host, port, persistent, path, ldap, dummy):
+async def main(messages, host, port, persistent, path, ldap, dummy):
     if ldap is not None:
         process_request = LDAPBasicAuth(*ldap).authenticate
     elif dummy:
@@ -30,7 +30,7 @@ async def main(message_type, host, port, persistent, path, ldap, dummy):
         process_request=process_request,
     )
 
-    match message_type:
+    match messages:
         case "yjs":
             Server = WebsocketServer
         case "elva":
@@ -96,7 +96,7 @@ def cli(ctx: click.Context, host, port, persistent, ldap, dummy):
 
     Context:
 
-        [-m/--message-type]
+        [-m/--messages]
     """
     match persistent:
         # no flag given
@@ -125,4 +125,4 @@ def cli(ctx: click.Context, host, port, persistent, ldap, dummy):
     log.addHandler(handler)
     log.setLevel(logging.DEBUG)
 
-    anyio.run(main, c["message_type"], host, port, persistent, path, ldap, dummy)
+    anyio.run(main, c["messages"], host, port, persistent, path, ldap, dummy)

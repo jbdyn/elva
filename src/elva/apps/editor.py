@@ -222,7 +222,7 @@ class UI(App):
         render_path: None | Path = None,
         server: None | Path = None,
         identifier: None | Path = None,
-        message_type: str = "yjs",
+        messages: str = "yjs",
         user: str | None = None,
         password: str | None = None,
     ):
@@ -257,7 +257,7 @@ class UI(App):
             self.identifier = self.store.identifier
 
         if server is not None and identifier is not None:
-            match message_type:
+            match messages:
                 case "yjs":
                     Provider = WebsocketProvider
                 case "elva":
@@ -444,7 +444,7 @@ def cli(ctx: click.Context, render: bool, file: None | Path):
         c["render"],
         c["server"],
         c["identifier"],
-        c["message_type"],
+        c["messages"],
         c["user"],
         c["password"],
     )

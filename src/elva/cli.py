@@ -160,9 +160,9 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
     callback=log_callback_order,
 )
 @click.option(
-    "--message-type",
+    "--messages",
     "-m",
-    "message_type",
+    "messages",
     help="protocol used to connect to the syncing server",
     envvar="ELVA_MESSAGE_TYPE",
     show_envvar=True,
@@ -183,7 +183,7 @@ def elva(
     password: str,
     server: str | None,
     identifier: str | None,
-    message_type: str,
+    messages: str,
 ):
     """ELVA - A suite of real-time collaboration TUI apps."""
 
@@ -205,7 +205,7 @@ def elva(
     c["password"] = password
     c["identifier"] = identifier
     c["server"] = server
-    c["message_type"] = message_type.lower()
+    c["messages"] = messages.lower()
 
 
 ###

@@ -164,8 +164,8 @@ class MessagePreview(Static):
         self.update(RichMarkdown(emoji.emojize(str(self.ytext))))
 
 
-def get_chat_provider(message_type):
-    match message_type:
+def get_chat_provider(messages):
+    match messages:
         case "yjs":
             BaseProvider = WebsocketProvider
         case "elva":
@@ -196,7 +196,7 @@ class UI(App):
         password,
         server,
         identifier,
-        message_type,
+        messages,
         file_path,
         show_self=True,
     ):
@@ -241,7 +241,7 @@ class UI(App):
         ]
 
         if server is not None and identifier is not None:
-            Provider = get_chat_provider(message_type)
+            Provider = get_chat_provider(messages)
             self.provider = Provider(
                 ydoc,
                 identifier,
@@ -414,7 +414,7 @@ def cli(ctx, show_self: bool, file: None | Path):
         c["password"],
         c["server"],
         c["identifier"],
-        c["message_type"],
+        c["messages"],
         file,
         show_self,
     )
