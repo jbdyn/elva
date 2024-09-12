@@ -309,6 +309,7 @@ class UI(App):
                             self.update_credentials,
                             wait_for_dismiss=True,
                         )
+
                         self.tried_modal = True
                 else:
                     await self.push_screen(
@@ -327,8 +328,11 @@ class UI(App):
 
     def update_credentials(self, credentials):
         self.user, self.password = credentials
-        # TODO: update also user in future MessageView, test with false username -u "test"
-        self.message["author"] = self.user
+
+        # also update the already present MessageView of self
+        self.future_widget.query_one("#id" + self.client_id).author_field.update(
+            self.user
+        )
 
     async def quit_on_error(self, error):
         self.exit()
