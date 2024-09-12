@@ -63,7 +63,7 @@ class MessageList(VerticalScroll):
         self.messages = messages
 
     def mount_message_view(self, message, message_id=None):
-        author = message["author"]
+        author = f"{message["author_display"]} ({message["author"]})"
         text = message["text"]
         if message_id is None:
             message_id = "id" + message["id"]
@@ -71,9 +71,6 @@ class MessageList(VerticalScroll):
 
 
 class History(MessageList):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def compose(self):
         for message in self.messages:
             message_view = self.mount_message_view(message)
@@ -108,10 +105,9 @@ class HistoryParser(ArrayEventParser):
 
 
 class Future(MessageList):
-    def __init__(self, messages, user, client_id, show_self=False, **kwargs):
+    def __init__(self, messages, user, show_self=False, **kwargs):
         super().__init__(messages, **kwargs)
         self.user = user
-        self.client_id = client_id
         self.show_self = show_self
 
     def compose(self):
@@ -123,11 +119,10 @@ class Future(MessageList):
 
 
 class FutureParser(MapEventParser):
-    def __init__(self, future, widget, user, client_id, show_self):
+    def __init__(self, future, widget, user, show_self):
         self.future = future
         self.widget = widget
         self.user = user
-        self.client_id = client_id
         self.show_self = show_self
 
     def future_callback(self, event):
@@ -172,15 +167,15 @@ def get_chat_provider(messages):
             BaseProvider = ElvaWebsocketProvider
 
     class ChatProvider(BaseProvider):
-        def __init__(self, ydoc, identifier, server, future, client_id):
+        def __init__(self, ydoc, identifier, server, future, session_id):
             super().__init__(ydoc, identifier, server)
             self.future = future
-            self.client_id = client_id
+            self.session_id = session_id
 
         # TODO: hangs randomly, FutureParser maybe?
         # causes "Transaction.__exit__ return exception set"
         async def cleanup(self):
-            self.future.pop(self.client_id)
+            self.future.pop(self.session_id)
 
     return ChatProvider
 
@@ -193,6 +188,7 @@ class UI(App):
     def __init__(
         self,
         user,
+        name,
         password,
         server,
         identifier,
@@ -202,6 +198,7 @@ class UI(App):
     ):
         super().__init__()
         self.user = user
+        self.display_name = name
         self.password = password
 
         # structure
@@ -209,14 +206,14 @@ class UI(App):
         ydoc["history"] = self.history = Array()
         ydoc["future"] = self.future = Map()
         self.message, message_id = self.get_message("")
-        self.client_id = self.get_new_id()
-        self.future[self.client_id] = self.message
+        self.session_id = self.get_new_id()
+        self.future[self.session_id] = self.message
 
         # widgets
         self.history_widget = History(self.history, id="history")
         self.history_widget.can_focus = False
         self.future_widget = Future(
-            self.future, self.user, self.client_id, show_self=show_self, id="future"
+            self.future, self.user, show_self=show_self, id="future"
         )
         self.future_widget.can_focus = False
         self.message_widget = YTextArea(self.message["text"], id="editor")
@@ -229,7 +226,6 @@ class UI(App):
             self.future,
             self.future_widget,
             self.user,
-            self.client_id,
             show_self,
         )
         self.message_parser = YTextAreaParser(self.message["text"], self.message_widget)
@@ -247,7 +243,7 @@ class UI(App):
                 identifier,
                 server,
                 self.future,
-                self.client_id,
+                self.session_id,
             )
             self.provider.on_exception = self.on_exception
 
@@ -275,6 +271,8 @@ class UI(App):
         return Map(
             {
                 "text": Text(text),
+                "author_display": self.display_name or self.user,
+                # we assume that self.user is unique in the room, ensured by the server
                 "author": self.user,
                 "id": message_id,
             }
@@ -327,12 +325,13 @@ class UI(App):
                 raise exc
 
     def update_credentials(self, credentials):
+        old_user = self.user
         self.user, self.password = credentials
 
-        # also update the already present MessageView of self
-        self.future_widget.query_one("#id" + self.client_id).author_field.update(
-            self.user
-        )
+        if old_user != self.user:
+            self.future_widget.query_one("#id" + self.session_id).author_field.update(
+                f"{self.display_name or self.user} ({self.user})"
+            )
 
     async def quit_on_error(self, error):
         self.exit()
@@ -351,9 +350,11 @@ class UI(App):
                 tg.start_soon(comp.started.wait)
 
     async def on_unmount(self):
-        async with anyio.create_task_group() as tg:
-            for comp in self.components:
-                tg.start_soon(comp.stopped.wait)
+        async with anyio.create_task_group():
+            # TODO: take a closer look on the dependencies between components
+            #       and stop accordingly
+            for comp in reversed(self.components):
+                await comp.stopped.wait()
 
     def compose(self):
         yield self.history_widget
@@ -386,7 +387,7 @@ class UI(App):
     "--show-self",
     "-s",
     "show_self",
-    help="show your own writing as a future message",
+    help="Show your own writing in the preview.",
     is_flag=True,
     default=False,
     show_default=True,
@@ -397,7 +398,7 @@ class UI(App):
     type=click.Path(path_type=Path, dir_okay=False),
 )
 def cli(ctx, show_self: bool, file: None | Path):
-    """chat app"""
+    """Send messages with real-time preview."""
 
     gather_context_information(ctx, file, app="chat")
 
@@ -421,6 +422,7 @@ def cli(ctx, show_self: bool, file: None | Path):
     # init and run app
     app = UI(
         c["user"],
+        c["name"],
         c["password"],
         c["server"],
         c["identifier"],

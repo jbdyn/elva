@@ -40,8 +40,7 @@ class CredentialScreen(ModalScreen):
         self.body = Static(RichText(body, justify="center"), id="body")
 
         self.user = Input(placeholder="user", id="user")
-        if user is not None:
-            self.user.value = user
+        self.user.value = user or ""
         self.password = Input(placeholder="password", password=True, id="password")
 
     def compose(self):
@@ -55,6 +54,7 @@ class CredentialScreen(ModalScreen):
         credentials = (self.user.value, self.password.value)
         header = basic_authorization_header(*credentials)
         self.options["additional_headers"] = header
+        self.password.clear()
         self.dismiss(credentials)
 
     def on_button_pressed(self, event):
@@ -409,7 +409,7 @@ class UI(App):
     "-r",
     "render",
     is_flag=True,
-    help="Enable rendering the file",
+    help="Enable rendering of the data file.",
 )
 @click.argument(
     "file",
@@ -418,7 +418,7 @@ class UI(App):
 )
 @click.pass_context
 def cli(ctx: click.Context, render: bool, file: None | Path):
-    """collaborative text editor"""
+    """Edit text documents collaboratively in real-time."""
 
     c = ctx.obj
 

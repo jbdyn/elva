@@ -186,7 +186,7 @@ async def main(server, host, port):
 @click.argument("host", default="localhost")
 @click.argument("port", default=8000)
 def cli(ctx: click.Context, host, port):
-    """local meta provider"""
+    """Launch a relay to an ELVA websocket server."""
 
     gather_context_information(ctx, app="service")
 

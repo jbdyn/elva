@@ -43,9 +43,9 @@ LEVEL = [
 
 CONFIG_PATHS = list()
 
-default_config_path = Path(platformdirs.user_config_dir(APP_NAME)) / CONFIG_NAME
-if default_config_path.exists():
-    CONFIG_PATHS.append(default_config_path)
+USER_HOME_CONFIG = Path(platformdirs.user_config_dir(APP_NAME)) / CONFIG_NAME
+if USER_HOME_CONFIG.exists():
+    CONFIG_PATHS.append(USER_HOME_CONFIG)
 
 
 def find_config_path():
@@ -108,7 +108,7 @@ def resolve_log(ctx, param, log):
     "--config",
     "-c",
     "configs",
-    help="path to config file or directory",
+    help="Path to config file or directory. Can be specified multiple times.",
     envvar="ELVA_CONFIG_PATH",
     multiple=True,
     show_envvar=True,
@@ -122,7 +122,9 @@ def resolve_log(ctx, param, log):
     "--log",
     "-l",
     "log",
-    help="path to logging file",
+    help="Path to logging file.",
+    envvar="ELVA_LOG",
+    show_envvar=True,
     type=click.Path(path_type=Path, dir_okay=False),
     callback=resolve_log,
 )
@@ -131,7 +133,7 @@ def resolve_log(ctx, param, log):
     "--verbose",
     "-v",
     "verbose",
-    help="verbosity of logging output",
+    help="Verbosity of logging output.",
     count=True,
     type=click.IntRange(0, 5, clamp=True),
 )
@@ -139,34 +141,51 @@ def resolve_log(ctx, param, log):
 # connection information
 #
 @click.option(
+    "--name",
+    "-n",
+    "name",
+    help="User display username.",
+    envvar="ELVA_NAME",
+    show_envvar=True,
+)
+@click.option(
     "--user",
     "-u",
     "user",
-    help="username",
+    help="Username for authentication.",
+    envvar="ELVA_USER",
+    show_envvar=True,
 )
 @click.option(
     "--password",
     "-p",
     "password",
-    help="password",
+    help="Password for authentication",
+    # we don't support bad secret management,
+    # so the password is not settable via an envvar
 )
 @click.option(
     "--server",
     "-s",
     "server",
-    help="URI of the syncing server",
+    help="URI of the syncing server.",
+    envvar="ELVA_SERVER",
+    show_envvar=True,
 )
 @click.option(
     "--identifier",
     "-i",
     "identifier",
+    help="Unique identifier of the shared document.",
+    envvar="ELVA_IDENTIFIER",
+    show_envvar=True,
 )
 @click.option(
     "--messages",
     "-m",
     "messages",
-    help="protocol used to connect to the syncing server",
-    envvar="ELVA_MESSAGE_TYPE",
+    help="Protocol used to connect to the syncing server.",
+    envvar="ELVA_MESSAGES",
     show_envvar=True,
     type=click.Choice(["yjs", "elva"], case_sensitive=False),
 )
@@ -178,6 +197,7 @@ def elva(
     configs: Path,
     log: Path,
     verbose: int,
+    name: str,
     user: str,
     password: str,
     server: str | None,
@@ -200,6 +220,7 @@ def elva(
     c["level"] = LEVEL[verbose]
 
     # connection
+    c["name"] = name
     c["user"] = user
     c["password"] = password
     c["identifier"] = identifier

@@ -89,15 +89,6 @@ async def main(messages, host, port, persistent, path, ldap, dummy):
 def cli(ctx: click.Context, host, port, persistent, ldap, dummy):
     """
     Run a websocket server.
-
-    Arguments:
-
-        [HOST]  hostname or IP address of the server. [default: localhost]
-        [PORT]  port the server listens on. [default: 8000]
-
-    Context:
-
-        [-m/--messages]
     """
 
     gather_context_information(ctx, app="server")
