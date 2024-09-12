@@ -15,9 +15,7 @@ def update_none_only(d, key, value):
         d[key] = value
 
 
-def update_context_with_file(ctx, file):
-    c = ctx.obj
-
+def get_params_from_file(file):
     # resolve to absolute, direct path
     file = file.resolve()
 
@@ -40,47 +38,66 @@ def update_context_with_file(ctx, file):
 
     # update paths
     log = Path(str(render) + LOG_SUFFIX)
-    for key, value in [
-        ("file", file),
-        ("render", render),
-        ("log", log),
-    ]:
-        update_none_only(c, key, value)
+
+    params = dict(file=file, render=render, log=log)
 
     # update ctx with metadata
     if file.exists():
         metadata = SQLiteStore.get_metadata(file)
-        for key, value in metadata.items():
-            update_none_only(c, key, value)
+        params.update(metadata)
+
+    return params
 
 
-def update_context_with_config(ctx):
+def get_params_from_configs(configs):
+    params = dict()
+
+    # last listed config file has lowest priority
+    for config in reversed(configs):
+        if not config.exists():
+            continue
+
+        with open(config, "rb") as f:
+            data = tomllib.load(f)
+
+        params.update(data)
+
+    return params
+
+
+def gather_context_information(ctx, file=None, app=None):
     c = ctx.obj
-    config = c["config"]
 
-    if config is None:
-        return
+    params = dict()
 
-    if not config.exists():
-        return
+    # params defined in configs and data files
+    configs = c["configs"]
+    if configs is not None:
+        config_params = get_params_from_configs(configs)
 
-    with open(config, "rb") as f:
-        data = tomllib.load(f)
+        params.update(config_params)
 
-    for key, value in data.items():
-        update_none_only(c, key, value)
+    apps = ["default"]
+    if app is not None:
+        apps.append(app)
 
+    for app in apps:
+        try:
+            app_params = params["app"][app]
+            params.update(app_params)
+        except KeyError:
+            pass
 
-def gather_context_information(ctx, file=None):
-    c = ctx.obj
+    params.pop("app", None)
 
-    # file settings have highest priority
     if file is not None:
-        update_context_with_file(ctx, file)
+        file_params = get_params_from_file(file)
 
-    # generate an identifier if not present in the file or given via CLI
-    update_none_only(c, "identifier", str(uuid.uuid4()))
+        params.update(file_params)
 
-    # config has lowest priority and
-    # identifier in config is ambiguous
-    update_context_with_config(ctx)
+    if params.get("identifier") is None:
+        params["identifier"] = str(uuid.uuid4())
+
+    # merge with CLI
+    for k, v in params.items():
+        update_none_only(c, k, v)

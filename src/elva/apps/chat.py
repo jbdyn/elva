@@ -216,7 +216,7 @@ class UI(App):
         self.history_widget = History(self.history, id="history")
         self.history_widget.can_focus = False
         self.future_widget = Future(
-            self.future, user, self.client_id, show_self=show_self, id="future"
+            self.future, self.user, self.client_id, show_self=show_self, id="future"
         )
         self.future_widget.can_focus = False
         self.message_widget = YTextArea(self.message["text"], id="editor")
@@ -228,7 +228,7 @@ class UI(App):
         self.future_parser = FutureParser(
             self.future,
             self.future_widget,
-            user,
+            self.user,
             self.client_id,
             show_self,
         )
@@ -327,6 +327,8 @@ class UI(App):
 
     def update_credentials(self, credentials):
         self.user, self.password = credentials
+        # TODO: update also user in future MessageView, test with false username -u "test"
+        self.message["author"] = self.user
 
     async def quit_on_error(self, error):
         self.exit()
@@ -393,7 +395,7 @@ class UI(App):
 def cli(ctx, show_self: bool, file: None | Path):
     """chat app"""
 
-    gather_context_information(ctx, file)
+    gather_context_information(ctx, file, app="chat")
 
     c = ctx.obj
 
@@ -408,6 +410,10 @@ def cli(ctx, show_self: bool, file: None | Path):
         log.addHandler(handler)
         log.setLevel(level)
 
+    for name, param in [("file", file), ("show_self", show_self)]:
+        if c.get(name) is None:
+            c[name] = param
+
     # init and run app
     app = UI(
         c["user"],
@@ -415,8 +421,8 @@ def cli(ctx, show_self: bool, file: None | Path):
         c["server"],
         c["identifier"],
         c["messages"],
-        file,
-        show_self,
+        c["file"],
+        c["show_self"],
     )
     app.run()
 

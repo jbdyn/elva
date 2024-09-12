@@ -423,7 +423,7 @@ def cli(ctx: click.Context, render: bool, file: None | Path):
     c = ctx.obj
 
     # gather info
-    gather_context_information(ctx, file)
+    gather_context_information(ctx, file, app="editor")
 
     if not render:
         c["render"] = None

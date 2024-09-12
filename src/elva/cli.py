@@ -4,6 +4,7 @@ from pathlib import Path
 
 import click
 import platformdirs
+from click.core import ParameterSource
 from rich import print
 
 from elva.utils import gather_context_information
@@ -39,6 +40,14 @@ LEVEL = [
 #
 # paths
 #
+
+CONFIG_PATHS = list()
+
+default_config_path = Path(platformdirs.user_config_dir(APP_NAME)) / CONFIG_NAME
+if default_config_path.exists():
+    CONFIG_PATHS.append(default_config_path)
+
+
 def find_config_path():
     cwd = Path.cwd()
     for path in [cwd] + list(cwd.parents):
@@ -48,41 +57,37 @@ def find_config_path():
 
 
 config_path = find_config_path()
-if config_path is not None:
-    project_path = config_path.parent
-else:
-    project_path = None
 
-default_config_path = Path(platformdirs.user_config_dir(APP_NAME)) / CONFIG_NAME
-CONFIG_PATH = config_path or default_config_path
+if config_path is not None:
+    CONFIG_PATHS.insert(0, config_path)
+    PROJECT_PATH = config_path.parent
+else:
+    PROJECT_PATH = None
 
 
 ###
 #
 # cli input callbacks
 #
-def log_callback_order(ctx: click.Context, param: click.Parameter, value):
-    ctx.ensure_object(dict)
-    c = ctx.obj
-    name = param.name
-
-    try:
-        c["order"].append(name)
-    except KeyError:
-        c["order"] = [name]
-
-    return value
 
 
-def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
-    if path is not None:
-        path = path.resolve()
-        if path.is_dir():
-            path.mkdir(parents=True, exist_ok=True)
-        elif path.is_file():
-            path.parent.mkdir(parents=True, exist_ok=True)
+def resolve_configs(
+    ctx: click.Context, param: click.Parameter, paths: None | tuple[Path]
+):
+    if paths is not None:
+        paths = [path.resolve() for path in paths]
+        param_source = ctx.get_parameter_source(param.name)
+        if not param_source == ParameterSource.DEFAULT:
+            paths.extend(CONFIG_PATHS)
 
-    return log_callback_order(ctx, param, path)
+    return paths
+
+
+def resolve_log(ctx, param, log):
+    if log is not None:
+        log = log.resolve()
+
+    return log
 
 
 ###
@@ -102,14 +107,16 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
 @click.option(
     "--config",
     "-c",
-    "config",
+    "configs",
     help="path to config file or directory",
     envvar="ELVA_CONFIG_PATH",
+    multiple=True,
     show_envvar=True,
-    default=CONFIG_PATH,
+    # a list, as multiple=True
+    default=CONFIG_PATHS,
     show_default=True,
     type=click.Path(path_type=Path),
-    callback=ensure_dir,
+    callback=resolve_configs,
 )
 @click.option(
     "--log",
@@ -117,7 +124,7 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
     "log",
     help="path to logging file",
     type=click.Path(path_type=Path, dir_okay=False),
-    callback=ensure_dir,
+    callback=resolve_log,
 )
 # logging
 @click.option(
@@ -136,28 +143,23 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
     "-u",
     "user",
     help="username",
-    callback=log_callback_order,
 )
 @click.option(
     "--password",
     "-p",
     "password",
     help="password",
-    callback=log_callback_order,
 )
 @click.option(
     "--server",
     "-s",
     "server",
     help="URI of the syncing server",
-    callback=log_callback_order,
 )
 @click.option(
     "--identifier",
     "-i",
     "identifier",
-    help="identifier for the document",
-    callback=log_callback_order,
 )
 @click.option(
     "--messages",
@@ -166,17 +168,14 @@ def ensure_dir(ctx: click.Context, param: click.Parameter, path: None | Path):
     help="protocol used to connect to the syncing server",
     envvar="ELVA_MESSAGE_TYPE",
     show_envvar=True,
-    default="yjs",
-    show_default=True,
     type=click.Choice(["yjs", "elva"], case_sensitive=False),
-    callback=log_callback_order,
 )
 #
 # function definition
 #
 def elva(
     ctx: click.Context,
-    config: Path,
+    configs: Path,
     log: Path,
     verbose: int,
     user: str,
@@ -191,8 +190,8 @@ def elva(
     c = ctx.obj
 
     # paths
-    c["project"] = project_path
-    c["config"] = config
+    c["project"] = PROJECT_PATH
+    c["configs"] = configs
     c["file"] = None
     c["render"] = None
     c["log"] = log
@@ -205,7 +204,7 @@ def elva(
     c["password"] = password
     c["identifier"] = identifier
     c["server"] = server
-    c["messages"] = messages.lower()
+    c["messages"] = messages
 
 
 ###
@@ -214,16 +213,25 @@ def elva(
 #
 @elva.command
 @click.pass_context
-@click.argument(
+@click.option(
+    "--file",
+    "-f",
     "file",
-    required=False,
+    help="Include the parameters defined in FILE.",
     type=click.Path(path_type=Path, dir_okay=False),
 )
-def context(ctx: click.Context, file: None | Path):
-    """print the context passed to subcommands"""
+@click.option(
+    "--app",
+    "-a",
+    "app",
+    metavar="APP",
+    help="Include the parameters defined in the app.APP config file section.",
+)
+def context(ctx: click.Context, file: None | Path, app: None | str):
+    """Print the parameters passed to apps and other subcommands."""
     c = ctx.obj
 
-    gather_context_information(ctx, file)
+    gather_context_information(ctx, file, app)
 
     # sanitize password output
     if c["password"] is not None:

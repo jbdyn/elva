@@ -10,6 +10,7 @@ from elva.auth import DummyAuth, LDAPBasicAuth
 from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
 from elva.server import ElvaWebsocketServer, WebsocketServer
+from elva.utils import gather_context_information
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +99,9 @@ def cli(ctx: click.Context, host, port, persistent, ldap, dummy):
 
         [-m/--messages]
     """
+
+    gather_context_information(ctx, app="server")
+
     match persistent:
         # no flag given
         case None:
@@ -125,4 +129,24 @@ def cli(ctx: click.Context, host, port, persistent, ldap, dummy):
     log.addHandler(handler)
     log.setLevel(logging.DEBUG)
 
-    anyio.run(main, c["messages"], host, port, persistent, path, ldap, dummy)
+    for name, param in [
+        ("host", host),
+        ("port", port),
+        ("persistent", persistent),
+        ("path", path),
+        ("ldap", ldap),
+        ("dummy", dummy),
+    ]:
+        if c.get(name) is None:
+            c[name] = param
+
+    anyio.run(
+        main,
+        c["messages"],
+        c["host"],
+        c["port"],
+        c["persistent"],
+        c["path"],
+        c["ldap"],
+        c["dummy"],
+    )

@@ -15,7 +15,7 @@ from elva.component import LOGGER_NAME
 from elva.log import DefaultFormatter
 from elva.protocol import ElvaMessage
 from elva.provider import WebsocketConnection
-from elva.utils import update_context_with_config
+from elva.utils import gather_context_information
 
 #
 UUID = str
@@ -176,6 +176,7 @@ async def main(server, host, port):
     async with websockets.serve(
         server.serve, host, port, process_request=missing_identifier
     ):
+        log.info(f"serving on {host}:{port}")
         async with anyio.create_task_group() as tg:
             await tg.start(server.start)
 
@@ -187,7 +188,8 @@ async def main(server, host, port):
 def cli(ctx: click.Context, host, port):
     """local meta provider"""
 
-    update_context_with_config(ctx)
+    gather_context_information(ctx, app="service")
+
     c = ctx.obj
 
     # checks
@@ -210,8 +212,12 @@ def cli(ctx: click.Context, host, port):
         c["server"],
     )
 
+    for name, param in [("host", host), ("port", port)]:
+        if c.get(name) is None:
+            c[name] = param
+
     try:
-        anyio.run(main, server, host, port)
+        anyio.run(main, server, c["host"], c["port"])
     except KeyboardInterrupt:
         pass
     log.info("service stopped")
