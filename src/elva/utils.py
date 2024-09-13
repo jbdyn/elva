@@ -95,8 +95,13 @@ def gather_context_information(ctx, file=None, app=None):
 
         params.update(file_params)
 
-    if params.get("identifier") is None:
-        params["identifier"] = str(uuid.uuid4())
+    # defaults
+    for key, default in [
+        ("identifier", str(uuid.uuid4())),
+        ("messages", "yjs"),
+    ]:
+        if params.get(key) is None:
+            params[key] = default
 
     # merge with CLI
     for k, v in params.items():

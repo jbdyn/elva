@@ -160,7 +160,7 @@ class MessagePreview(Static):
 
 def get_chat_provider(messages):
     match messages:
-        case "yjs":
+        case "yjs" | None:
             BaseProvider = WebsocketProvider
         case "elva":
             BaseProvider = ElvaWebsocketProvider

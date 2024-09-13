@@ -257,7 +257,7 @@ class UI(App):
 
         if server is not None and identifier is not None:
             match messages:
-                case "yjs":
+                case "yjs" | None:
                     Provider = WebsocketProvider
                 case "elva":
                     Provider = ElvaWebsocketProvider

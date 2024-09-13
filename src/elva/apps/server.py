@@ -31,7 +31,7 @@ async def main(messages, host, port, persistent, path, ldap, dummy):
     )
 
     match messages:
-        case "yjs":
+        case "yjs" | None:
             Server = WebsocketServer
         case "elva":
             Server = ElvaWebsocketServer
