@@ -196,10 +196,8 @@ class WebsocketServer(Component):
             self.host,
             self.port,
             process_request=self.process_request,
+            logger=self.log,
         ):
-            # startup info
-            self.log.info(f"server started on {self.host}:{self.port}")
-
             if self.persistent:
                 message_template = "storing content in {}"
                 if self.path is None:

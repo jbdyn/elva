@@ -11,8 +11,7 @@ import websockets.exceptions as wsexc
 from pycrdt_websocket.websocket import Websocket
 
 from elva.auth import basic_authorization_header
-from elva.component import LOGGER_NAME
-from elva.log import DefaultFormatter
+from elva.log import LOGGER_NAME, DefaultFormatter
 from elva.protocol import ElvaMessage
 from elva.provider import WebsocketConnection
 from elva.utils import gather_context_information
@@ -174,9 +173,12 @@ def get_uuid_from_local_websocket(websocket: Websocket) -> UUID:
 
 async def main(server, host, port):
     async with websockets.serve(
-        server.serve, host, port, process_request=missing_identifier
+        server.serve,
+        host,
+        port,
+        process_request=missing_identifier,
+        logger=log,
     ):
-        log.info(f"serving on {host}:{port}")
         async with anyio.create_task_group() as tg:
             await tg.start(server.start)
 
@@ -201,10 +203,17 @@ def cli(ctx: click.Context, host, port):
 
     # logging
     LOGGER_NAME.set(__name__)
-    log_handler = logging.StreamHandler(sys.stdout)
+    if c["log"] is not None:
+        log_handler = logging.FileHandler(c["log"])
+    else:
+        log_handler = logging.StreamHandler(sys.stdout)
     log_handler.setFormatter(DefaultFormatter())
     log.addHandler(log_handler)
-    log.setLevel(logging.DEBUG)
+    if c["level"] is None:
+        level = logging.INFO
+    else:
+        level = min(logging.INFO, c["level"])
+    log.setLevel(level)
 
     server = WebsocketMetaProvider(
         c["user"],

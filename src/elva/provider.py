@@ -77,6 +77,7 @@ class WebsocketConnection(Connection):
         sig = signature(connect)
         self._arguments = sig.bind(uri, *args, **kwargs)
         self.options = self._arguments.arguments
+        self.options["logger"] = self.log
 
     async def run(self):
         # catch exceptions due to HTTP status codes other than 101, 3xx, 5xx

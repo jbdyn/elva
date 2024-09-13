@@ -1,6 +1,5 @@
 import logging
 from contextlib import AsyncExitStack
-from contextvars import ContextVar
 
 from anyio import (
     TASK_STATUS_IGNORED,
@@ -13,7 +12,7 @@ from anyio import (
 )
 from anyio.abc import TaskGroup
 
-LOGGER_NAME = ContextVar("logger_name")
+from elva.log import LOGGER_NAME
 
 
 class Component:

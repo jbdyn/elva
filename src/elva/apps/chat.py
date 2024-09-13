@@ -18,8 +18,7 @@ from textual.widgets import Rule, Static, TabbedContent, TabPane
 
 from elva.apps.editor import CredentialScreen, ErrorScreen, YTextArea, YTextAreaParser
 from elva.auth import basic_authorization_header
-from elva.component import LOGGER_NAME
-from elva.log import DefaultFormatter
+from elva.log import LOGGER_NAME, DefaultFormatter
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 from elva.store import SQLiteStore

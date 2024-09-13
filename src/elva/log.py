@@ -3,6 +3,7 @@ import logging.handlers
 import pickle
 import socket
 import time
+from contextvars import ContextVar
 from logging.handlers import SocketHandler
 from threading import Thread
 from time import sleep
@@ -11,6 +12,8 @@ from pythonjsonlogger.jsonlogger import JsonFormatter as BaseJsonFormatter
 from websockets.client import ClientProtocol
 from websockets.sync.client import connect
 from websockets.uri import parse_uri
+
+LOGGER_NAME = ContextVar("logger_name")
 
 
 ###

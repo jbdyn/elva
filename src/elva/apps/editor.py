@@ -13,8 +13,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static, TextArea
 
 from elva.auth import basic_authorization_header
-from elva.component import LOGGER_NAME
-from elva.log import DefaultFormatter
+from elva.log import LOGGER_NAME, DefaultFormatter
 from elva.parser import TextEventParser
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 from elva.renderer import TextRenderer

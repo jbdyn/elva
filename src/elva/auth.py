@@ -5,7 +5,7 @@ from http import HTTPStatus
 import ldap3
 from ldap3.core.exceptions import LDAPException
 
-from elva.component import LOGGER_NAME
+from elva.log import LOGGER_NAME
 
 AUTH_SCHEME = [
     "Basic",
@@ -102,6 +102,7 @@ class LDAPBasicAuth(BasicAuth):
     def verify(self, username, password):
         user = f"uid={username},{self.base}"
         try:
+            self.log.debug("try LDAP connection")
             with ldap3.Connection(
                 self.server,
                 user=user,

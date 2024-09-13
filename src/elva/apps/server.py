@@ -7,8 +7,7 @@ import anyio
 import click
 
 from elva.auth import DummyAuth, LDAPBasicAuth
-from elva.component import LOGGER_NAME
-from elva.log import DefaultFormatter
+from elva.log import LOGGER_NAME, DefaultFormatter
 from elva.server import ElvaWebsocketServer, WebsocketServer
 from elva.utils import gather_context_information
 
@@ -115,10 +114,17 @@ def cli(ctx: click.Context, host, port, persistent, ldap, dummy):
 
     # logging
     LOGGER_NAME.set(__name__)
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(DefaultFormatter())
-    log.addHandler(handler)
-    log.setLevel(logging.DEBUG)
+    if c["log"] is not None:
+        log_handler = logging.FileHandler(c["log"])
+    else:
+        log_handler = logging.StreamHandler(sys.stdout)
+    log_handler.setFormatter(DefaultFormatter())
+    log.addHandler(log_handler)
+    if c["level"] is None:
+        level = logging.INFO
+    else:
+        level = min(logging.INFO, c["level"])
+    log.setLevel(level)
 
     for name, param in [
         ("host", host),
