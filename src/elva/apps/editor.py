@@ -13,6 +13,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static, TextArea
 
 from elva.auth import basic_authorization_header
+from elva.document import YTextArea
 from elva.log import LOGGER_NAME, DefaultFormatter
 from elva.parser import TextEventParser
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
@@ -131,85 +132,6 @@ class YTextAreaParser(TextEventParser):
         self.btext = btext_start + btext_rest
 
 
-class YTextArea(TextArea):
-    def __init__(self, ytext, **kwargs):
-        super().__init__(**kwargs)
-        self.ytext = ytext
-
-    def get_utf8_index(self, unicode_index):
-        return len(self.text[:unicode_index].encode())
-
-    @property
-    def slice(self):
-        return self.get_slice_from_selection(self.selection)
-
-    def get_slice_from_selection(self, selection):
-        start, end = selection
-        unicode_slice = sorted(
-            [self.document.get_index_from_location(loc) for loc in (start, end)]
-        )
-        return tuple(
-            self.get_utf8_index(unicode_index) for unicode_index in unicode_slice
-        )
-
-    def on_mount(self):
-        self.load_text(str(self.ytext))
-
-    async def on_key(self, event) -> None:
-        """Handle key presses which correspond to document inserts."""
-        log.debug(f"got event {event}")
-        key = event.key
-        insert_values = {
-            # "tab": " " * self._find_columns_to_next_tab_stop(),
-            "tab": "\t",
-            "enter": "\n",
-        }
-        self._restart_blink()
-        if event.is_printable or key in insert_values:
-            event.stop()
-            event.prevent_default()
-            insert = insert_values.get(key, event.character)
-
-            start, end = self.selection
-            istart, iend = self.slice
-            self.ytext[istart:iend] = insert
-
-    async def on_paste(self, event):
-        # do not also call `on_paste` on the parent class,
-        # which would trigger another paste
-        # directly into the TextArea document (and thus again into the YText)
-        event.prevent_default()
-
-        istart, iend = self.slice
-        self.ytext[istart:iend] = event.text
-
-    async def action_delete_left(self):
-        selection = self.selection
-        start, end = selection
-
-        if selection.is_empty:
-            start = self.get_cursor_left_location()
-
-        istart, iend = self.get_slice_from_selection((start, end))
-        del self.ytext[istart:iend]
-
-    async def action_delete_right(self):
-        selection = self.selection
-        start, end = selection
-
-        if selection.is_empty:
-            end = self.get_cursor_right_location()
-
-        istart, iend = self.get_slice_from_selection((start, end))
-        del self.ytext[istart:iend]
-
-    # delete_word_left
-    # delete_word_right
-    # delete_line
-    # delete_to_start_of_line
-    # delete_to_end_of_line
-
-
 class UI(App):
     CSS_PATH = "editor.tcss"
 
@@ -245,9 +167,7 @@ class UI(App):
         # components
         self.parser = YTextAreaParser(self.ytext, self.ytext_area)
 
-        self.components = [
-            self.parser,
-        ]
+        self.components = []
 
         if file_path is not None:
             self.store = SQLiteStore(self.ydoc, identifier, file_path)
