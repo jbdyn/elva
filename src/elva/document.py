@@ -258,7 +258,7 @@ class YDocument(DocumentBase):
 
     def on_delete(self, range_offset, range_length):
         bstart = range_offset
-        bend = range_offset + range_length
+        bend = range_offset + range_length - 1
 
         start, end = [
             self.get_location_from_binary_index(index) for index in (bstart, bend)
@@ -319,7 +319,7 @@ class YTextArea(TextArea):
         self.document.replace_range(location, location, text)
 
     def clear(self, /):
-        self.delete((0, 0), self.document.end)
+        self.delete(self.document.start, self.document.end)
 
     def render_line(self, y):
         # update the cache of wrapped lines
@@ -349,63 +349,83 @@ class YEdit(Edit):
         if record_selection:
             self._original_selection = text_area.selection
 
-        # OBSOLETE; not needed
-        # text = self.text
-
         # This code is mostly handling how we adjust TextArea.selection
         # when an edit is made to the document programmatically.
         # We want a user who is typing away to maintain their relative
         # position in the document even if an insert happens before
         # their cursor position.
-
-        edit_bottom_row, edit_bottom_column = self.bottom
-
-        selection_start, selection_end = text_area.selection
-        selection_start_row, selection_start_column = selection_start
-        selection_end_row, selection_end_column = selection_end
-
-        # OBSOLETE; already present
-        # edit_result = text_area.document.replace_range(self.top, self.bottom, text)
         edit_result = self._edit_result
 
-        new_edit_to_row, new_edit_to_column = edit_result.end_location
+        def get_index(location):
+            return text_area.document.get_index_from_location(location)
 
-        column_offset = new_edit_to_column - edit_bottom_column
-        target_selection_start_column = (
-            selection_start_column + column_offset
-            if edit_bottom_row == selection_start_row
-            and edit_bottom_column <= selection_start_column
-            else selection_start_column
-        )
-        target_selection_end_column = (
-            selection_end_column + column_offset
-            if edit_bottom_row == selection_end_row
-            and edit_bottom_column <= selection_end_column
-            else selection_end_column
-        )
+        def get_location(index):
+            return text_area.document.get_location_from_index(index)
 
-        row_offset = new_edit_to_row - edit_bottom_row
-        target_selection_start_row = (
-            selection_start_row + row_offset
-            if edit_bottom_row <= selection_start_row
-            else selection_start_row
-        )
-        target_selection_end_row = (
-            selection_end_row + row_offset
-            if edit_bottom_row <= selection_end_row
-            else selection_end_row
-        )
+        # locations
+        top = self.top
+        bot = self.bottom
+        start, end = text_area.selection
+        end_location = edit_result.end_location
 
-        if self.maintain_selection_offset:
-            self._updated_selection = Selection(
-                start=(target_selection_start_row, target_selection_start_column),
-                end=(target_selection_end_row, target_selection_end_column),
-            )
+        # - top, bottom, i.e. from_ and to_location
+        # - text_area.selection, i.e. cursor
+        # - end_location
+
+        itop = get_index(top)
+        ibot = get_index(bot)
+
+        def update_location(loc):
+            iloc = get_index(loc)
+
+            # location before top
+            loc_top = iloc < itop
+
+            # location between top and bottom
+            top_loc_bot = itop <= iloc and iloc <= ibot
+
+            if loc_top:
+                pass
+            elif top_loc_bot:
+                loc = end_location
+            else:
+                # location after bottom
+                row_off = end_location[0] - bot[0]
+
+                if loc[0] == bot[0]:
+                    col_off = bot[1] - loc[1]
+                else:
+                    col_off = 0
+                loc = (loc[0] + row_off, loc[1] + col_off)
+
+            return loc
+
+        if start > text_area.document.end:
+            # current selection is outside of document content
+            start = text_area.document.end
+            end = start
         else:
-            self._updated_selection = Selection.cursor(edit_result.end_location)
+            # calculate new start and end locations
+            istart = get_index(start)
+            iend = get_index(end)
+            ilen = iend - istart
 
-        # OBSOLETE; already set
-        # self._edit_result = edit_result
+            new_start = update_location(start)
+            iend = get_index(new_start) + ilen
+            end = get_location(iend)
+
+            # only update when start has not moved
+            # else it already has been updated
+            if new_start == start:
+                end = update_location(end)
+
+            start = new_start
+
+        self._updated_selection = Selection(
+            start=start,
+            end=end,
+        )
+
         return edit_result
 
     def undo(self, text_area: TextArea) -> EditResult:
