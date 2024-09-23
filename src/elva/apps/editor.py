@@ -165,8 +165,6 @@ class UI(App):
         )
 
         # components
-        self.parser = YTextAreaParser(self.ytext, self.ytext_area)
-
         self.components = []
 
         if file_path is not None:

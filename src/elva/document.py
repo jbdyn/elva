@@ -26,6 +26,91 @@ handler = logging.StreamHandler(sys.stdout)
 log.addHandler(handler)
 log.setLevel(logging.DEBUG)
 
+BVALID_NEWLINES = [newline.encode() for newline in VALID_NEWLINES]
+
+
+def get_lines(text, keepends=False):
+    lines = text.splitlines(keepends=keepends)
+    if not lines or text.endswith(tuple(VALID_NEWLINES)):
+        lines.append("")
+    return lines
+
+
+def get_index_from_binary_index(btext, bindex):
+    return len(btext[:bindex].decode())
+
+
+def get_binary_index_from_index(text, index):
+    return len(text[:index].encode())
+
+
+def get_location_from_index(text, index):
+    text = text[: index + 1]
+    lines = text.splitlines(keepends=True)
+    if not lines or (text.endswith(tuple(VALID_NEWLINES)) and index >= len(text)):
+        lines.append("")
+
+    row = len(lines) - 1
+
+    last_line = lines[-1]
+    if last_line.endswith(tuple(VALID_NEWLINES)):
+        last_line = last_line.rstrip("".join(VALID_NEWLINES))
+        last_line += " "
+    if not last_line or index >= len("".join(lines)):
+        last_line += " "
+
+    col = len(last_line) - 1
+
+    return row, col
+
+
+def get_location_from_binary_index(btext, bindex):
+    text = btext.decode()
+    return get_location_from_index(text, get_index_from_binary_index(btext, bindex))
+
+
+def get_index_from_location(text, location):
+    row, col = location
+
+    # be ignorant about the type of newline characters
+    lines = get_lines(text, keepends=True)
+
+    # include given row and col indices
+    lines = lines[: row + 1]
+    last_line = lines[-1]
+    if last_line.endswith(tuple(VALID_NEWLINES)):
+        last_line = last_line.rstrip("".join(VALID_NEWLINES))
+        last_line += " "
+
+    if not last_line or col >= len(last_line):
+        last_line += " "
+    lines[-1] = last_line[: col + 1]
+    index = len("".join(lines)) - 1
+
+    return index
+
+
+def get_binary_index_from_location(btext, location):
+    text = btext.decode()
+    index = get_index_from_location(text, location)
+    return get_binary_index_from_index(text, index)
+
+
+def get_text_range(text, start, end):
+    start, end = sorted((start, end))
+    istart, iend = [get_index_from_location(text, loc) for loc in (start, end)]
+
+    return text[istart:iend]
+
+
+def get_binary_text_range(btext, start, end):
+    start, end = sorted((start, end))
+    bistart, biend = [
+        get_binary_index_from_location(btext, loc) for loc in (start, end)
+    ]
+
+    return btext[bistart:biend]
+
 
 class YDocument(DocumentBase):
     def __init__(self, ytext: Text):
@@ -52,19 +137,9 @@ class YDocument(DocumentBase):
     def newline(self):
         return self._newline
 
-    @staticmethod
-    def _get_lines(text):
-        if text:
-            lines = text.splitlines(keepends=False)
-            if text.endswith(tuple(VALID_NEWLINES)):
-                lines.append("")
-            return lines
-        else:
-            return [""]
-
     @property
     def lines(self):
-        return self._get_lines(self.text)
+        return get_lines(self.text)
 
     def get_line(self, index):
         return self.lines[index]
@@ -79,78 +154,29 @@ class YDocument(DocumentBase):
     ##
     # index conversion
     #
-    def get_binary_index_from_string_index(self, index):
-        return len(self.text[:index].encode())
+    def get_binary_index_from_index(self, index):
+        return get_binary_index_from_index(self.btext, index)
 
     def get_index_from_location(self, location):
-        """Convert from UI location into UTF-8 indeces."""
-
-        # we assume that UI location is equivalent to Python string indexing
-        #
-        # this does not hold anymore on custom UI indexing, e.g. when
-        # implementing grapheme clusters, rich text blocks like images or
-        # other block formatting indeces
-
-        row, col = location
-
-        # select all lines until row, including last one
-        lines = self.lines[: row + 1]
-
-        # trim last line to col, excluding last one
-        lines[-1] = lines[-1][:col]
-
-        return len(self.newline.join(lines))
+        return get_index_from_location(self.text, location)
 
     def get_binary_index_from_location(self, location):
-        return self.get_binary_index_from_string_index(
-            self.get_index_from_location(location)
-        )
+        return get_binary_index_from_location(self.btext, location)
 
     def get_index_from_binary_index(self, index):
-        return len(self.btext[:index].decode())
+        return get_index_from_binary_index(self.btext, index)
 
     def get_location_from_index(self, index):
-        column_index = 0
-        newline_length = len(self.newline)
-        for line_index in range(self.line_count):
-            next_column_index = (
-                column_index + len(self.get_line(line_index)) + newline_length
-            )
-            if index < next_column_index:
-                return (line_index, index - column_index)
-            elif index == next_column_index:
-                return (line_index + 1, 0)
-            column_index = next_column_index
+        return get_location_from_index(self.text, index)
 
     def get_location_from_binary_index(self, index):
-        return self.get_location_from_index(self.get_index_from_binary_index(index))
+        return get_location_from_binary_index(self.btext, index)
 
     ##
     # info
     #
     def get_text_range(self, start, end):
-        if start == end:
-            return ""
-
-        top, bottom = sorted((start, end))
-        top_row, top_column = top
-        bottom_row, bottom_column = bottom
-        lines = self.lines
-        if top_row == bottom_row:
-            line = lines[top_row]
-            selected_text = line[top_column:bottom_column]
-        else:
-            start_line = lines[top_row]
-            end_line = lines[bottom_row] if bottom_row <= self.line_count - 1 else ""
-            selected_text = start_line[top_column:]
-            for row in range(top_row + 1, bottom_row):
-                selected_text += self._newline + lines[row]
-
-            if bottom_row < self.line_count:
-                selected_text += self._newline
-                selected_text += end_line[:bottom_column]
-
-        return selected_text
+        return get_text_range(self.text, start, end)
 
     def get_size(self, indent_width):
         lines = self.lines
@@ -186,44 +212,6 @@ class YDocument(DocumentBase):
             if text:
                 self.ytext.insert(bstart, text)
 
-    def generate_edit_result(self, start, end, text):
-        top, bottom = sorted((start, end))
-        top_row, top_column = top
-        bottom_row, bottom_column = bottom
-
-        insert_lines = text.splitlines()
-        if text.endswith(tuple(VALID_NEWLINES)):
-            # Special case where a single newline character is inserted.
-            insert_lines.append("")
-
-        lines = self.lines
-
-        replaced_text = self.get_text_range(top, bottom)
-        if bottom_row >= len(lines):
-            after_selection = ""
-        else:
-            after_selection = lines[bottom_row][bottom_column:]
-
-        if top_row >= len(lines):
-            before_selection = ""
-        else:
-            before_selection = lines[top_row][:top_column]
-
-        if insert_lines:
-            insert_lines[0] = before_selection + insert_lines[0]
-            destination_column = len(insert_lines[-1])
-            insert_lines[-1] = insert_lines[-1] + after_selection
-        else:
-            destination_column = len(before_selection)
-            insert_lines = [before_selection + after_selection]
-
-        lines[top_row : bottom_row + 1] = insert_lines
-        destination_row = top_row + len(insert_lines) - 1
-
-        end_location = (destination_row, destination_column)
-
-        return EditResult(end_location, replaced_text)
-
     def parse(self, event):
         deltas = event.delta
 
@@ -249,24 +237,14 @@ class YDocument(DocumentBase):
 
     def on_insert(self, range_offset, insert_value):
         bstart = range_offset
-        start = self.get_location_from_binary_index(bstart)
 
-        # start == end
-        result = self.generate_edit_result(start, start, insert_value)
-        edit = YEdit(result, insert_value, start, start, maintain_selection_offset=True)
-        self.edits.put_nowait(edit)
+        self.edits.put_nowait((bstart, bstart, insert_value.encode()))
 
     def on_delete(self, range_offset, range_length):
         bstart = range_offset
-        bend = range_offset + range_length - 1
+        bend = range_offset + range_length
 
-        start, end = [
-            self.get_location_from_binary_index(index) for index in (bstart, bend)
-        ]
-
-        result = self.generate_edit_result(start, end, "")
-        edit = YEdit(result, "", start, end, maintain_selection_offset=False)
-        self.edits.put_nowait(edit)
+        self.edits.put_nowait((bstart, bend, b""))
 
     ##
     # iteration protocol
@@ -284,31 +262,95 @@ class YTextArea(TextArea):
         self.document = YDocument(ytext)
         self.wrapped_document = WrappedDocument(self.document)
         self.navigator = DocumentNavigator(self.wrapped_document)
+        self.update_btext()
 
     def on_mount(self):
         self.run_worker(self.perform_edits())
 
+    def update_btext(self):
+        self.btext = self.document.btext
+
     async def perform_edits(self):
-        async for edit in self.document:
-            self.log("SELECTION:", self.selection)
-            self.log("TEXT:")
-            self.log(self.document.text)
-            self.edit(edit)
-            self.log("SELECTION:", self.selection)
-            self.log(edit)
+        async for itop, ibot, btext in self.document:
+            self.edit(itop, ibot, btext)
+
+    def edit(self, itop, ibot, btext):
+        def update_location(iloc):
+            # location before top
+            loc_top = iloc < itop
+
+            # location between top and bottom
+            top_loc_bot = itop <= iloc and iloc <= ibot
+
+            if loc_top:
+                pass
+            elif top_loc_bot:
+                iloc = iend_edit
+            else:
+                # location after bottom
+                ioff = ibot - iloc
+                iloc = iend_edit - ioff
+
+            return iloc
+
+        print("ITOP:IBOT", itop, ibot)
+
+        iend_edit = itop + len(btext)
+        print("IEND_EDIT", iend_edit)
+
+        print("SELECTION", self.selection)
+        start_sel, end_sel = self.selection
+        start_sel, end_sel = sorted((start_sel, end_sel))
+        istart, iend = [
+            get_binary_index_from_location(self.btext, loc)
+            for loc in (start_sel, end_sel)
+        ]
+        print("ISTART", istart, "IEND", iend)
+
+        # calculate new start and end locations
+        ilen = iend - istart
+        print("ILEN", ilen)
+
+        new_istart = update_location(istart)
+        print("NEW_ISTART", new_istart)
+        iend = new_istart + ilen
+        if new_istart == istart:
+            iend = update_location(iend)
+        print("NEW_IEND", new_istart)
+
+        istart = new_istart
+
+        print("BTEXT BEFORE", self.btext)
+        self.update_btext()
+        print("BTEXT AFTER", self.btext)
+
+        start = get_location_from_binary_index(self.btext, istart)
+        end = get_location_from_binary_index(self.btext, iend)
+
+        print("START:END", start, end)
+
+        self.wrapped_document.wrap(self.wrap_width, self.indent_width)
+
+        self._refresh_size()
+        self.selection = Selection(start=start, end=end)
+        self.record_cursor_width()
+
+        self._build_highlight_map()
+
+        self.post_message(self.Changed(self))
 
     def _replace_via_keyboard(self, insert, start, end):
         if self.read_only:
             return None
-        return self.replace(insert, start, end)
+        return self.replace(start, end, insert)
 
     def _delete_via_keyboard(self, start, end):
         if self.read_only:
             return None
         return self.delete(start, end)
 
-    def replace(self, insert, start, end, /):
-        self.document.replace_range(start, end, insert)
+    def replace(self, start, end, text, /):
+        self.document.replace_range(start, end, text)
 
     def delete(self, start, end, /):
         self.document.replace_range(start, end, "")
@@ -331,9 +373,21 @@ class YTextArea(TextArea):
 
 
 class YEdit(Edit):
-    def __init__(self, edit_result, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._edit_result = edit_result
+    def __init__(self, text, start, end):
+        super().__init__(text, start, end)
+        self.btext = text.encode()
+
+    def generate_edit_result(self, text_area, text):
+        # calculate binary start and end index
+
+        # replaced text
+        replaced_text = text_area.btext[self.top : self.bottom].decode()
+
+        # end location
+        btext = text.encode()
+        biend_location = self.top + len(btext)
+
+        return EditResult(end_location=biend_location, replaced_text=replaced_text)
 
     def do(self, text_area, record_selection: bool = True) -> EditResult:
         """Perform the edit operation.
@@ -354,7 +408,6 @@ class YEdit(Edit):
         # We want a user who is typing away to maintain their relative
         # position in the document even if an insert happens before
         # their cursor position.
-        edit_result = self._edit_result
 
         def get_index(location):
             return text_area.document.get_index_from_location(location)
@@ -366,65 +419,17 @@ class YEdit(Edit):
         top = self.top
         bot = self.bottom
         start, end = text_area.selection
+        start, end = sorted((start, end))
         end_location = edit_result.end_location
 
+        edit_result = self.generate_edit_result(start, end, self.text)
         # - top, bottom, i.e. from_ and to_location
         # - text_area.selection, i.e. cursor
         # - end_location
 
         itop = get_index(top)
         ibot = get_index(bot)
-
-        def update_location(loc):
-            iloc = get_index(loc)
-
-            # location before top
-            loc_top = iloc < itop
-
-            # location between top and bottom
-            top_loc_bot = itop <= iloc and iloc <= ibot
-
-            if loc_top:
-                pass
-            elif top_loc_bot:
-                loc = end_location
-            else:
-                # location after bottom
-                row_off = end_location[0] - bot[0]
-
-                if loc[0] == bot[0]:
-                    col_off = bot[1] - loc[1]
-                else:
-                    col_off = 0
-                loc = (loc[0] + row_off, loc[1] + col_off)
-
-            return loc
-
-        if start > text_area.document.end:
-            # current selection is outside of document content
-            start = text_area.document.end
-            end = start
-        else:
-            # calculate new start and end locations
-            istart = get_index(start)
-            iend = get_index(end)
-            ilen = iend - istart
-
-            new_start = update_location(start)
-            iend = get_index(new_start) + ilen
-            end = get_location(iend)
-
-            # only update when start has not moved
-            # else it already has been updated
-            if new_start == start:
-                end = update_location(end)
-
-            start = new_start
-
-        self._updated_selection = Selection(
-            start=start,
-            end=end,
-        )
+        iend_loc = get_index(end_location)
 
         return edit_result
 
