@@ -10,7 +10,7 @@ from textual.app import App
 from textual.binding import Binding
 from textual.containers import Grid
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Static, TextArea
+from textual.widgets import Button, Input, Label, Static
 
 from elva.auth import basic_authorization_header
 from elva.document import YTextArea
@@ -160,8 +160,13 @@ class UI(App):
         self.ydoc["ytext"] = self.ytext
 
         # widgets
+        language = self._get_language()
         self.ytext_area = YTextArea(
-            self.ytext, tab_behavior="indent", show_line_numbers=True, id="editor"
+            self.ytext,
+            tab_behavior="indent",
+            show_line_numbers=True,
+            id="editor",
+            language=language,
         )
 
         # components
@@ -197,7 +202,6 @@ class UI(App):
             self.components.append(self.renderer)
 
         # other stuff
-        self.set_language()
 
     async def on_exception(self, exc):
         match type(exc):
@@ -302,7 +306,7 @@ class UI(App):
         if self.render_path is not None:
             self.run_worker(self.renderer.write())
 
-    def set_language(self):
+    def _get_language(self):
         if self.file_path is not None:
             suffix = (
                 "".join(self.file_path.suffixes).split(FILE_SUFFIX)[0].removeprefix(".")
@@ -311,9 +315,9 @@ class UI(App):
                 log.info("continuing without syntax highlighting")
             else:
                 try:
-                    lang = LANGUAGES[suffix]
-                    self.ytext_area.language = lang
-                    log.info(f"enabled {lang} syntax highlighting")
+                    language = LANGUAGES[suffix]
+                    return language
+                    log.info(f"enabled {language} syntax highlighting")
                 except KeyError:
                     log.info(
                         f"no syntax highlighting available for file type '{suffix}'"

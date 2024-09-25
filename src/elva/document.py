@@ -1,25 +1,20 @@
 import logging
 import sys
-import time
 from asyncio import Queue
 
-import anyio
-from pycrdt import Doc, Text
-from rich.text import Text as RichText
+from pycrdt import Text
 from textual._cells import cell_len
-from textual.app import App
 from textual.document._document import (
     VALID_NEWLINES,
     DocumentBase,
-    EditResult,
     Selection,
     _detect_newline_style,
 )
 from textual.document._document_navigator import DocumentNavigator
-from textual.document._edit import Edit
 from textual.document._wrapped_document import WrappedDocument
 from textual.geometry import Size
 from textual.widgets import TextArea
+from tree_sitter_languages import get_language, get_parser
 
 log = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -28,6 +23,13 @@ log.setLevel(logging.DEBUG)
 
 BVALID_NEWLINES = [newline.encode() for newline in VALID_NEWLINES]
 NEWLINE_CHARS = "\n\r"
+
+
+##
+#
+# utility functions
+#
+# TODO: Define these as methods of YTextArea when that is merged with YDocument
 
 
 def get_lines(text, keepends=False):
@@ -140,12 +142,40 @@ def update_location(iloc, itop, ibot, iend_edit):
     return iloc
 
 
+def get_binary_location_from_binary_index(btext, bindex):
+    btext = btext[: bindex + 1]
+    lines = btext.splitlines(keepends=True)
+    if lines:
+        if lines[-1]:
+            row = len(lines) - 1
+            col = len(lines[-1]) - 1
+        else:
+            row = len(lines)
+            col = 0
+    else:
+        row = 0
+        col = 0
+
+    return row, col
+
+
+# TODO: merge YDocument into YTextArea
+
+
 class YDocument(DocumentBase):
-    def __init__(self, ytext: Text):
+    def __init__(self, ytext: Text, language):
         self.ytext = ytext
         self.ytext.observe(self.callback)
         self._newline = _detect_newline_style(str(ytext))
         self.edits = Queue()
+
+        try:
+            self.language = get_language(language)
+            self.parser = get_parser(language)
+            self.tree = self.parser.parse(self.get_btext_slice)
+            self.syntax_enabled = True
+        except AttributeError:
+            self.syntax_enabled = False
 
     ##
     # core
@@ -240,6 +270,30 @@ class YDocument(DocumentBase):
             if text:
                 self.ytext.insert(bstart, text)
 
+    ##
+    # tree-sitter
+    #
+    def update_tree(self, istart, iend_old, iend, start, end_old, end):
+        if self.syntax_enabled:
+            self.tree.edit(istart, iend_old, iend, start, end_old, end)
+            self.tree = self.parser.parse(self.get_btext_slice, old_tree=self.tree)
+
+    def get_btext_slice(self, byte_offset, point):
+        lines = self.btext[byte_offset:].splitlines(keepends=True)
+        if lines:
+            return lines[0]
+        else:
+            return b""
+
+    def query_syntax_tree(self, query, start=None, end=None):
+        kwargs = {}
+        if start is not None:
+            kwargs["start_point"] = start
+        if end is not None:
+            kwargs["end_point"] = end
+        captures = query.captures(self.tree.root_node, **kwargs)
+        return captures
+
     def parse(self, event):
         deltas = event.delta
 
@@ -265,14 +319,33 @@ class YDocument(DocumentBase):
 
     def on_insert(self, range_offset, insert_value):
         bstart = range_offset
+        btext = insert_value.encode()
 
-        self.edits.put_nowait((bstart, bstart, insert_value.encode()))
+        self.edits.put_nowait((bstart, bstart, btext))
+
+        # syntax highlighting
+        istart = bstart
+        iend_old = bstart
+        iend = bstart + len(btext)
+        start = get_binary_location_from_binary_index(self.btext, istart)
+        end_old = start
+        end = get_binary_location_from_binary_index(self.btext, iend)
+        self.update_tree(istart, iend_old, iend, start, end_old, end)
 
     def on_delete(self, range_offset, range_length):
         bstart = range_offset
         bend = range_offset + range_length
 
         self.edits.put_nowait((bstart, bend, b""))
+
+        # syntax highlighting
+        istart = bstart
+        iend_old = bend
+        iend = bstart
+        start = get_binary_location_from_binary_index(self.btext, istart)
+        end_old = get_binary_location_from_binary_index(self.btext, iend_old)
+        end = start
+        self.update_tree(istart, iend_old, iend, start, end_old, end)
 
     ##
     # iteration protocol
@@ -287,7 +360,7 @@ class YDocument(DocumentBase):
 class YTextArea(TextArea):
     def __init__(self, ytext, *args, **kwargs):
         super().__init__(str(ytext), *args, **kwargs)
-        self.document = YDocument(ytext)
+        self.document = YDocument(ytext, kwargs.get("language"))
         self.wrapped_document = WrappedDocument(self.document)
         self.navigator = DocumentNavigator(self.wrapped_document)
         self.update_btext()
@@ -379,151 +452,3 @@ class YTextArea(TextArea):
         #       Probably we need to update the wrapped lines cache elsewhere.
         self.wrapped_document.wrap(self.size.width)
         return super().render_line(y)
-
-
-class YEdit(Edit):
-    def __init__(self, text, start, end):
-        super().__init__(text, start, end)
-        self.btext = text.encode()
-
-    def generate_edit_result(self, text_area, text):
-        # calculate binary start and end index
-
-        # replaced text
-        replaced_text = text_area.btext[self.top : self.bottom].decode()
-
-        # end location
-        btext = text.encode()
-        biend_location = self.top + len(btext)
-
-        return EditResult(end_location=biend_location, replaced_text=replaced_text)
-
-    def do(self, text_area, record_selection: bool = True) -> EditResult:
-        """Perform the edit operation.
-
-        Args:
-            text_area: The `TextArea` to perform the edit on.
-            record_selection: If True, record the current selection in the TextArea
-                so that it may be restored if this Edit is undone in the future.
-
-        Returns:
-            An `EditResult` containing information about the replace operation.
-        """
-        if record_selection:
-            self._original_selection = text_area.selection
-
-        # This code is mostly handling how we adjust TextArea.selection
-        # when an edit is made to the document programmatically.
-        # We want a user who is typing away to maintain their relative
-        # position in the document even if an insert happens before
-        # their cursor position.
-
-        def get_index(location):
-            return text_area.document.get_index_from_location(location)
-
-        def get_location(index):
-            return text_area.document.get_location_from_index(index)
-
-        # locations
-        top = self.top
-        bot = self.bottom
-        start, end = text_area.selection
-        start, end = sorted((start, end))
-        end_location = edit_result.end_location
-
-        edit_result = self.generate_edit_result(start, end, self.text)
-        # - top, bottom, i.e. from_ and to_location
-        # - text_area.selection, i.e. cursor
-        # - end_location
-
-        itop = get_index(top)
-        ibot = get_index(bot)
-        iend_loc = get_index(end_location)
-
-        return edit_result
-
-    def undo(self, text_area: TextArea) -> EditResult:
-        """Undo the edit operation.
-
-        Looks at the data stored in the edit, and performs the inverse operation of `Edit.do`.
-
-        Args:
-            text_area: The `TextArea` to undo the insert operation on.
-
-        Returns:
-            An `EditResult` containing information about the replace operation.
-        """
-        replaced_text = self._edit_result.replaced_text
-        edit_end = self._edit_result.end_location
-
-        # Replace the span of the edit with the text that was originally there.
-        undo_edit_result = text_area.document.replace_range(
-            self.top, edit_end, replaced_text
-        )
-        self._updated_selection = self._original_selection
-
-        return undo_edit_result
-
-
-class TestApp(App):
-    def compose(self):
-        doc = Doc()
-        text = Text()
-        doc["text"] = text
-        yield YTextArea(text)
-
-
-#
-# test script
-#
-async def remote(ytext):
-    global i
-    while True:
-        ytext += f"remote: line {i}\n"
-        # yield to event loop
-        await anyio.sleep(0)
-        i += 1
-
-
-async def local(ydocument):
-    global j
-    while True:
-        text = f"local: line {j}\n"
-        ydocument.replace_range((j, 0), (j, len(text)), text)
-        await anyio.sleep(0)
-        j += 1
-
-
-async def get(ydocument):
-    async for edit in ydocument:
-        print(ydocument.get_line(edit.end_location[0]))
-
-
-async def test_ydocument():
-    global i
-    global j
-
-    i = 0
-    j = 0
-
-    ydoc = Doc()
-    ydoc["text"] = ytext = Text("")
-
-    ydocument = YDocument(ytext)
-
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(remote, ytext)
-        tg.start_soon(local, ydocument)
-        tg.start_soon(get, ydocument)
-
-
-async def main():
-    app = TestApp()
-    await app.run_async()
-
-
-if __name__ == "__main__":
-    try:
-        anyio.run(main)
-    except KeyboardInterrupt:
-        print("stopped\n")
