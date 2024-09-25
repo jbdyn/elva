@@ -16,7 +16,7 @@ from textual.css.query import NoMatches
 from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent, TabPane
 
-from elva.apps.editor import CredentialScreen, ErrorScreen, YTextAreaParser
+from elva.apps.editor import CredentialScreen, ErrorScreen
 from elva.auth import basic_authorization_header
 from elva.document import YTextArea
 from elva.log import LOGGER_NAME, DefaultFormatter
@@ -216,8 +216,9 @@ class UI(App):
             self.future, self.user, show_self=show_self, id="future"
         )
         self.future_widget.can_focus = False
-        self.message_widget = YTextArea(self.message["text"], id="editor")
-        self.message_widget.language = "markdown"
+        self.message_widget = YTextArea(
+            self.message["text"], id="editor", language="markdown"
+        )
         self.markdown_widget = MessagePreview(self.message["text"])
 
         # components
@@ -228,12 +229,10 @@ class UI(App):
             self.user,
             show_self,
         )
-        self.message_parser = YTextAreaParser(self.message["text"], self.message_widget)
 
         self.components = [
             self.history_parser,
             self.future_parser,
-            self.message_parser,
         ]
 
         if server is not None and identifier is not None:
