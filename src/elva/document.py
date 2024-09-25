@@ -27,6 +27,7 @@ log.addHandler(handler)
 log.setLevel(logging.DEBUG)
 
 BVALID_NEWLINES = [newline.encode() for newline in VALID_NEWLINES]
+NEWLINE_CHARS = "\n\r"
 
 
 def get_lines(text, keepends=False):
@@ -46,20 +47,28 @@ def get_binary_index_from_index(text, index):
 
 def get_location_from_index(text, index):
     text = text[: index + 1]
-    lines = text.splitlines(keepends=True)
-    if not lines or (text.endswith(tuple(VALID_NEWLINES)) and index >= len(text)):
-        lines.append("")
 
-    row = len(lines) - 1
+    out_of_bounds = index + 1 > len(text)
+    ends_with_newline = text.endswith(tuple(VALID_NEWLINES))
+
+    before_newline = not ends_with_newline
+    on_newline = ends_with_newline and not out_of_bounds
+    after_newline = ends_with_newline and out_of_bounds
+
+    col_off = 0
+    if on_newline:
+        # only remove trailing newline characters in the last line
+        text = text.removesuffix("\n").removesuffix("\r")
+        col_off = 1
+    elif after_newline or (before_newline and out_of_bounds):
+        col_off = 1
+
+    lines = get_lines(text, keepends=True)
 
     last_line = lines[-1]
-    if last_line.endswith(tuple(VALID_NEWLINES)):
-        last_line = last_line.rstrip("".join(VALID_NEWLINES))
-        last_line += " "
-    if not last_line or index >= len("".join(lines)):
-        last_line += " "
 
-    col = len(last_line) - 1
+    row = len(lines) - 1
+    col = len(last_line) - 1 + col_off
 
     return row, col
 
@@ -77,15 +86,15 @@ def get_index_from_location(text, location):
 
     # include given row and col indices
     lines = lines[: row + 1]
-    last_line = lines[-1]
-    if last_line.endswith(tuple(VALID_NEWLINES)):
-        last_line = last_line.rstrip("".join(VALID_NEWLINES))
-        last_line += " "
 
+    last_line = lines[-1].rstrip(NEWLINE_CHARS)
+
+    col_off = 0
     if not last_line or col >= len(last_line):
-        last_line += " "
+        col_off = 1
+
     lines[-1] = last_line[: col + 1]
-    index = len("".join(lines)) - 1
+    index = len("".join(lines)) - 1 + col_off
 
     return index
 
@@ -110,6 +119,25 @@ def get_binary_text_range(btext, start, end):
     ]
 
     return btext[bistart:biend]
+
+
+def update_location(iloc, itop, ibot, iend_edit):
+    # location before top
+    loc_top = iloc < itop
+
+    # location between top and bottom
+    top_loc_bot = itop <= iloc and iloc <= ibot
+
+    if loc_top:
+        pass
+    elif top_loc_bot:
+        iloc = iend_edit
+    else:
+        # location after bottom
+        ioff = ibot - iloc
+        iloc = iend_edit - ioff
+
+    return iloc
 
 
 class YDocument(DocumentBase):
@@ -275,60 +303,41 @@ class YTextArea(TextArea):
             self.edit(itop, ibot, btext)
 
     def edit(self, itop, ibot, btext):
-        def update_location(iloc):
-            # location before top
-            loc_top = iloc < itop
-
-            # location between top and bottom
-            top_loc_bot = itop <= iloc and iloc <= ibot
-
-            if loc_top:
-                pass
-            elif top_loc_bot:
-                iloc = iend_edit
-            else:
-                # location after bottom
-                ioff = ibot - iloc
-                iloc = iend_edit - ioff
-
-            return iloc
-
-        print("ITOP:IBOT", itop, ibot)
-
+        # end location of the edit
         iend_edit = itop + len(btext)
-        print("IEND_EDIT", iend_edit)
 
-        print("SELECTION", self.selection)
+        # binary indices for current selection
+        # TODO: Save the selection as binary index range as well,
+        #       so it does not need to be retrieved from the binary content.
+        #       Then, there is no need for a YTextArea.btext attribute anymore;
+        #       the history management is already implemented in YDoc
         start_sel, end_sel = self.selection
-        start_sel, end_sel = sorted((start_sel, end_sel))
+        start_sel, end_sel = sorted((start_sel, end_sel))  # important!
         istart, iend = [
             get_binary_index_from_location(self.btext, loc)
             for loc in (start_sel, end_sel)
         ]
-        print("ISTART", istart, "IEND", iend)
 
         # calculate new start and end locations
         ilen = iend - istart
-        print("ILEN", ilen)
 
-        new_istart = update_location(istart)
-        print("NEW_ISTART", new_istart)
+        new_istart = update_location(istart, itop, ibot, iend_edit)
         iend = new_istart + ilen
+
         if new_istart == istart:
-            iend = update_location(iend)
-        print("NEW_IEND", new_istart)
+            iend = update_location(iend, itop, ibot, iend_edit)
 
         istart = new_istart
 
-        print("BTEXT BEFORE", self.btext)
+        # turn binary indices into locations
         self.update_btext()
-        print("BTEXT AFTER", self.btext)
 
-        start = get_location_from_binary_index(self.btext, istart)
-        end = get_location_from_binary_index(self.btext, iend)
+        start, end = [
+            get_location_from_binary_index(self.btext, index)
+            for index in (istart, iend)
+        ]
 
-        print("START:END", start, end)
-
+        # UI updates
         self.wrapped_document.wrap(self.wrap_width, self.indent_width)
 
         self._refresh_size()

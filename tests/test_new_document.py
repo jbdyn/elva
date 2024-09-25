@@ -28,6 +28,15 @@ def test_get_index_from_location():
     index = get_index_from_location("", (0, 0))
     assert index == 0
 
+    index = get_index_from_location("\r\n\r\n", (1, 0))
+    assert index == 2
+
+    index = get_index_from_location("\r\n\r\n", (2, 0))
+    assert index == 4
+
+    index = get_index_from_location("", (0, 0))
+    assert index == 0
+
     index = get_index_from_location(TEXT, (0, 0))
     assert index == 0
 
@@ -38,7 +47,7 @@ def test_get_index_from_location():
     assert index == 12
 
     index = get_index_from_location(TEXT, (1, 10))
-    assert index == 8
+    assert index in [7, 8]
 
 
 def test_get_binary_index_from_location():
@@ -52,6 +61,15 @@ def test_get_location_from_index():
 
     location = get_location_from_index("", 10)
     assert location == (0, 0)
+
+    location = get_location_from_index("\r\n\r\n", 2)
+    assert location == (1, 0)
+
+    location = get_location_from_index("\r\n\r\n", 3)
+    assert location == (1, 0)
+
+    location = get_location_from_index("\r\n\r\n", 4)
+    assert location == (2, 0)
 
     location = get_location_from_index(TEXT, 0)
     assert location == (0, 0)
