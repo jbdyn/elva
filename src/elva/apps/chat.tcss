@@ -16,12 +16,21 @@ Screen {
 .message {
   height: auto;
   /* layout: horizontal; */
-  padding: 0 3 1 2; /* top right bottom left */
+  padding: 0 0 1 0; /* top right bottom left */
+}
+
+.content {
+  border: round grey;
+  padding: 0 1 0 1; /* top right bottom left */
 }
 
 #editor {
   border: none;
   padding: 0;
+}
+
+Rule {
+  color: rgb(50, 50, 50);
 }
 
 .modalscreen {

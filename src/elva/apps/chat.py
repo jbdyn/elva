@@ -34,10 +34,11 @@ class MessageView(Widget):
     def __init__(self, author, text, **kwargs):
         super().__init__(**kwargs)
         self.text = text
-        self.author_field = Static(author, classes="field author")
+        self.author = author
 
         content = emoji.emojize(str(text))
         self.text_field = Static(RichMarkdown(content), classes="field content")
+        self.text_field.border_title = self.author
 
     def on_mount(self):
         if not str(self.text):
@@ -45,21 +46,22 @@ class MessageView(Widget):
         self.text.observe(self.text_callback)
 
     def compose(self):
-        yield self.author_field
         yield self.text_field
 
     def text_callback(self, event):
         text = str(event.target)
         if re.match(WHITESPACE_ONLY, text) is None:
             self.display = True
-            self.text_field.update(RichMarkdown(emoji.emojize(text)))
+            content = emoji.emojize(text)
+            self.text_field.update(RichMarkdown(content))
         else:
             self.display = False
 
 
 class MessageList(VerticalScroll):
-    def __init__(self, messages, **kwargs):
+    def __init__(self, messages, user, **kwargs):
         super().__init__(**kwargs)
+        self.user = user
         self.messages = messages
 
     def mount_message_view(self, message, message_id=None):
@@ -67,7 +69,13 @@ class MessageList(VerticalScroll):
         text = message["text"]
         if message_id is None:
             message_id = "id" + message["id"]
-        return MessageView(author, text, classes="message", id=message_id)
+        message_view = MessageView(author, text, classes="message", id=message_id)
+        if message["author"] == self.user:
+            border_title_align = "right"
+        else:
+            border_title_align = "left"
+        message_view.text_field.styles.border_title_align = border_title_align
+        return message_view
 
 
 class History(MessageList):
@@ -106,8 +114,7 @@ class HistoryParser(ArrayEventParser):
 
 class Future(MessageList):
     def __init__(self, messages, user, show_self=False, **kwargs):
-        super().__init__(messages, **kwargs)
-        self.user = user
+        super().__init__(messages, user, **kwargs)
         self.show_self = show_self
 
     def compose(self):
@@ -115,7 +122,10 @@ class Future(MessageList):
             if not self.show_self and message["author"] == self.user:
                 continue
             else:
-                yield self.mount_message_view(message, message_id="id" + message_id)
+                message_view = self.mount_message_view(
+                    message, message_id="id" + message_id
+                )
+                yield message_view
 
 
 class FutureParser(MapEventParser):
@@ -210,7 +220,7 @@ class UI(App):
         self.future[self.session_id] = self.message
 
         # widgets
-        self.history_widget = History(self.history, id="history")
+        self.history_widget = History(self.history, user, id="history")
         self.history_widget.can_focus = False
         self.future_widget = Future(
             self.future, self.user, show_self=show_self, id="future"
@@ -328,9 +338,9 @@ class UI(App):
         self.user, self.password = credentials
 
         if old_user != self.user:
-            self.future_widget.query_one("#id" + self.session_id).author_field.update(
-                f"{self.display_name or self.user} ({self.user})"
-            )
+            self.future_widget.query_one(
+                "#id" + self.session_id
+            ).author = f"{self.display_name or self.user} ({self.user})"
 
     async def quit_on_error(self, error):
         self.exit()
@@ -357,7 +367,7 @@ class UI(App):
 
     def compose(self):
         yield self.history_widget
-        yield Rule()
+        yield Rule(line_style="heavy")
         yield self.future_widget
         with TabbedContent(id="tabview"):
             with TabPane("Message", id="tab-message"):
