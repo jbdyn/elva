@@ -4,32 +4,21 @@ from elva.component import Component
 
 
 class TextRenderer(Component):
-    def __init__(self, ytext, path):
+    def __init__(self, ytext, path, render):
         self.ytext = ytext
-        self.modified = False
         self.path = anyio.Path(path)
-
-    def _callback(self, event):
-        self.modified = True
-
-    async def before(self):
-        mode = "r+" if await self.path.exists() else "w"
-        self.file = await anyio.open_file(self.path, mode)
-        self.log.info(f"opened file {self.path}")
+        self.render = render
 
     async def run(self):
-        self.ytext.observe(self._callback)
+        if self.render:
+            await self.write()
 
     async def cleanup(self):
-        await self.write()
-        await self.file.aclose()
-        self.log.info(f"saved and closed file {self.path}")
+        if self.render:
+            await self.write()
+            self.log.info(f"saved and closed file {self.path}")
 
     async def write(self):
-        if self.modified:
+        async with await anyio.open_file(self.path, "w") as self.file:
             self.log.info(f"writing to file {self.path}")
-            await self.file.truncate(0)
-            await self.file.seek(0)
             await self.file.write(str(self.ytext))
-            self.modified = False
-

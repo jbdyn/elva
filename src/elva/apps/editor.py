@@ -84,54 +84,6 @@ class ErrorScreen(ModalScreen):
         self.dismiss()
 
 
-class YTextAreaParser(TextEventParser):
-    def __init__(self, ytext, ytext_area):
-        super().__init__()
-        self.ytext = ytext
-        self.ytext_area = ytext_area
-        self.btext = self.ytext_area.text.encode()
-
-    async def run(self):
-        self.ytext.observe(self.callback)
-        await super().run()
-
-    def callback(self, event):
-        # self._task_group.start_soon(self.parse, event)
-        self.parse_nowait(event)
-
-    def location(self, index):
-        return self.ytext_area.document.get_location_from_index(index)
-
-    async def on_insert(self, range_offset, insert_value):
-        # adapt range_offset to UTF-8 encoding
-        btext_start = self.btext[:range_offset]
-        btext_rest = self.btext[range_offset:]
-        range_offset = len(btext_start.decode())
-
-        # get Location and insert in TextArea
-        start = self.location(range_offset)
-        self.ytext_area.insert(insert_value, start)
-
-        # update UTF-8 encoded TextArea content
-        self.btext = btext_start + insert_value.encode() + btext_rest
-
-    async def on_delete(self, range_offset, range_length):
-        # adapt range_offset and range_length to UTF-8 encoding
-        btext_start = self.btext[:range_offset]
-        btext_range = self.btext[range_offset : range_offset + range_length]
-        btext_rest = self.btext[range_offset + range_length :]
-        range_offset = len(btext_start.decode())
-        range_length = len(btext_range.decode())
-
-        # get Locations and perform deletion
-        start = self.location(range_offset)
-        end = self.location(range_offset + range_length)
-        self.ytext_area.delete(start, end, maintain_selection_offset=True)
-
-        # update UTF-8 encoded TextArea content
-        self.btext = btext_start + btext_rest
-
-
 class UI(App):
     CSS_PATH = "editor.tcss"
 
@@ -146,6 +98,7 @@ class UI(App):
         messages: str = "yjs",
         user: str | None = None,
         password: str | None = None,
+        render: bool = False,
     ):
         super().__init__()
         self.file_path = file_path
@@ -153,6 +106,7 @@ class UI(App):
         self.identifier = identifier
         self.user = user
         self.password = password
+        self.render = render
 
         # document structure
         self.ydoc = Doc()
@@ -198,7 +152,7 @@ class UI(App):
             self.components.append(self.provider)
 
         if render_path is not None:
-            self.renderer = TextRenderer(self.ytext, render_path)
+            self.renderer = TextRenderer(self.ytext, render_path, render)
             self.components.append(self.renderer)
 
         # other stuff
@@ -306,6 +260,10 @@ class UI(App):
         if self.render_path is not None:
             self.run_worker(self.renderer.write())
 
+            # the user explicitly wants this to be rendered,
+            # so also enable the auto-rendering on closing
+            self.renderer.render = True
+
     def _get_language(self):
         if self.file_path is not None:
             suffix = (
@@ -346,9 +304,6 @@ def cli(ctx: click.Context, render: bool, file: None | Path):
     # gather info
     gather_context_information(ctx, file, app="editor")
 
-    if not render:
-        c["render"] = None
-
     # logging
     LOGGER_NAME.set(__name__)
     level = c["level"]
@@ -368,6 +323,7 @@ def cli(ctx: click.Context, render: bool, file: None | Path):
         c["messages"],
         c["user"],
         c["password"],
+        render,
     )
     ui.run()
 
