@@ -1,5 +1,3 @@
-import logging
-import sys
 from asyncio import Queue
 
 from pycrdt import Text
@@ -16,12 +14,6 @@ from textual.geometry import Size
 from textual.widgets import TextArea
 from tree_sitter_languages import get_language, get_parser
 
-log = logging.getLogger(__name__)
-handler = logging.StreamHandler(sys.stdout)
-log.addHandler(handler)
-log.setLevel(logging.DEBUG)
-
-BVALID_NEWLINES = [newline.encode() for newline in VALID_NEWLINES]
 NEWLINE_CHARS = "\n\r"
 
 
@@ -30,6 +22,10 @@ NEWLINE_CHARS = "\n\r"
 # utility functions
 #
 # TODO: Define these as methods of YTextArea when that is merged with YDocument
+
+
+def ends_with_newline(text):
+    return text.endswith(tuple(VALID_NEWLINES))
 
 
 def get_lines(text, keepends=False):

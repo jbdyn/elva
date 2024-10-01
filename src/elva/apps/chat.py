@@ -16,14 +16,14 @@ from textual.css.query import NoMatches
 from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent, TabPane
 
-from elva.apps.editor import CredentialScreen, ErrorScreen
 from elva.auth import basic_authorization_header
-from elva.document import YTextArea
 from elva.log import LOGGER_NAME, DefaultFormatter
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 from elva.store import SQLiteStore
 from elva.utils import gather_context_information
+from elva.widgets.screens import CredentialScreen, ErrorScreen
+from elva.widgets.textarea import YTextArea
 
 log = logging.getLogger(__name__)
 
