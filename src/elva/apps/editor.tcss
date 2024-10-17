@@ -39,3 +39,113 @@
 #credentialscreen .confirm {
   column-span: 2;
 }
+
+Select {
+  & > SelectOverlay {
+    border: none !important; /* overwrite default border setting */
+    border-top: solid gray;
+    border-bottom: solid gray;
+    padding: 0;
+  }
+
+  &.-expanded > SelectOverlay {
+    border: none;
+    background: $background;
+  }
+
+  & > SelectCurrent {
+    border: none;
+    padding: 0 1;
+  }
+
+  &:focus > SelectCurrent {
+    border: none;
+  }
+
+  &.-expanded > SelectCurrent {
+    border: none;
+  }
+}
+
+ConfigView {
+  border: solid $surface;
+  background: $surface;
+  border-title-color: gray;
+  border-title-style: italic;
+  align: center top;
+  height: auto;
+}
+
+ConfigPanel {
+  dock: right;
+  width: 100;
+  max-width: 50%;
+  height: 100%;
+  
+  & > Grid {
+    grid-rows: 1fr auto;
+
+    & > Grid {
+      padding: 1;
+      grid-size: 2;
+      grid-gutter: 1;
+      align: center middle;
+
+      & > Button {
+        width: 100%;
+        max-width: 20;
+      }
+    }
+  }
+}
+
+Button {
+  border: none;
+  height: auto;
+}
+
+Input {
+  border: none;
+  padding: 0 1;
+  height: auto;
+}
+
+TextInputView {
+
+  & > Grid {
+    grid-size: 2;
+    grid-columns: 1fr 3;
+    grid-gutter: 1;
+    height: auto;
+
+    & > Button {
+      width: 3;
+    }
+  }
+}
+
+Switch {
+  border: none;
+  padding: 0;
+  width: auto;
+}
+
+RadioSelect {
+  height: auto;
+  padding: 0;
+}
+
+RadioSet {
+  border: none;
+  width: 100%;
+  height: auto;
+  
+  & > RadioButton {
+    padding: 0;
+    width: 100%;
+  }
+
+  &:focus > RadioButton.-selected > .toggle--label {
+    text-style: none;
+  }
+}

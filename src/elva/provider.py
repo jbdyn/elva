@@ -139,10 +139,10 @@ class WebsocketConnection(Connection):
 
 
 class WebsocketProvider(WebsocketConnection):
-    def __init__(self, ydoc, identifier, server):
+    def __init__(self, ydoc, identifier, server, *args, **kwargs):
         self.ydoc = ydoc
         uri = urljoin(server, identifier)
-        super().__init__(uri)
+        super().__init__(uri, *args, **kwargs)
 
     async def run(self):
         self.ydoc.observe(self.callback)
@@ -198,11 +198,11 @@ class WebsocketProvider(WebsocketConnection):
 
 
 class ElvaWebsocketProvider(WebsocketConnection):
-    def __init__(self, ydoc, identifier, server):
+    def __init__(self, ydoc, identifier, server, *args, **kwargs):
         self.ydoc = ydoc
         self.identifier = identifier
         self.uuid, _ = ElvaMessage.ID.encode(self.identifier.encode())
-        super().__init__(server)
+        super().__init__(server, *args, **kwargs)
 
     async def run(self):
         self.ydoc.observe(self.callback)
