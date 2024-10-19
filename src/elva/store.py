@@ -35,10 +35,16 @@ class SQLiteStore(Component):
         db = sqlite3.connect(path)
         cur = db.cursor()
         try:
-            cur.execute(
-                "INSERT INTO metadata VALUES (?, ?)",
-                list(metadata.values()),
-            )
+            try:
+                cur.executemany(
+                    "INSERT INTO metadata VALUES (?, ?)",
+                    list(metadata.items()),
+                )
+            except Exception:  # IntegrityError, UNIQUE constraint failed
+                cur.executemany(
+                    "UPDATE metadata SET value = ? WHERE key = ?",
+                    list(zip(metadata.values(), metadata.keys())),
+                )
             db.commit()
         except Exception:
             raise

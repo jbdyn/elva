@@ -14,7 +14,7 @@ from textual.message import Message
 from textual.suggester import Suggester
 from textual.validation import Validator
 from textual.widget import Widget
-from textual.widgets import Button, Input, Label, RadioButton, RadioSet, Static, Switch
+from textual.widgets import Button, Input, Label, RadioButton, RadioSet, Switch
 from websockets import parse_uri
 
 from elva.auth import basic_authorization_header
@@ -151,6 +151,12 @@ class ConfigPanel(Container):
 
 
 class ConfigView(Widget):
+    class Saved(Message):
+        def __init__(self, name, value):
+            super().__init__()
+            self.name = name
+            self.value = value
+
     def __init__(self, widget):
         super().__init__()
         self.widget = widget
@@ -192,6 +198,14 @@ class RadioSelectView(ConfigView):
         widget = RadioSelect(*args, **kwargs)
         super().__init__(widget)
 
+    def compose(self):
+        with Grid():
+            yield self.widget
+            yield Button("S", id=f"save-{self.name}")
+
+    def on_button_pressed(self, message):
+        self.post_message(self.Saved(self.name, self.value))
+
     def on_click(self, message):
         self.widget.radio_set.focus()
 
@@ -206,16 +220,20 @@ class TextInputView(ConfigView):
             yield self.widget
             yield Button("X", id=f"clear-{self.name}")
             yield Button("C", id=f"copy-{self.name}")
+            yield Button("S", id=f"save-{self.name}")
 
     def on_button_pressed(self, message):
         button_id = message.button.id
         clear_id = f"clear-{self.name}"
         copy_id = f"copy-{self.name}"
+        save_id = f"save-{self.name}"
 
         if button_id == clear_id:
             self.widget.clear()
         elif button_id == copy_id:
             copy_to_clipboard(self.value)
+        elif button_id == save_id:
+            self.post_message(self.Saved(self.name, self.value))
 
 
 class URLInputView(TextInputView):
@@ -245,11 +263,12 @@ class URLInputView(TextInputView):
 class PathInputView(TextInputView):
     @property
     def value(self):
-        return Path(self.widget.value)
+        entry = self.widget.value
+        return Path(entry) if entry else None
 
     @value.setter
     def value(self, new):
-        self.widget.value = str(new)
+        self.widget.value = str(new) if new is not None else ""
 
 
 class WebsocketsURLValidator(Validator):
@@ -571,6 +590,12 @@ class UI(App):
         button = message.button
         if button.id == "config":
             self.config_panel.toggle_class("hidden")
+
+    def on_config_view_saved(self, message):
+        config = self.config_panel.state
+        file_path = config["file_path"]
+        if file_path.is_file():
+            SQLiteStore.set_metadata(file_path, {message.name: message.value})
 
     def action_render(self):
         if self.render_path is not None:
