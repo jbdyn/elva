@@ -116,12 +116,13 @@ Input {
 TextInputView {
 
   & > Grid {
-    grid-size: 2;
-    grid-columns: 1fr 3;
+    grid-size: 3;
+    grid-columns: 1fr 3 3;
     grid-gutter: 1;
     height: auto;
 
     & > Button {
+      min-width: 0;
       width: 3;
     }
   }

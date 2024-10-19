@@ -5,7 +5,7 @@ import anyio
 import click
 import websockets.exceptions as wsexc
 from pycrdt import Doc, Text
-from rapidfuzz import process
+from pyperclip import copy as copy_to_clipboard
 from rich.text import Text as RichText
 from textual.app import App
 from textual.binding import Binding
@@ -83,6 +83,9 @@ class RadioSelect(Container):
     @value.setter
     def value(self, value):
         self.buttons[value].value = True
+
+    def on_click(self, message):
+        self.radio_set.pressed_button.focus()
 
 
 class ConfigPanel(Container):
@@ -184,6 +187,15 @@ class ConfigView(Widget):
         self.widget.focus()
 
 
+class RadioSelectView(ConfigView):
+    def __init__(self, *args, **kwargs):
+        widget = RadioSelect(*args, **kwargs)
+        super().__init__(widget)
+
+    def on_click(self, message):
+        self.widget.radio_set.focus()
+
+
 class TextInputView(ConfigView):
     def __init__(self, *args, **kwargs):
         widget = Input(*args, **kwargs)
@@ -192,26 +204,63 @@ class TextInputView(ConfigView):
     def compose(self):
         with Grid():
             yield self.widget
-            yield Button("X", classes="clear")
+            yield Button("X", id=f"clear-{self.name}")
+            yield Button("C", id=f"copy-{self.name}")
 
     def on_button_pressed(self, message):
-        self.widget.clear()
+        button_id = message.button.id
+        clear_id = f"clear-{self.name}"
+        copy_id = f"copy-{self.name}"
+
+        if button_id == clear_id:
+            self.widget.clear()
+        elif button_id == copy_id:
+            copy_to_clipboard(self.value)
+
+
+class URLInputView(TextInputView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.is_valid = True
 
     def on_input_changed(self, message):
         validation_result = message.validation_result
         if validation_result is not None:
             if validation_result.is_valid:
+                self.is_valid = True
                 self.remove_class("invalid")
             else:
+                self.is_valid = False
                 self.add_class("invalid")
+
+    @property
+    def value(self):
+        return self.widget.value if self.is_valid else ""
+
+    @value.setter
+    def value(self, new):
+        self.widget.value = new
+
+
+class PathInputView(TextInputView):
+    @property
+    def value(self):
+        return Path(self.widget.value)
+
+    @value.setter
+    def value(self, new):
+        self.widget.value = str(new)
 
 
 class WebsocketsURLValidator(Validator):
     def validate(self, value):
-        try:
-            parse_uri(value)
-        except Exception as exc:
-            return self.failure(description=str(exc))
+        if value:
+            try:
+                parse_uri(value)
+            except Exception as exc:
+                return self.failure(description=str(exc))
+            else:
+                return self.success()
         else:
             return self.success()
 
@@ -276,18 +325,16 @@ class UI(App):
                 value=identifier,
                 name="identifier",
             ),
-            TextInputView(
+            URLInputView(
                 value=server,
                 name="server",
                 validators=WebsocketsURLValidator(),
                 validate_on=["changed"],
             ),
-            ConfigView(
-                RadioSelect(
-                    ["yjs", "elva"],
-                    value=messages,
-                    name="messages",
-                )
+            RadioSelectView(
+                ["yjs", "elva"],
+                value=messages,
+                name="messages",
             ),
             TextInputView(value=user, name="user"),
             TextInputView(
@@ -295,19 +342,15 @@ class UI(App):
                 name="password",
                 password=True,
             ),
-            ConfigView(
-                Input(
-                    value=str(file_path) if file_path is not None else "",
-                    # suggester=PathSuggester(),
-                    name="file_path",
-                )
+            PathInputView(
+                value=str(file_path) if file_path is not None else "",
+                # suggester=PathSuggester(),
+                name="file_path",
             ),
-            ConfigView(
-                Input(
-                    value=str(render_path) if render_path is not None else "",
-                    # suggester=PathSuggester(),
-                    name="render_path",
-                )
+            PathInputView(
+                value=str(render_path) if render_path is not None else "",
+                # suggester=PathSuggester(),
+                name="render_path",
             ),
             ConfigView(
                 Switch(
@@ -316,19 +359,15 @@ class UI(App):
                     animate=False,
                 )
             ),
-            ConfigView(
-                Input(
-                    value=str(log_path) if log_path is not None else "",
-                    # suggester=PathSuggester(),
-                    name="log_path",
-                )
+            PathInputView(
+                value=str(log_path) if log_path is not None else "",
+                # suggester=PathSuggester(),
+                name="log_path",
             ),
-            ConfigView(
-                RadioSelect(
-                    list(logging.getLevelNamesMapping().keys()),
-                    value=logging.getLevelName(level) if level is not None else "INFO",
-                    name="level",
-                )
+            RadioSelectView(
+                list(logging.getLevelNamesMapping().keys()),
+                value=logging.getLevelName(level) if level is not None else "INFO",
+                name="level",
             ),
         ]
 
@@ -371,20 +410,22 @@ class UI(App):
             for handler in log.handlers[:]:
                 log.removeHandler(handler)
 
-            if log_path and Path(log_path).suffixes:
+            if log_path.suffixes:
                 handler = logging.FileHandler(log_path)
                 handler.setFormatter(DefaultFormatter())
                 log.addHandler(handler)
 
         if not changed.isdisjoint(self.store_config):
             store_config = dict((key, config[key]) for key in self.store_config)
-            path = Path(store_config.pop("file_path"))
+            path = store_config.pop("file_path")
 
             if path.suffixes and store_config["identifier"]:
                 store_config["path"] = path
                 store = SQLiteStore(self.ydoc, **store_config)
                 self.run_worker(
-                    store.start(), group="store", exclusive=True, exit_on_error=False
+                    store.start(),
+                    group="store",
+                    exclusive=True,
                 )
                 await store.started.wait()
             else:
@@ -392,7 +433,7 @@ class UI(App):
 
         if not changed.isdisjoint(self.renderer_config):
             renderer_config = dict((key, config[key]) for key in self.renderer_config)
-            path = Path(renderer_config.pop("render_path"))
+            path = renderer_config.pop("render_path")
             renderer_config["path"] = path
             if path.suffix:
                 renderer = TextRenderer(self.ytext, **renderer_config)
@@ -400,7 +441,6 @@ class UI(App):
                     renderer.start(),
                     group="renderer",
                     exclusive=True,
-                    exit_on_error=False,
                 )
                 await renderer.started.wait()
             else:
@@ -414,25 +454,18 @@ class UI(App):
             user = provider_config.pop("user")
             password = provider_config.pop("password")
             if user:
-                provider_config["additional_headers"] = basic_authorization_header(
+                self.basic_authorization_header = basic_authorization_header(
                     user, password
                 )
-
-            server = provider_config["server"]
-            try:
-                parse_uri(server)
-            except Exception:
-                server_is_valid = False
             else:
-                server_is_valid = True
+                self.basic_authorization_header = None
 
-            if provider_config["identifier"] and server_is_valid:
+            if provider_config["identifier"] and provider_config["server"]:
                 provider = Provider(self.ydoc, **provider_config)
                 self.run_worker(
                     provider.start(),
                     group="provider",
                     exclusive=True,
-                    exit_on_error=False,
                 )
                 await provider.started.wait()
             else:

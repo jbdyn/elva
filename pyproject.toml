@@ -46,6 +46,7 @@ dependencies = [
     "watchdog>=5.0.0",
     "ldap3>=2.9.1",
     "textual[syntax]>=0.82.0",
+    "pyperclip>=1.9.0",
 ]
 version = "0.0.1"
 
