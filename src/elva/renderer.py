@@ -4,17 +4,17 @@ from elva.component import Component
 
 
 class TextRenderer(Component):
-    def __init__(self, ytext, path, render):
+    def __init__(self, ytext, path, auto_render=True):
         self.ytext = ytext
         self.path = anyio.Path(path)
-        self.render = render
+        self.auto_render = auto_render
 
     async def run(self):
-        if self.render:
+        if self.auto_render:
             await self.write()
 
     async def cleanup(self):
-        if self.render:
+        if self.auto_render:
             await self.write()
             self.log.info(f"saved and closed file {self.path}")
 

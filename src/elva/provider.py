@@ -145,8 +145,11 @@ class WebsocketProvider(WebsocketConnection):
         super().__init__(uri, *args, **kwargs)
 
     async def run(self):
-        self.ydoc.observe(self.callback)
+        self.subscription = self.ydoc.observe(self.callback)
         await super().run()
+
+    async def cleanup(self):
+        self.ydoc.unobserve(self.subscription)
 
     def callback(self, event):
         if event.update != b"\x00\x00":
@@ -205,8 +208,11 @@ class ElvaWebsocketProvider(WebsocketConnection):
         super().__init__(server, *args, **kwargs)
 
     async def run(self):
-        self.ydoc.observe(self.callback)
+        self.subscription = self.ydoc.observe(self.callback)
         await super().run()
+
+    async def cleanup(self):
+        self.ydoc.unobserve(self.subscription)
 
     async def send(self, data):
         message = self.uuid + data

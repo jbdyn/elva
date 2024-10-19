@@ -1,20 +1,21 @@
-iport logging
-import uuid
-from dataclasses import dataclass
+import logging
 from pathlib import Path
 
 import anyio
 import click
 import websockets.exceptions as wsexc
 from pycrdt import Doc, Text
+from rapidfuzz import process
 from rich.text import Text as RichText
 from textual.app import App
 from textual.binding import Binding
-from textual.containers import Container, Grid, Horizontal, Vertical, VerticalScroll
+from textual.containers import Container, Grid, Horizontal, VerticalScroll
 from textual.message import Message
-from textual.reactive import reactive
+from textual.suggester import Suggester
+from textual.validation import Validator
 from textual.widget import Widget
-from textual.widgets import Button, Input, Label, RadioButton, RadioSet, Select, Switch
+from textual.widgets import Button, Input, Label, RadioButton, RadioSet, Static, Switch
+from websockets import parse_uri
 
 from elva.auth import basic_authorization_header
 from elva.log import LOGGER_NAME, DefaultFormatter
@@ -22,7 +23,7 @@ from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
 from elva.utils import FILE_SUFFIX, gather_context_information
-from elva.widgets.screens import CredentialScreen, ErrorScreen
+from elva.widgets.screens import ErrorScreen
 from elva.widgets.textarea import YTextArea
 
 log = logging.getLogger(__name__)
@@ -37,79 +38,32 @@ LANGUAGES = {
 }
 
 
-class ConfigPanel(Container):
-    class ConfigSaved(Message):
-        def __init__(self, old, new, changed):
-            super().__init__()
-            self.old = old
-            self.new = new
-            self.changed = changed
-
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-
+class Status(Label):
     @property
     def state(self):
-        return dict((c.name, c.value) for c in self.config)
+        return self.classes
 
     @state.setter
     def state(self, new):
-        for c in self.config:
-            c.widget.value = new.get(c.name)
+        self.set_classes(new)
 
+
+class StatusBar(Container):
     def compose(self):
         with Grid():
-            with VerticalScroll():
-                for c in self.config:
-                    c.border_title = c.name
-                    yield c
-            with Grid():
-                yield Button("Apply", id="apply")
-                yield Button("Reset", id="reset")
-
-    def on_mount(self):
-        self.old = self.state
-
-    def post_changed_config(self):
-        new = self.state
-        changed = set(c.name for c in self.config if self.old[c.name] != new[c.name])
-        self.post_message(self.ConfigSaved(self.old, new, changed))
-        self.old = new
-
-    def on_input_submitted(self, message):
-        self.post_changed_config()
-
-    def on_button_pressed(self, message):
-        match message.button.id:
-            case "apply":
-                self.post_changed_config()
-            case "reset":
-                self.state = self.old
-
-
-class ConfigView(Widget):
-    def __init__(self, widget):
-        super().__init__()
-        self.widget = widget
-
-    def compose(self):
-        yield self.widget
-
-    @property
-    def name(self):
-        return self.widget.name
-
-    @property
-    def value(self):
-        return self.widget.value
+            yield Button("P", id="provider")
+            yield Button("S", id="store")
+            yield Button("R", id="renderer")
+            yield Button("L", id="logger")
+            yield Button("=", id="config")
 
 
 class RadioSelect(Container):
-    def __init__(self, options, value, *args, **kwargs):
+    def __init__(self, options, *args, value=None, **kwargs):
         super().__init__(*args, **kwargs)
+        if value is None:
+            value = options[0]
         self.options = options
-        self._init_value = value
         self.buttons = dict(
             (option, RadioButton(option, value=(option == value), name=option))
             for option in options
@@ -131,6 +85,105 @@ class RadioSelect(Container):
         self.buttons[value].value = True
 
 
+class ConfigPanel(Container):
+    class ConfigSaved(Message):
+        def __init__(self, last, config, changed):
+            super().__init__()
+            self.last = last
+            self.config = config
+            self.changed = changed
+
+    def __init__(self, config, applied=False):
+        super().__init__()
+        self.config = config
+        self.applied = applied
+
+    @property
+    def state(self):
+        return dict((c.name, c.value) for c in self.config)
+
+    @property
+    def last(self):
+        return dict((c.name, c.last) for c in self.config)
+
+    @property
+    def changed(self):
+        if self.applied:
+            return set(c.name for c in self.config if c.changed)
+        else:
+            return set(c.name for c in self.config)
+
+    def compose(self):
+        with Grid():
+            with VerticalScroll():
+                for c in self.config:
+                    c.border_title = c.name
+                    yield c
+            with Grid():
+                yield Button("Apply", id="apply")
+                yield Button("Reset", id="reset")
+
+    def apply(self):
+        for c in self.config:
+            c.apply()
+        self.applied = True
+
+    def reset(self):
+        for c in self.config:
+            c.reset()
+
+    def post_changed_config(self):
+        self.post_message(self.ConfigSaved(self.last, self.state, self.changed))
+        self.apply()
+
+    def on_input_submitted(self, message):
+        self.post_changed_config()
+
+    def on_button_pressed(self, message):
+        match message.button.id:
+            case "apply":
+                self.post_changed_config()
+            case "reset":
+                self.reset()
+
+
+class ConfigView(Widget):
+    def __init__(self, widget):
+        super().__init__()
+        self.widget = widget
+
+    def compose(self):
+        yield self.widget
+
+    def on_mount(self):
+        self.apply()
+
+    def apply(self):
+        self.last = self.value
+
+    def reset(self):
+        self.value = self.last
+
+    @property
+    def changed(self):
+        return self.last != self.value
+
+    @property
+    def name(self):
+        return self.widget.name
+
+    @property
+    def value(self):
+        return self.widget.value
+
+    @value.setter
+    def value(self, new):
+        self.widget.value = new
+
+    def on_click(self, message):
+        self.widget.focus()
+
+
 class TextInputView(ConfigView):
     def __init__(self, *args, **kwargs):
         widget = Input(*args, **kwargs)
@@ -143,6 +196,55 @@ class TextInputView(ConfigView):
 
     def on_button_pressed(self, message):
         self.widget.clear()
+
+    def on_input_changed(self, message):
+        validation_result = message.validation_result
+        if validation_result is not None:
+            if validation_result.is_valid:
+                self.remove_class("invalid")
+            else:
+                self.add_class("invalid")
+
+
+class WebsocketsURLValidator(Validator):
+    def validate(self, value):
+        try:
+            parse_uri(value)
+        except Exception as exc:
+            return self.failure(description=str(exc))
+        else:
+            return self.success()
+
+
+class PathSuggester(Suggester):
+    async def get_suggestion(self, value):
+        path = Path(value)
+
+        if path.is_dir():
+            dir = path
+        else:
+            dir = path.parent
+
+        try:
+            _, dirs, files = next(dir.walk())
+        except StopIteration:
+            return value
+
+        names = sorted(dirs) + sorted(files)
+        try:
+            name = next(filter(lambda n: n.startswith(path.name), names))
+        except StopIteration:
+            if path.is_dir():
+                name = names[0] if names else ""
+            else:
+                name = path.name
+
+        if value.startswith("."):
+            prefix = "./"
+        else:
+            prefix = ""
+
+        return prefix + str(dir / name)
 
 
 class UI(App):
@@ -161,8 +263,10 @@ class UI(App):
         user: str | None = None,
         password: str | None = None,
         auto_render: bool = False,
+        log_path: None | Path = None,
+        level=None,
     ):
-        super().__init__()
+        super().__init__(ansi_color=True)
 
         self.messages = messages
 
@@ -172,7 +276,12 @@ class UI(App):
                 value=identifier,
                 name="identifier",
             ),
-            TextInputView(value=server, name="server"),
+            TextInputView(
+                value=server,
+                name="server",
+                validators=WebsocketsURLValidator(),
+                validate_on=["changed"],
+            ),
             ConfigView(
                 RadioSelect(
                     ["yjs", "elva"],
@@ -185,20 +294,19 @@ class UI(App):
                 value=password,
                 name="password",
                 password=True,
-                classes="config",
             ),
             ConfigView(
                 Input(
-                    value=file_path,
+                    value=str(file_path) if file_path is not None else "",
+                    # suggester=PathSuggester(),
                     name="file_path",
-                    classes="config",
                 )
             ),
             ConfigView(
                 Input(
-                    value=render_path,
+                    value=str(render_path) if render_path is not None else "",
+                    # suggester=PathSuggester(),
                     name="render_path",
-                    classes="config",
                 )
             ),
             ConfigView(
@@ -206,7 +314,20 @@ class UI(App):
                     value=auto_render,
                     name="auto_render",
                     animate=False,
-                    classes="config",
+                )
+            ),
+            ConfigView(
+                Input(
+                    value=str(log_path) if log_path is not None else "",
+                    # suggester=PathSuggester(),
+                    name="log_path",
+                )
+            ),
+            ConfigView(
+                RadioSelect(
+                    list(logging.getLevelNamesMapping().keys()),
+                    value=logging.getLevelName(level) if level is not None else "INFO",
+                    name="level",
                 )
             ),
         ]
@@ -218,6 +339,7 @@ class UI(App):
             ["identifier", "server", "messages", "user", "password"]
         )
         self.renderer_config = set(["render_path", "auto_render"])
+        self.log_config = set(["log_path"])
 
         self.components = dict()
 
@@ -237,42 +359,84 @@ class UI(App):
         )
 
     # on posted message ConfigPanel.ConfigSaved
-    def on_config_panel_config_saved(self, message):
-        self.log(message)
+    async def on_config_panel_config_saved(self, message):
         changed = message.changed
-        config = message.new
+        config = message.config
+
+        log.setLevel(logging.getLevelNamesMapping()[config["level"]])
+
+        if not changed.isdisjoint(self.log_config):
+            log_path = config["log_path"]
+
+            for handler in log.handlers[:]:
+                log.removeHandler(handler)
+
+            if log_path and Path(log_path).suffixes:
+                handler = logging.FileHandler(log_path)
+                handler.setFormatter(DefaultFormatter())
+                log.addHandler(handler)
 
         if not changed.isdisjoint(self.store_config):
-            store_config = dict([(key, config.get(key)) for key in self.store_config])
-            store_config["path"] = Path(store_config.pop("file_path"))
-            self.log("STORE", store_config)
-            store = SQLiteStore(self.ydoc, **store_config)
-            self.run_worker(store.start(), group="store", exclusive=True)
+            store_config = dict((key, config[key]) for key in self.store_config)
+            path = Path(store_config.pop("file_path"))
+
+            if path.suffixes and store_config["identifier"]:
+                store_config["path"] = path
+                store = SQLiteStore(self.ydoc, **store_config)
+                self.run_worker(
+                    store.start(), group="store", exclusive=True, exit_on_error=False
+                )
+                await store.started.wait()
+            else:
+                self.workers.cancel_group(self, "store")
 
         if not changed.isdisjoint(self.renderer_config):
-            renderer_config = dict(
-                [(key, config.get(key)) for key in self.renderer_config]
-            )
-            self.log("RENDERER", renderer_config)
-            renderer_config["path"] = Path(renderer_config.pop("render_path"))
-            renderer_config["render"] = bool(renderer_config["render"])
-            renderer = TextRenderer(self.ytext, **renderer_config)
-            self.run_worker(renderer.start(), group="renderer", exclusive=True)
+            renderer_config = dict((key, config[key]) for key in self.renderer_config)
+            path = Path(renderer_config.pop("render_path"))
+            renderer_config["path"] = path
+            if path.suffix:
+                renderer = TextRenderer(self.ytext, **renderer_config)
+                self.run_worker(
+                    renderer.start(),
+                    group="renderer",
+                    exclusive=True,
+                    exit_on_error=False,
+                )
+                await renderer.started.wait()
+            else:
+                self.workers.cancel_group(self, "renderer")
 
         if not changed.isdisjoint(self.provider_config):
-            Provider = self.get_provider()
-            provider_config = dict(
-                [(key, config.get(key)) for key in self.provider_config]
-            )
+            provider_config = dict((key, config[key]) for key in self.provider_config)
             self.messages = provider_config.pop("messages")
+            Provider = self.get_provider()
+
             user = provider_config.pop("user")
             password = provider_config.pop("password")
-            provider_config["additional_headers"] = basic_authorization_header(
-                user, password
-            )
-            self.log("PROVIDER", provider_config)
-            provider = Provider(self.ydoc, **provider_config)
-            self.run_worker(provider.start(), group="provider", exclusive=True)
+            if user:
+                provider_config["additional_headers"] = basic_authorization_header(
+                    user, password
+                )
+
+            server = provider_config["server"]
+            try:
+                parse_uri(server)
+            except Exception:
+                server_is_valid = False
+            else:
+                server_is_valid = True
+
+            if provider_config["identifier"] and server_is_valid:
+                provider = Provider(self.ydoc, **provider_config)
+                self.run_worker(
+                    provider.start(),
+                    group="provider",
+                    exclusive=True,
+                    exit_on_error=False,
+                )
+                await provider.started.wait()
+            else:
+                self.workers.cancel_group(self, "provider")
 
     def get_provider(self):
         match self.messages:
@@ -345,7 +509,7 @@ class UI(App):
             self.task_group.start_soon(anyio.sleep_forever)
 
     async def on_mount(self):
-        ...
+        self.config_panel.add_class("hidden")
         # self.run_worker(self.run_components())
         # check existence of files before anything is changed on disk
         # if self.render_path is not None:
@@ -359,14 +523,21 @@ class UI(App):
         #            self.ytext += text
 
     async def on_unmount(self):
-        async with anyio.create_task_group() as tg:
-            for component in self.components.values():
-                tg.start_soon(component.stopped.wait)
+        # async with anyio.create_task_group() as tg:
+        #    for component in self.components.values():
+        #        tg.start_soon(component.stopped.wait)
+        await self.workers.wait_for_complete()
 
     def compose(self):
+        yield StatusBar()
         with Horizontal():
             yield self.ytext_area
             yield self.config_panel
+
+    def on_button_pressed(self, message):
+        button = message.button
+        if button.id == "config":
+            self.config_panel.toggle_class("hidden")
 
     def action_render(self):
         if self.render_path is not None:
@@ -438,6 +609,8 @@ def cli(ctx: click.Context, render: bool, file: None | Path):
         c["user"],
         c["password"],
         render,
+        log_path,
+        level,
     )
     ui.run()
 

@@ -68,8 +68,7 @@ Select {
 }
 
 ConfigView {
-  border: solid $surface;
-  background: $surface;
+  border: solid $primary;
   border-title-color: gray;
   border-title-style: italic;
   align: center top;
@@ -84,6 +83,10 @@ ConfigPanel {
   
   & > Grid {
     grid-rows: 1fr auto;
+
+    & > VerticalScroll {
+      scrollbar-size: 1 1;
+    }
 
     & > Grid {
       padding: 1;
@@ -147,5 +150,31 @@ RadioSet {
 
   &:focus > RadioButton.-selected > .toggle--label {
     text-style: none;
+  }
+}
+
+.invalid {
+  border: solid red;
+}
+
+.hidden {
+  display: none;
+}
+
+StatusBar {
+  height: 1;
+  margin: 0 0 1 0;
+
+  & > Grid {
+    grid-size: 5;
+    grid-gutter: 1;
+    grid-columns: auto;
+    align: right top;
+
+    & > Button {
+      width: auto;
+      min-width: 0;
+      padding: 0 1;
+    }
   }
 }
