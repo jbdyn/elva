@@ -1,3 +1,7 @@
+Screen {
+  layout: horizontal;
+}
+
 #editor {
   border: none;
   padding: 0;
@@ -68,7 +72,7 @@ Select {
 }
 
 ConfigView {
-  border: solid $primary;
+  border: solid $surface;
   border-title-color: gray;
   border-title-style: italic;
   align: center top;
@@ -76,10 +80,10 @@ ConfigView {
 }
 
 ConfigPanel {
-  dock: right;
-  width: 100;
+  width: auto;
   max-width: 50%;
   height: 100%;
+  padding: 0 1;
   
   & > Grid {
     grid-rows: 1fr auto;
@@ -105,6 +109,7 @@ ConfigPanel {
 Button {
   border: none;
   height: auto;
+  min-width: 0;
 }
 
 Input {
@@ -134,17 +139,26 @@ RadioSelectView {
     grid-columns: 1fr 3;
     grid-gutter: 1;
     height: auto;
-
-    & > Button {
-      height: 100%;
-    }
   }
 }
 
-Switch {
-  border: none;
-  padding: 0;
-  width: auto;
+SwitchView {
+
+  & > Grid {
+    grid-size: 2;
+    grid-columns: 1fr 3;
+    height: auto;
+
+    & Container {
+      height: auto;
+      align: center middle;
+
+      & > Switch {
+        border: none;
+        padding: 0;
+      }
+    }
+  }
 }
 
 RadioSelect {
@@ -160,11 +174,17 @@ RadioSet {
   & > RadioButton {
     padding: 0;
     width: 100%;
+    color: auto;
+
+    &:hover {
+      text-style: none;
+    }
   }
 
   &:focus > RadioButton.-selected > .toggle--label {
     text-style: none;
   }
+
 }
 
 .invalid {
@@ -176,19 +196,23 @@ RadioSet {
 }
 
 StatusBar {
-  height: 1;
-  margin: 0 0 1 0;
+  align: right top;
+  width: auto;
 
   & > Grid {
-    grid-size: 5;
+    grid-size: 1;
     grid-gutter: 1;
-    grid-columns: auto;
-    align: right top;
+    height: auto;
+    width: 3;
 
-    & > Button {
-      width: auto;
-      min-width: 0;
+    & > Status {
       padding: 0 1;
+      color: auto;
+      text-style: bold;
     }
   }
+}
+
+.success {
+  background: $success;
 }

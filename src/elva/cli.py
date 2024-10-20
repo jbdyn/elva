@@ -234,11 +234,9 @@ def elva(
 #
 @elva.command
 @click.pass_context
-@click.option(
-    "--file",
-    "-f",
+@click.argument(
     "file",
-    help="Include the parameters defined in FILE.",
+    required=False,
     type=click.Path(path_type=Path, dir_okay=False),
 )
 @click.option(

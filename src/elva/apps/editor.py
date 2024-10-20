@@ -51,25 +51,34 @@ class Status(Label):
 class StatusBar(Container):
     def compose(self):
         with Grid():
-            yield Button("P", id="provider")
-            yield Button("S", id="store")
-            yield Button("R", id="renderer")
-            yield Button("L", id="logger")
             yield Button("=", id="config")
+            yield Status("P", id="provider")
+            yield Status("S", id="store")
+            yield Status("R", id="renderer")
+            yield Status("L", id="logger")
 
 
 class RadioSelect(Container):
     def __init__(self, options, *args, value=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.names, self.values = list(zip(*options))
         if value is None:
-            value = options[0]
-        self.options = options
+            value = self.values[0]
+        elif value not in self.values:
+            raise AttributeError(f"value '{value}' is not in values {self.values}")
+
         self.buttons = dict(
-            (option, RadioButton(option, value=(option == value), name=option))
-            for option in options
+            (n, RadioButton(n, value=(v == value), name=n)) for n, v in options
         )
+        self.options = dict(options)
 
         self.radio_set = RadioSet()
+
+    @classmethod
+    def from_values(cls, options, *args, value=None, **kwargs):
+        options = [(str(option), option) for option in options]
+
+        return cls(options, *args, value=value, **kwargs)
 
     def compose(self):
         with self.radio_set:
@@ -78,11 +87,12 @@ class RadioSelect(Container):
 
     @property
     def value(self):
-        return self.radio_set.pressed_button.name
+        return self.options[self.radio_set.pressed_button.name]
 
     @value.setter
-    def value(self, value):
-        self.buttons[value].value = True
+    def value(self, new):
+        name = self.names[self.values.index(new)]
+        self.buttons[name].value = True
 
     def on_click(self, message):
         self.radio_set.pressed_button.focus()
@@ -253,7 +263,7 @@ class URLInputView(TextInputView):
 
     @property
     def value(self):
-        return self.widget.value if self.is_valid else ""
+        return self.widget.value if self.is_valid else None
 
     @value.setter
     def value(self, new):
@@ -269,6 +279,21 @@ class PathInputView(TextInputView):
     @value.setter
     def value(self, new):
         self.widget.value = str(new) if new is not None else ""
+
+
+class SwitchView(ConfigView):
+    def __init__(self, *args, **kwargs):
+        widget = Switch(*args, **kwargs)
+        super().__init__(widget)
+
+    def compose(self):
+        with Grid():
+            with Container():
+                yield self.widget
+            yield Button("S", id=f"save-{self.name}")
+
+    def on_button_pressed(self, message):
+        self.post_message(self.Saved(self.name, self.value))
 
 
 class WebsocketsURLValidator(Validator):
@@ -328,11 +353,12 @@ class UI(App):
         server: None | Path = None,
         identifier: None | Path = None,
         messages: str = "yjs",
+        name: str | None = None,
         user: str | None = None,
         password: str | None = None,
         auto_render: bool = False,
         log_path: None | Path = None,
-        level=None,
+        level: None | int = None,
     ):
         super().__init__(ansi_color=True)
 
@@ -351,41 +377,46 @@ class UI(App):
                 validate_on=["changed"],
             ),
             RadioSelectView(
-                ["yjs", "elva"],
+                list(zip(["yjs", "elva"], ["yjs", "elva"])),
                 value=messages,
                 name="messages",
             ),
-            TextInputView(value=user, name="user"),
+            TextInputView(
+                value=name,
+                name="name",
+            ),
+            TextInputView(
+                value=user,
+                name="user",
+            ),
             TextInputView(
                 value=password,
                 name="password",
                 password=True,
             ),
             PathInputView(
-                value=str(file_path) if file_path is not None else "",
+                value=str(file_path) if file_path is not None else None,
                 # suggester=PathSuggester(),
                 name="file_path",
             ),
             PathInputView(
-                value=str(render_path) if render_path is not None else "",
+                value=str(render_path) if render_path is not None else None,
                 # suggester=PathSuggester(),
                 name="render_path",
             ),
-            ConfigView(
-                Switch(
-                    value=auto_render,
-                    name="auto_render",
-                    animate=False,
-                )
+            SwitchView(
+                value=auto_render,
+                name="auto_render",
+                animate=False,
             ),
             PathInputView(
-                value=str(log_path) if log_path is not None else "",
+                value=str(log_path) if log_path is not None else None,
                 # suggester=PathSuggester(),
                 name="log_path",
             ),
             RadioSelectView(
-                list(logging.getLevelNamesMapping().keys()),
-                value=logging.getLevelName(level) if level is not None else "INFO",
+                list(logging.getLevelNamesMapping().items()),
+                value=level,
                 name="level",
             ),
         ]
@@ -421,7 +452,7 @@ class UI(App):
         changed = message.changed
         config = message.config
 
-        log.setLevel(logging.getLevelNamesMapping()[config["level"]])
+        log.setLevel(config["level"])
 
         if not changed.isdisjoint(self.log_config):
             log_path = config["log_path"]
@@ -429,16 +460,23 @@ class UI(App):
             for handler in log.handlers[:]:
                 log.removeHandler(handler)
 
-            if log_path.suffixes:
+            status_label = self.query_one("#logger", Status)
+
+            if log_path is not None and log_path.suffixes and not log_path.is_dir():
                 handler = logging.FileHandler(log_path)
                 handler.setFormatter(DefaultFormatter())
                 log.addHandler(handler)
+                status_label.state = "success"
+            else:
+                status_label.state = ""
 
         if not changed.isdisjoint(self.store_config):
             store_config = dict((key, config[key]) for key in self.store_config)
             path = store_config.pop("file_path")
 
-            if path.suffixes and store_config["identifier"]:
+            status_label = self.query_one("#store", Status)
+
+            if path.suffixes and not path.is_dir() and store_config["identifier"]:
                 store_config["path"] = path
                 store = SQLiteStore(self.ydoc, **store_config)
                 self.run_worker(
@@ -447,14 +485,18 @@ class UI(App):
                     exclusive=True,
                 )
                 await store.started.wait()
+                status_label.state = "success"
             else:
                 self.workers.cancel_group(self, "store")
+                status_label.state = ""
 
         if not changed.isdisjoint(self.renderer_config):
             renderer_config = dict((key, config[key]) for key in self.renderer_config)
             path = renderer_config.pop("render_path")
             renderer_config["path"] = path
-            if path.suffix:
+            status_label = self.query_one("#renderer", Status)
+
+            if path.suffix and not path.is_dir():
                 renderer = TextRenderer(self.ytext, **renderer_config)
                 self.run_worker(
                     renderer.start(),
@@ -462,8 +504,10 @@ class UI(App):
                     exclusive=True,
                 )
                 await renderer.started.wait()
+                status_label.state = "success"
             else:
                 self.workers.cancel_group(self, "renderer")
+                status_label.state = ""
 
         if not changed.isdisjoint(self.provider_config):
             provider_config = dict((key, config[key]) for key in self.provider_config)
@@ -479,6 +523,8 @@ class UI(App):
             else:
                 self.basic_authorization_header = None
 
+            status_label = self.query_one("#provider", Status)
+
             if provider_config["identifier"] and provider_config["server"]:
                 provider = Provider(self.ydoc, **provider_config)
                 self.run_worker(
@@ -487,8 +533,10 @@ class UI(App):
                     exclusive=True,
                 )
                 await provider.started.wait()
+                status_label.state = "success"
             else:
                 self.workers.cancel_group(self, "provider")
+                status_label.state = ""
 
     def get_provider(self):
         match self.messages:
@@ -581,10 +629,9 @@ class UI(App):
         await self.workers.wait_for_complete()
 
     def compose(self):
+        yield self.ytext_area
+        yield self.config_panel
         yield StatusBar()
-        with Horizontal():
-            yield self.ytext_area
-            yield self.config_panel
 
     def on_button_pressed(self, message):
         button = message.button
@@ -627,9 +674,8 @@ class UI(App):
 
 @click.command()
 @click.option(
-    "--render",
-    "-r",
-    "render",
+    "--auto-render",
+    "auto_render",
     is_flag=True,
     help="Enable rendering of the data file.",
 )
@@ -639,13 +685,17 @@ class UI(App):
     type=click.Path(path_type=Path, dir_okay=False),
 )
 @click.pass_context
-def cli(ctx: click.Context, render: bool, file: None | Path):
+def cli(ctx: click.Context, auto_render: bool, file: None | Path):
     """Edit text documents collaboratively in real-time."""
 
     c = ctx.obj
 
     # gather info
-    gather_context_information(ctx, file, app="editor")
+    gather_context_information(ctx, file=file, app="editor")
+
+    if auto_render:
+        # the flag has been explicitly set by the user
+        c["auto_render"] = auto_render
 
     # logging
     LOGGER_NAME.set(__name__)
@@ -664,9 +714,10 @@ def cli(ctx: click.Context, render: bool, file: None | Path):
         c["server"],
         c["identifier"],
         c["messages"],
+        c["name"],
         c["user"],
         c["password"],
-        render,
+        c["auto_render"],
         log_path,
         level,
     )

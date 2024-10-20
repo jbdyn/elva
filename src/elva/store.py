@@ -24,11 +24,13 @@ class SQLiteStore(Component):
         try:
             res = cur.execute("SELECT * FROM metadata")
         except Exception:
-            return dict()
+            res = dict()
         else:
-            return dict(res.fetchall())
+            res = dict(res.fetchall())
         finally:
             db.close()
+
+        return res
 
     @staticmethod
     def set_metadata(path, metadata):
@@ -47,8 +49,9 @@ class SQLiteStore(Component):
                 )
             db.commit()
         except Exception:
+            db.close()
             raise
-        finally:
+        else:
             db.close()
 
     def callback(self, event):
