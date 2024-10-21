@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:e108c2c6bdef1f5de3e76e0f1a9f00acb51fe09c7cc67cdaf4a0e0b9229fa057"
+content_hash = "sha256:54afdf270db3f1afc20a93ac20b295f62f7b65328c35d23e4c343cb959d70f82"
 
 [[metadata.targets]]
 requires_python = ">=3.10"
@@ -1360,6 +1360,20 @@ files = [
 ]
 
 [[package]]
+name = "qrcode"
+version = "8.0"
+requires_python = "<4.0,>=3.9"
+summary = "QR Code image generator"
+groups = ["default"]
+dependencies = [
+    "colorama; sys_platform == \"win32\"",
+]
+files = [
+    {file = "qrcode-8.0-py3-none-any.whl", hash = "sha256:9fc05f03305ad27a709eb742cf3097fa19e6f6f93bb9e2f039c0979190f6f1b1"},
+    {file = "qrcode-8.0.tar.gz", hash = "sha256:025ce2b150f7fe4296d116ee9bad455a6643ab4f6e7dce541613a4758cbce347"},
+]
+
+[[package]]
 name = "readme-renderer"
 version = "44.0"
 requires_python = ">=3.9"
@@ -1612,6 +1626,17 @@ marker = "python_version < \"3.11\""
 files = [
     {file = "tomli-2.0.1-py3-none-any.whl", hash = "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc"},
     {file = "tomli-2.0.1.tar.gz", hash = "sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f"},
+]
+
+[[package]]
+name = "tomli-w"
+version = "1.1.0"
+requires_python = ">=3.9"
+summary = "A lil' TOML writer"
+groups = ["default"]
+files = [
+    {file = "tomli_w-1.1.0-py3-none-any.whl", hash = "sha256:1403179c78193e3184bfaade390ddbd071cba48a32a2e62ba11aae47490c63f7"},
+    {file = "tomli_w-1.1.0.tar.gz", hash = "sha256:49e847a3a304d516a169a601184932ef0f6b61623fe680f836a2aa7128ed0d33"},
 ]
 
 [[package]]

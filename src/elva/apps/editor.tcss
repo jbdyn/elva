@@ -216,3 +216,33 @@ StatusBar {
 .success {
   background: $success;
 }
+
+#qrcode {
+  content-align: center middle;
+}
+
+QRCodeLabel {
+  padding: 0;
+  height: auto;
+
+  & > Collapsible {
+    padding: 0;
+    border: none;
+    background: transparent;
+
+    & CollapsibleTitle {
+      padding: 0;
+      background: transparent;
+      color: auto;
+    }
+
+    & > Contents {
+      padding: 0;
+
+      & > Static {
+        padding-top: 1;
+        color: auto;
+      }
+    }
+  }
+}

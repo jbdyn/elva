@@ -1,8 +1,11 @@
+import io
 import logging
 from pathlib import Path
 
 import anyio
 import click
+import qrcode
+import tomli_w
 import websockets.exceptions as wsexc
 from pycrdt import Doc, Text
 from pyperclip import copy as copy_to_clipboard
@@ -14,7 +17,16 @@ from textual.message import Message
 from textual.suggester import Suggester
 from textual.validation import Validator
 from textual.widget import Widget
-from textual.widgets import Button, Input, Label, RadioButton, RadioSet, Switch
+from textual.widgets import (
+    Button,
+    Collapsible,
+    Input,
+    Label,
+    RadioButton,
+    RadioSet,
+    Static,
+    Switch,
+)
 from websockets import parse_uri
 
 from elva.auth import basic_authorization_header
@@ -28,6 +40,14 @@ from elva.widgets.textarea import YTextArea
 
 log = logging.getLogger(__name__)
 
+LOG_LEVEL_MAP = dict(
+    FATAL=logging.FATAL,
+    ERROR=logging.ERROR,
+    WARNING=logging.WARNING,
+    INFO=logging.INFO,
+    DEBUG=logging.DEBUG,
+)
+
 LANGUAGES = {
     "py": "python",
     "md": "markdown",
@@ -36,6 +56,34 @@ LANGUAGES = {
     "rs": "rust",
     "yml": "yaml",
 }
+
+
+def generate_qrcode(qr, data):
+    content = tomli_w.dumps(data)
+    qr.clear()
+    qr.add_data(content)
+    f = io.StringIO()
+    qr.print_ascii(out=f)
+    f.seek(0)
+    return f.read()
+
+
+class QRCodeLabel(Widget):
+    def __init__(self, content):
+        super().__init__()
+        self.label = Static(content, id="qrcode")
+
+    def compose(self):
+        with Collapsible(title="QR"):
+            yield self.label
+
+    @property
+    def value(self):
+        return self.label.renderable
+
+    @value.setter
+    def value(self, new):
+        self.label.update(new)
 
 
 class Status(Label):
@@ -161,6 +209,12 @@ class ConfigPanel(Container):
 
 
 class ConfigView(Widget):
+    class Changed(Message):
+        def __init__(self, name, value):
+            super().__init__()
+            self.name = name
+            self.value = value
+
     class Saved(Message):
         def __init__(self, name, value):
             super().__init__()
@@ -219,6 +273,9 @@ class RadioSelectView(ConfigView):
     def on_click(self, message):
         self.widget.radio_set.focus()
 
+    def on_radio_set_changed(self, message):
+        self.post_message(self.Changed(self.name, self.value))
+
 
 class TextInputView(ConfigView):
     def __init__(self, *args, **kwargs):
@@ -245,6 +302,9 @@ class TextInputView(ConfigView):
         elif button_id == save_id:
             self.post_message(self.Saved(self.name, self.value))
 
+    def on_input_changed(self, message):
+        self.post_message(self.Changed(self.name, self.value))
+
 
 class URLInputView(TextInputView):
     def __init__(self, *args, **kwargs):
@@ -257,6 +317,7 @@ class URLInputView(TextInputView):
             if validation_result.is_valid:
                 self.is_valid = True
                 self.remove_class("invalid")
+                self.post_message(self.Changed(self.name, self.value))
             else:
                 self.is_valid = False
                 self.add_class("invalid")
@@ -363,16 +424,28 @@ class UI(App):
         super().__init__(ansi_color=True)
 
         self.messages = messages
+        self.qr = qrcode.QRCode(border=0)
+
+        qr_label = (
+            generate_qrcode(
+                self.qr, dict(identifier=identifier, server=server, messages=messages)
+            )
+            if identifier is not None and server is not None and messages is not None
+            else None
+        )
 
         # ConfigPanel widgets
         self.config_widgets = [
+            ConfigView(QRCodeLabel(qr_label)),
             TextInputView(
                 value=identifier,
                 name="identifier",
+                id="view-identifier",
             ),
             URLInputView(
                 value=server,
                 name="server",
+                id="view-server",
                 validators=WebsocketsURLValidator(),
                 validate_on=["changed"],
             ),
@@ -380,6 +453,7 @@ class UI(App):
                 list(zip(["yjs", "elva"], ["yjs", "elva"])),
                 value=messages,
                 name="messages",
+                id="view-messages",
             ),
             TextInputView(
                 value=name,
@@ -415,7 +489,7 @@ class UI(App):
                 name="log_path",
             ),
             RadioSelectView(
-                list(logging.getLevelNamesMapping().items()),
+                list(LOG_LEVEL_MAP.items()),
                 value=level,
                 name="level",
             ),
@@ -643,6 +717,21 @@ class UI(App):
         file_path = config["file_path"]
         if file_path.is_file():
             SQLiteStore.set_metadata(file_path, {message.name: message.value})
+
+    def on_config_view_changed(self, message):
+        if message.name in ["identifier", "server", "messages"]:
+            qr_label = self.query_one("#qrcode")
+
+            identifier = self.query_one("#view-identifier").value
+            server = self.query_one("#view-server").value
+            messages = self.query_one("#view-messages").value
+
+            qr_label.update(
+                generate_qrcode(
+                    self.qr,
+                    dict(identifier=identifier, server=server, messages=messages),
+                )
+            )
 
     def action_render(self):
         if self.render_path is not None:
