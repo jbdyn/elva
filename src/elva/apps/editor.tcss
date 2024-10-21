@@ -251,9 +251,10 @@ QRCodeLabel {
     background: transparent;
 
     & CollapsibleTitle {
-      padding: 0;
+      padding: 0 1;
       background: transparent;
       color: auto;
+      width: 100%;
     }
 
     & > Contents {

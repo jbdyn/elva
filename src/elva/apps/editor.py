@@ -270,7 +270,7 @@ class ConfigView(Container):
         self.hover = True
 
     def on_leave(self, message):
-        if not self.is_mouse_over:
+        if not self.is_mouse_over and not self.focus_within:
             self.hover = False
 
     def watch_hover(self, hover):
@@ -391,6 +391,19 @@ class SwitchView(ConfigView):
         self.post_message(self.Saved(self.name, self.value))
 
 
+class QRCodeView(ConfigView):
+    def __init__(self, *args, **kwargs):
+        widget = QRCodeLabel(*args, **kwargs)
+        super().__init__(widget)
+
+    def compose(self):
+        yield self.widget
+
+    def on_click(self, message):
+        collapsible = self.query_one(Collapsible)
+        collapsible.collapsed = not collapsible.collapsed
+
+
 class WebsocketsURLValidator(Validator):
     def validate(self, value):
         if value:
@@ -470,7 +483,7 @@ class UI(App):
 
         # ConfigPanel widgets
         self.config_widgets = [
-            ConfigView(QRCodeLabel(qr_label)),
+            QRCodeView(qr_label),
             TextInputView(
                 value=identifier,
                 name="identifier",
