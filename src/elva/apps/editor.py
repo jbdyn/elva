@@ -12,8 +12,9 @@ from pyperclip import copy as copy_to_clipboard
 from rich.text import Text as RichText
 from textual.app import App
 from textual.binding import Binding
-from textual.containers import Container, Grid, Horizontal, VerticalScroll
+from textual.containers import Container, Grid, VerticalScroll
 from textual.message import Message
+from textual.reactive import reactive
 from textual.suggester import Suggester
 from textual.validation import Validator
 from textual.widget import Widget
@@ -147,7 +148,7 @@ class RadioSelect(Container):
 
 
 class ConfigPanel(Container):
-    class ConfigSaved(Message):
+    class Applied(Message):
         def __init__(self, last, config, changed):
             super().__init__()
             self.last = last
@@ -178,7 +179,6 @@ class ConfigPanel(Container):
         with Grid():
             with VerticalScroll():
                 for c in self.config:
-                    c.border_title = c.name
                     yield c
             with Grid():
                 yield Button("Apply", id="apply")
@@ -194,7 +194,7 @@ class ConfigPanel(Container):
             c.reset()
 
     def post_changed_config(self):
-        self.post_message(self.ConfigSaved(self.last, self.state, self.changed))
+        self.post_message(self.Applied(self.last, self.state, self.changed))
         self.apply()
 
     def on_input_submitted(self, message):
@@ -208,7 +208,10 @@ class ConfigPanel(Container):
                 self.reset()
 
 
-class ConfigView(Widget):
+class ConfigView(Container):
+    hover = reactive(False)
+    focus_within = reactive(False)
+
     class Changed(Message):
         def __init__(self, name, value):
             super().__init__()
@@ -226,6 +229,7 @@ class ConfigView(Widget):
         self.widget = widget
 
     def compose(self):
+        yield Label(self.name or "")
         yield self.widget
 
     def on_mount(self):
@@ -256,6 +260,32 @@ class ConfigView(Widget):
     def on_click(self, message):
         self.widget.focus()
 
+    def toggle_button_visibility(self, state):
+        if state:
+            self.query(Button).remove_class("invisible")
+        else:
+            self.query(Button).add_class("invisible")
+
+    def on_enter(self, message):
+        self.hover = True
+
+    def on_leave(self, message):
+        if not self.is_mouse_over:
+            self.hover = False
+
+    def watch_hover(self, hover):
+        self.toggle_button_visibility(hover)
+
+    def on_descendant_focus(self, message):
+        self.focus_within = True
+
+    def on_descendant_blur(self, message):
+        if not any(node.has_focus for node in self.query()):
+            self.focus_within = False
+
+    def watch_focus_within(self, focus):
+        self.toggle_button_visibility(focus)
+
 
 class RadioSelectView(ConfigView):
     def __init__(self, *args, **kwargs):
@@ -264,8 +294,9 @@ class RadioSelectView(ConfigView):
 
     def compose(self):
         with Grid():
-            yield self.widget
+            yield Label(self.name or "")
             yield Button("S", id=f"save-{self.name}")
+            yield self.widget
 
     def on_button_pressed(self, message):
         self.post_message(self.Saved(self.name, self.value))
@@ -284,10 +315,12 @@ class TextInputView(ConfigView):
 
     def compose(self):
         with Grid():
+            yield Label(self.name or "")
+            with Grid():
+                yield Button("X", id=f"clear-{self.name}")
+                yield Button("C", id=f"copy-{self.name}")
+                yield Button("S", id=f"save-{self.name}")
             yield self.widget
-            yield Button("X", id=f"clear-{self.name}")
-            yield Button("C", id=f"copy-{self.name}")
-            yield Button("S", id=f"save-{self.name}")
 
     def on_button_pressed(self, message):
         button_id = message.button.id
@@ -349,9 +382,10 @@ class SwitchView(ConfigView):
 
     def compose(self):
         with Grid():
+            yield Label(self.name or "")
+            yield Button("S", id=f"save-{self.name}")
             with Container():
                 yield self.widget
-            yield Button("S", id=f"save-{self.name}")
 
     def on_button_pressed(self, message):
         self.post_message(self.Saved(self.name, self.value))
@@ -522,7 +556,7 @@ class UI(App):
         )
 
     # on posted message ConfigPanel.ConfigSaved
-    async def on_config_panel_config_saved(self, message):
+    async def on_config_panel_applied(self, message):
         changed = message.changed
         config = message.config
 

@@ -72,11 +72,21 @@ Select {
 }
 
 ConfigView {
-  border: solid $surface;
-  border-title-color: gray;
-  border-title-style: italic;
   align: center top;
   height: auto;
+  padding: 0 1 1 1;
+
+  & > Grid {
+    grid-size: 2;
+    grid-columns: 1fr auto;
+    height: auto;
+
+    & > Label {
+      margin: 0 1;
+      text-style: italic;
+      color: auto;
+    }
+  }
 }
 
 ConfigPanel {
@@ -119,37 +129,47 @@ Input {
 }
 
 TextInputView {
+  & > Grid { 
 
-  & > Grid {
-    grid-size: 4;
-    grid-columns: 1fr 3 3 3;
-    grid-gutter: 1;
-    height: auto;
+    & > Grid {
+      grid-size: 3;
+      grid-gutter: 1;
+      grid-columns: auto;
+      height: auto;
+      align: right top;
 
-    & > Button {
-      min-width: 0;
-      width: 3;
+      & > Button {
+        width: 3;
+      }
+    }
+
+    & > Input {
+      column-span: 2;
     }
   }
 }
 
 RadioSelectView {
   & > Grid {
-    grid-size: 2;
-    grid-columns: 1fr 3;
-    grid-gutter: 1;
-    height: auto;
+    grid-rows: auto;
+
+    & > RadioSelect {
+      column-span: 2;
+      height: auto;
+    }
+
+    & > Button {
+      align: right top;
+    }
   }
 }
 
 SwitchView {
 
   & > Grid {
-    grid-size: 2;
-    grid-columns: 1fr 3;
-    height: auto;
 
-    & Container {
+    & > Container {
+      column-span: 2;
       height: auto;
       align: center middle;
 
@@ -159,11 +179,6 @@ SwitchView {
       }
     }
   }
-}
-
-RadioSelect {
-  height: auto;
-  padding: 0;
 }
 
 RadioSet {
@@ -216,6 +231,11 @@ StatusBar {
 .success {
   background: $success;
 }
+
+.invisible {
+  visibility: hidden;
+}
+
 
 #qrcode {
   content-align: center middle;
