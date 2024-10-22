@@ -1,5 +1,6 @@
 import io
 import logging
+import sys
 from pathlib import Path
 
 import anyio
@@ -30,6 +31,11 @@ from textual.widgets import (
 )
 from websockets import parse_uri
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+
 from elva.auth import basic_authorization_header
 from elva.log import LOGGER_NAME, DefaultFormatter
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
@@ -59,32 +65,51 @@ LANGUAGES = {
 }
 
 
-def generate_qrcode(qr, data):
-    content = tomli_w.dumps(data)
-    qr.clear()
-    qr.add_data(content)
-    f = io.StringIO()
-    qr.print_ascii(out=f)
-    f.seek(0)
-    return f.read()
+def encode_content(data):
+    return tomli_w.dumps(data)
 
 
 class QRCodeLabel(Widget):
-    def __init__(self, content):
-        super().__init__()
-        self.label = Static(content, id="qrcode")
+    def __init__(self, content, *args, collapsed=True, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._buffer = io.StringIO()
+        self.version = 1
+        self.qr = qrcode.QRCode(
+            version=self.version,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            border=0,
+        )
+        self.label = Static()
+        self.collapsible = Collapsible(title="QR", collapsed=collapsed)
+        self.value = content or ""
 
     def compose(self):
-        with Collapsible(title="QR"):
+        with self.collapsible:
             yield self.label
+
+    def generate_qrcode(self, content):
+        qr = self.qr
+        qr.clear()
+
+        f = self._buffer
+        f.truncate(0)
+
+        qr.version = self.version
+        qr.add_data(content)
+        qr.print_ascii(out=f)
+        f.seek(0)
+        return f.read()
 
     @property
     def value(self):
-        return self.label.renderable
+        return self.content
 
     @value.setter
-    def value(self, new):
-        self.label.update(new)
+    def value(self, content):
+        self.content = content
+        code = self.generate_qrcode(content)
+        self.label.update(code)
 
 
 class Status(Label):
@@ -207,6 +232,21 @@ class ConfigPanel(Container):
             case "reset":
                 self.reset()
 
+    def decode_content(self, content):
+        try:
+            config = tomllib.loads(content)
+        except Exception:
+            config = None
+        return config
+
+    def on_paste(self, message):
+        config = self.decode_content(message.text)
+        if config:
+            for c in self.config:
+                value = config.get(c.name)
+                if value is not None:
+                    c.value = value
+
 
 class ConfigView(Container):
     hover = reactive(False)
@@ -256,9 +296,6 @@ class ConfigView(Container):
     @value.setter
     def value(self, new):
         self.widget.value = new
-
-    def on_click(self, message):
-        self.widget.focus()
 
     def toggle_button_visibility(self, state):
         if state:
@@ -349,11 +386,13 @@ class URLInputView(TextInputView):
         if validation_result is not None:
             if validation_result.is_valid:
                 self.is_valid = True
-                self.remove_class("invalid")
+                self.widget.remove_class("invalid")
                 self.post_message(self.Changed(self.name, self.value))
             else:
                 self.is_valid = False
-                self.add_class("invalid")
+                self.widget.add_class("invalid")
+        else:
+            self.post_message(self.Changed(self.name, self.value))
 
     @property
     def value(self):
@@ -397,7 +436,13 @@ class QRCodeView(ConfigView):
         super().__init__(widget)
 
     def compose(self):
-        yield self.widget
+        with Grid():
+            yield Label(self.name or "")
+            yield Button("C", id=f"copy-{self.name or qrcode}")
+            yield self.widget
+
+    def on_button_pressed(self, message):
+        copy_to_clipboard(self.value)
 
     def on_click(self, message):
         collapsible = self.query_one(Collapsible)
@@ -471,11 +516,10 @@ class UI(App):
         super().__init__(ansi_color=True)
 
         self.messages = messages
-        self.qr = qrcode.QRCode(border=0)
 
         qr_label = (
-            generate_qrcode(
-                self.qr, dict(identifier=identifier, server=server, messages=messages)
+            encode_content(
+                dict(identifier=identifier, server=server, messages=messages)
             )
             if identifier is not None and server is not None and messages is not None
             else None
@@ -483,7 +527,11 @@ class UI(App):
 
         # ConfigPanel widgets
         self.config_widgets = [
-            QRCodeView(qr_label),
+            QRCodeView(
+                qr_label,
+                name="share",
+                id="view-share",
+            ),
             TextInputView(
                 value=identifier,
                 name="identifier",
@@ -767,17 +815,14 @@ class UI(App):
 
     def on_config_view_changed(self, message):
         if message.name in ["identifier", "server", "messages"]:
-            qr_label = self.query_one("#qrcode")
+            qr_label = self.query_one("#view-share")
 
             identifier = self.query_one("#view-identifier").value
             server = self.query_one("#view-server").value
             messages = self.query_one("#view-messages").value
 
-            qr_label.update(
-                generate_qrcode(
-                    self.qr,
-                    dict(identifier=identifier, server=server, messages=messages),
-                )
+            qr_label.value = encode_content(
+                dict(identifier=identifier, server=server, messages=messages)
             )
 
     def action_render(self):

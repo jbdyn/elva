@@ -1,5 +1,6 @@
 Screen {
   layout: horizontal;
+  width: 10;
 }
 
 #editor {
@@ -90,8 +91,9 @@ ConfigView {
 }
 
 ConfigPanel {
-  width: auto;
+  width: 80;
   max-width: 50%;
+  min-width: 30;
   height: 100%;
   padding: 0 1;
   
@@ -203,7 +205,7 @@ RadioSet {
 }
 
 .invalid {
-  border: solid red;
+  background: $error;
 }
 
 .hidden {
@@ -263,7 +265,18 @@ QRCodeLabel {
       & > Static {
         padding-top: 1;
         color: auto;
+        content-align: center middle;
       }
+    }
+  }
+}
+
+QRCodeView {
+  & > Grid {
+    grid-rows: auto;
+
+    & > QRCodeLabel {
+      column-span: 2;
     }
   }
 }
