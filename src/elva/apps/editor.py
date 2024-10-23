@@ -11,6 +11,7 @@ import websockets.exceptions as wsexc
 from pycrdt import Doc, Text
 from pyperclip import copy as copy_to_clipboard
 from rich.text import Text as RichText
+from textual import work
 from textual.app import App
 from textual.binding import Binding
 from textual.containers import Container, Grid, VerticalScroll
@@ -70,10 +71,11 @@ def encode_content(data):
 
 
 class QRCodeLabel(Widget):
+    value = reactive("")
+
     def __init__(self, content, *args, collapsed=True, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._buffer = io.StringIO()
         self.version = 1
         self.qr = qrcode.QRCode(
             version=self.version,
@@ -82,34 +84,24 @@ class QRCodeLabel(Widget):
         )
         self.label = Static()
         self.collapsible = Collapsible(title="QR", collapsed=collapsed)
-        self.value = content or ""
 
     def compose(self):
         with self.collapsible:
             yield self.label
 
-    def generate_qrcode(self, content):
+    def generate_qrcode(self):
         qr = self.qr
         qr.clear()
 
-        f = self._buffer
-        f.truncate(0)
+        f = io.StringIO()
 
         qr.version = self.version
-        qr.add_data(content)
+        qr.add_data(self.value)
         qr.print_ascii(out=f)
-        f.seek(0)
-        return f.read()
+        self.label.update(f.getvalue())
 
-    @property
-    def value(self):
-        return self.content
-
-    @value.setter
-    def value(self, content):
-        self.content = content
-        code = self.generate_qrcode(content)
-        self.label.update(code)
+    def watch_value(self):
+        self.generate_qrcode()
 
 
 class Status(Label):
@@ -815,15 +807,17 @@ class UI(App):
 
     def on_config_view_changed(self, message):
         if message.name in ["identifier", "server", "messages"]:
-            qr_label = self.query_one("#view-share")
+            self.update_qrcode()
 
-            identifier = self.query_one("#view-identifier").value
-            server = self.query_one("#view-server").value
-            messages = self.query_one("#view-messages").value
+    def update_qrcode(self):
+        identifier = self.query_one("#view-identifier").value
+        server = self.query_one("#view-server").value
+        messages = self.query_one("#view-messages").value
 
-            qr_label.value = encode_content(
-                dict(identifier=identifier, server=server, messages=messages)
-            )
+        content = encode_content(
+            dict(identifier=identifier, server=server, messages=messages)
+        )
+        self.query_one("#view-share").value = content
 
     def action_render(self):
         if self.render_path is not None:
