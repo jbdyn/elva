@@ -11,7 +11,6 @@ import websockets.exceptions as wsexc
 from pycrdt import Doc, Text
 from pyperclip import copy as copy_to_clipboard
 from rich.text import Text as RichText
-from textual import work
 from textual.app import App
 from textual.binding import Binding
 from textual.containers import Container, Grid, VerticalScroll
@@ -114,14 +113,8 @@ class Status(Label):
         self.set_classes(new)
 
 
-class StatusBar(Container):
-    def compose(self):
-        with Grid():
-            yield Button("=", id="config")
-            yield Status("P", id="provider")
-            yield Status("S", id="store")
-            yield Status("R", id="renderer")
-            yield Status("L", id="logger")
+class StatusBar(Grid):
+    pass
 
 
 class RadioSelect(Container):
@@ -172,10 +165,11 @@ class ConfigPanel(Container):
             self.config = config
             self.changed = changed
 
-    def __init__(self, config, applied=False):
+    def __init__(self, config, applied=False, label=None):
         super().__init__()
         self.config = config
         self.applied = applied
+        self.label = label
 
     @property
     def state(self):
@@ -193,6 +187,8 @@ class ConfigPanel(Container):
             return set(c.name for c in self.config)
 
     def compose(self):
+        if self.label:
+            yield Label(self.label)
         with Grid():
             with VerticalScroll():
                 for c in self.config:
@@ -210,23 +206,21 @@ class ConfigPanel(Container):
         for c in self.config:
             c.reset()
 
-    def post_changed_config(self):
+    def post_applied_config(self):
         self.post_message(self.Applied(self.last, self.state, self.changed))
         self.apply()
-
-    def on_input_submitted(self, message):
-        self.post_changed_config()
 
     def on_button_pressed(self, message):
         match message.button.id:
             case "apply":
-                self.post_changed_config()
+                self.post_applied_config()
             case "reset":
                 self.reset()
 
     def decode_content(self, content):
         try:
             config = tomllib.loads(content)
+        # tomli exceptions may change in the future according to its docs
         except Exception:
             config = None
         return config
@@ -346,18 +340,19 @@ class TextInputView(ConfigView):
         with Grid():
             yield Label(self.name or "")
             with Grid():
-                yield Button("X", id=f"clear-{self.name}")
+                yield Button("X", id=f"cut-{self.name}")
                 yield Button("C", id=f"copy-{self.name}")
                 yield Button("S", id=f"save-{self.name}")
             yield self.widget
 
     def on_button_pressed(self, message):
         button_id = message.button.id
-        clear_id = f"clear-{self.name}"
+        cut_id = f"cut-{self.name}"
         copy_id = f"copy-{self.name}"
         save_id = f"save-{self.name}"
 
-        if button_id == clear_id:
+        if button_id == cut_id:
+            copy_to_clipboard(self.value)
             self.widget.clear()
         elif button_id == copy_id:
             copy_to_clipboard(self.value)
@@ -388,14 +383,20 @@ class URLInputView(TextInputView):
 
     @property
     def value(self):
-        return self.widget.value if self.is_valid else None
+        entry = self.widget.value
+        return entry if entry and self.is_valid else None
 
     @value.setter
     def value(self, new):
-        self.widget.value = new
+        self.widget.value = str(new) if new is not None else ""
 
 
 class PathInputView(TextInputView):
+    def __init__(self, value, *args, **kwargs):
+        super().__init__()
+        value = str(value) if value is not None else None
+        self.widget = Input(value, *args, **kwargs)
+
     @property
     def value(self):
         entry = self.widget.value
@@ -430,7 +431,7 @@ class QRCodeView(ConfigView):
     def compose(self):
         with Grid():
             yield Label(self.name or "")
-            yield Button("C", id=f"copy-{self.name or qrcode}")
+            yield Button("C", id=f"copy-{self.name or "qrcode"}")
             yield self.widget
 
     def on_button_pressed(self, message):
@@ -491,105 +492,37 @@ class UI(App):
     BINDINGS = [Binding("ctrl+s", "save")]
     BINDINGS = [Binding("ctrl+r", "render")]
 
-    def __init__(
-        self,
-        file_path: None | Path = None,
-        render_path: None | Path = None,
-        server: None | Path = None,
-        identifier: None | Path = None,
-        messages: str = "yjs",
-        name: str | None = None,
-        user: str | None = None,
-        password: str | None = None,
-        auto_render: bool = False,
-        log_path: None | Path = None,
-        level: None | int = None,
-    ):
-        super().__init__(ansi_color=True)
+    def __init__(self, config: dict):
+        self.config = c = config
+        ansi_color = c.get("ansi_color")
+        super().__init__(ansi_color=ansi_color if ansi_color is not None else False)
 
-        self.messages = messages
-
-        qr_label = (
-            encode_content(
-                dict(identifier=identifier, server=server, messages=messages)
-            )
-            if identifier is not None and server is not None and messages is not None
-            else None
+        self.store_config = set(
+            [
+                "identifier",
+                "file_path",
+            ]
         )
-
-        # ConfigPanel widgets
-        self.config_widgets = [
-            QRCodeView(
-                qr_label,
-                name="share",
-                id="view-share",
-            ),
-            TextInputView(
-                value=identifier,
-                name="identifier",
-                id="view-identifier",
-            ),
-            URLInputView(
-                value=server,
-                name="server",
-                id="view-server",
-                validators=WebsocketsURLValidator(),
-                validate_on=["changed"],
-            ),
-            RadioSelectView(
-                list(zip(["yjs", "elva"], ["yjs", "elva"])),
-                value=messages,
-                name="messages",
-                id="view-messages",
-            ),
-            TextInputView(
-                value=name,
-                name="name",
-            ),
-            TextInputView(
-                value=user,
-                name="user",
-            ),
-            TextInputView(
-                value=password,
-                name="password",
-                password=True,
-            ),
-            PathInputView(
-                value=str(file_path) if file_path is not None else None,
-                # suggester=PathSuggester(),
-                name="file_path",
-            ),
-            PathInputView(
-                value=str(render_path) if render_path is not None else None,
-                # suggester=PathSuggester(),
-                name="render_path",
-            ),
-            SwitchView(
-                value=auto_render,
-                name="auto_render",
-                animate=False,
-            ),
-            PathInputView(
-                value=str(log_path) if log_path is not None else None,
-                # suggester=PathSuggester(),
-                name="log_path",
-            ),
-            RadioSelectView(
-                list(LOG_LEVEL_MAP.items()),
-                value=level,
-                name="level",
-            ),
-        ]
-
-        self.config_panel = ConfigPanel(self.config_widgets)
-
-        self.store_config = set(["identifier", "file_path"])
         self.provider_config = set(
-            ["identifier", "server", "messages", "user", "password"]
+            [
+                "identifier",
+                "server",
+                "messages",
+                "user",
+                "password",
+            ]
         )
-        self.renderer_config = set(["render_path", "auto_render"])
-        self.log_config = set(["log_path"])
+        self.renderer_config = set(
+            [
+                "render_path",
+                "auto_render",
+            ]
+        )
+        self.log_config = set(
+            [
+                "log_path",
+            ]
+        )
 
         self.components = dict()
 
@@ -598,17 +531,9 @@ class UI(App):
         self.ytext = Text()
         self.ydoc["ytext"] = self.ytext
 
-        # widgets
-        # language = self._get_language()
-        self.ytext_area = YTextArea(
-            self.ytext,
-            tab_behavior="indent",
-            show_line_numbers=True,
-            id="editor",
-            #    language=language,
-        )
+        self._language = c.get("language")
 
-    # on posted message ConfigPanel.ConfigSaved
+    # on posted message ConfigPanel.Applied
     async def on_config_panel_applied(self, message):
         changed = message.changed
         config = message.config
@@ -621,54 +546,66 @@ class UI(App):
             for handler in log.handlers[:]:
                 log.removeHandler(handler)
 
-            status_label = self.query_one("#logger", Status)
+            status_label = self.query_one("#logger")
 
             if log_path is not None and log_path.suffixes and not log_path.is_dir():
                 handler = logging.FileHandler(log_path)
                 handler.setFormatter(DefaultFormatter())
                 log.addHandler(handler)
-                status_label.state = "success"
+                status_label.variant = "success"
             else:
-                status_label.state = ""
+                status_label.variant = "default"
 
         if not changed.isdisjoint(self.store_config):
             store_config = dict((key, config[key]) for key in self.store_config)
             path = store_config.pop("file_path")
 
-            status_label = self.query_one("#store", Status)
+            status_label = self.query_one("#store")
 
-            if path.suffixes and not path.is_dir() and store_config["identifier"]:
+            if (
+                path is not None  #  rely on lazy evaluation
+                and path.suffixes  # effectively meaning is_file(), but is independent of existence
+                and not path.is_dir()
+                and store_config["identifier"]
+            ):
                 store_config["path"] = path
                 store = SQLiteStore(self.ydoc, **store_config)
                 self.run_worker(
                     store.start(),
                     group="store",
                     exclusive=True,
+                    exit_on_error=False,
                 )
                 await store.started.wait()
-                status_label.state = "success"
+                status_label.variant = "success"
+                self.components["store"] = store
             else:
+                try:
+                    self.components.pop("store")
+                except KeyError:
+                    pass
                 self.workers.cancel_group(self, "store")
-                status_label.state = ""
+                status_label.variant = "default"
 
         if not changed.isdisjoint(self.renderer_config):
             renderer_config = dict((key, config[key]) for key in self.renderer_config)
             path = renderer_config.pop("render_path")
             renderer_config["path"] = path
-            status_label = self.query_one("#renderer", Status)
+            status_label = self.query_one("#renderer")
 
-            if path.suffix and not path.is_dir():
+            if path is not None and path.suffix and not path.is_dir():
                 renderer = TextRenderer(self.ytext, **renderer_config)
                 self.run_worker(
                     renderer.start(),
                     group="renderer",
                     exclusive=True,
+                    exit_on_error=False,
                 )
                 await renderer.started.wait()
-                status_label.state = "success"
+                status_label.variant = "success"
             else:
                 self.workers.cancel_group(self, "renderer")
-                status_label.state = ""
+                status_label.variant = "default"
 
         if not changed.isdisjoint(self.provider_config):
             provider_config = dict((key, config[key]) for key in self.provider_config)
@@ -676,7 +613,7 @@ class UI(App):
             Provider = self.get_provider()
 
             user = provider_config.pop("user")
-            password = provider_config.pop("password")
+            password = provider_config.pop("password") or ""
             if user:
                 self.basic_authorization_header = basic_authorization_header(
                     user, password
@@ -684,7 +621,7 @@ class UI(App):
             else:
                 self.basic_authorization_header = None
 
-            status_label = self.query_one("#provider", Status)
+            status_label = self.query_one("#provider")
 
             if provider_config["identifier"] and provider_config["server"]:
                 provider = Provider(self.ydoc, **provider_config)
@@ -692,12 +629,13 @@ class UI(App):
                     provider.start(),
                     group="provider",
                     exclusive=True,
+                    exit_on_error=False,
                 )
                 await provider.started.wait()
-                status_label.state = "success"
+                status_label.variant = "success"
             else:
                 self.workers.cancel_group(self, "provider")
-                status_label.state = ""
+                status_label.variant = "default"
 
     def get_provider(self):
         match self.messages:
@@ -770,7 +708,7 @@ class UI(App):
             self.task_group.start_soon(anyio.sleep_forever)
 
     async def on_mount(self):
-        self.config_panel.add_class("hidden")
+        self.query_one(ConfigPanel).add_class("hidden")
         # self.run_worker(self.run_components())
         # check existence of files before anything is changed on disk
         # if self.render_path is not None:
@@ -784,25 +722,130 @@ class UI(App):
         #            self.ytext += text
 
     async def on_unmount(self):
+        ...
         # async with anyio.create_task_group() as tg:
         #    for component in self.components.values():
         #        tg.start_soon(component.stopped.wait)
-        await self.workers.wait_for_complete()
+        # await self.workers.wait_for_complete()
 
     def compose(self):
-        yield self.ytext_area
-        yield self.config_panel
-        yield StatusBar()
+        c = self.config
+
+        yield YTextArea(
+            self.ytext,
+            tab_behavior="indent",
+            show_line_numbers=True,
+            id="editor",
+            language=self.language,
+        )
+
+        identifier = c.get("identifier")
+        server = c.get("server")
+        messages = c.get("messages")
+
+        qr_label = (
+            encode_content(
+                dict(identifier=identifier, server=server, messages=messages)
+            )
+            if all(map(lambda x: x is not None, [identifier, server, messages]))
+            else None
+        )
+
+        yield ConfigPanel(
+            [
+                QRCodeView(
+                    qr_label,
+                    name="share",
+                    id="view-share",
+                ),
+                TextInputView(
+                    value=identifier,
+                    name="identifier",
+                    id="view-identifier",
+                ),
+                URLInputView(
+                    value=server,
+                    name="server",
+                    id="view-server",
+                    validators=WebsocketsURLValidator(),
+                    validate_on=["changed"],
+                ),
+                RadioSelectView(
+                    list(zip(["yjs", "elva"], ["yjs", "elva"])),
+                    value=messages,
+                    name="messages",
+                    id="view-messages",
+                ),
+                TextInputView(
+                    value=c.get("name"),
+                    name="name",
+                ),
+                TextInputView(
+                    value=c.get("user"),
+                    name="user",
+                ),
+                TextInputView(
+                    value=c.get("password"),
+                    name="password",
+                    password=True,
+                ),
+                PathInputView(
+                    value=c.get("file_path"),
+                    suggester=PathSuggester(),
+                    name="file_path",
+                ),
+                PathInputView(
+                    value=c.get("render_path"),
+                    suggester=PathSuggester(),
+                    name="render_path",
+                ),
+                SwitchView(
+                    value=c.get("auto_render"),
+                    name="auto_render",
+                    animate=False,
+                ),
+                PathInputView(
+                    value=c.get("log_path"),
+                    suggester=PathSuggester(),
+                    name="log_path",
+                ),
+                RadioSelectView(
+                    list(LOG_LEVEL_MAP.items()),
+                    value=c.get("level"),
+                    name="level",
+                ),
+            ],
+            label="X - Cut, C - Copy, S - Save",
+        )
+
+        with StatusBar():
+            yield Button("=", id="config")
+            yield Button("P", id="provider")
+            yield Button("S", id="store")
+            yield Button("R", id="renderer")
+            yield Button("L", id="logger")
 
     def on_button_pressed(self, message):
         button = message.button
-        if button.id == "config":
-            self.config_panel.toggle_class("hidden")
+        match button.id:
+            case "config":
+                self.query_one(ConfigPanel).toggle_class("hidden")
+            case "provider":
+                if button.variant == "success":
+                    self.workers.cancel_group("provider")
+                else:
+                    if self.components.get("provider"):
+                        self.workers.run_worker(
+                            self.components["provider"].start(),
+                            group="provider",
+                            exclusive=True,
+                            exit_on_error=False,
+                        )
 
     def on_config_view_saved(self, message):
-        config = self.config_panel.state
-        file_path = config["file_path"]
-        if file_path.is_file():
+        c = self.query_one(ConfigPanel).state
+        file_path = c.get("file_path")
+        if file_path is not None and file_path.suffix and not file_path.is_dir():
             SQLiteStore.set_metadata(file_path, {message.name: message.value})
 
     def on_config_view_changed(self, message):
@@ -829,12 +872,13 @@ class UI(App):
 
     def action_save(self): ...
 
-    def _get_language(self):
-        if self.file_path is not None:
-            suffix = (
-                "".join(self.file_path.suffixes).split(FILE_SUFFIX)[0].removeprefix(".")
-            )
-            if str(self.file_path).endswith(suffix):
+    @property
+    def language(self):
+        c = self.config
+        file_path = c.get("file_path")
+        if file_path is not None and file_path.suffix and self._language is None:
+            suffix = "".join(file_path.suffixes).split(FILE_SUFFIX)[0].removeprefix(".")
+            if str(file_path).endswith(suffix):
                 log.info("continuing without syntax highlighting")
             else:
                 try:
@@ -845,6 +889,8 @@ class UI(App):
                     log.info(
                         f"no syntax highlighting available for file type '{suffix}'"
                     )
+        else:
+            return self._language
 
 
 @click.command()
@@ -854,13 +900,31 @@ class UI(App):
     is_flag=True,
     help="Enable rendering of the data file.",
 )
+@click.option(
+    "--apply",
+    "apply",
+    is_flag=True,
+    help="Apply the config on startup.",
+)
+@click.option(
+    "--ansi-color",
+    "ansi_color",
+    is_flag=True,
+    help="Use the terminal ANSI colors for the Textual colortheme.",
+)
 @click.argument(
     "file",
     required=False,
     type=click.Path(path_type=Path, dir_okay=False),
 )
 @click.pass_context
-def cli(ctx: click.Context, auto_render: bool, file: None | Path):
+def cli(
+    ctx: click.Context,
+    auto_render: bool,
+    apply: bool,
+    ansi_color: bool,
+    file: None | Path,
+):
     """Edit text documents collaboratively in real-time."""
 
     c = ctx.obj
@@ -868,9 +932,11 @@ def cli(ctx: click.Context, auto_render: bool, file: None | Path):
     # gather info
     gather_context_information(ctx, file=file, app="editor")
 
-    if auto_render:
+    if c.get("auto_render") is None or auto_render:
         # the flag has been explicitly set by the user
         c["auto_render"] = auto_render
+    c["apply"] = apply
+    c["ansi_color"] = ansi_color
 
     # logging
     LOGGER_NAME.set(__name__)
@@ -883,19 +949,7 @@ def cli(ctx: click.Context, auto_render: bool, file: None | Path):
         log.setLevel(level)
 
     # run app
-    ui = UI(
-        c["file"],
-        c["render"],
-        c["server"],
-        c["identifier"],
-        c["messages"],
-        c["name"],
-        c["user"],
-        c["password"],
-        c["auto_render"],
-        log_path,
-        level,
-    )
+    ui = UI(c)
     ui.run()
 
 

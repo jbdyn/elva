@@ -97,8 +97,17 @@ ConfigPanel {
   height: 100%;
   padding: 0 1;
   
+  & > Label {
+    width: 100%;
+    color: auto;
+    text-style: italic;
+    content-align: center middle;
+  }
+  
   & > Grid {
     grid-rows: 1fr auto;
+    width: 100%;
+    padding: 1 0;
 
     & > VerticalScroll {
       scrollbar-size: 1 1;
@@ -213,21 +222,10 @@ RadioSet {
 }
 
 StatusBar {
-  align: right top;
-  width: auto;
-
-  & > Grid {
-    grid-size: 1;
-    grid-gutter: 1;
-    height: auto;
-    width: 3;
-
-    & > Status {
-      padding: 0 1;
-      color: auto;
-      text-style: bold;
-    }
-  }
+  grid-size: 1;
+  grid-gutter: 1;
+  height: auto;
+  width: 3;
 }
 
 .success {
