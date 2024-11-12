@@ -310,6 +310,18 @@ class ConfigView(Container):
         self.toggle_button_visibility(focus)
 
 
+class ConfigInput(Input):
+    def _on_paste(self, message):
+        try:
+            tomllib.loads(message.text)
+        except Exception:
+            pass
+        else:
+            # prevent Input._on_paste() being called,
+            # so the Paste message can bubble up to ConfigPanel.on_paste()
+            message.prevent_default()
+
+
 class RadioSelectView(ConfigView):
     def __init__(self, *args, **kwargs):
         widget = RadioSelect(*args, **kwargs)
@@ -333,7 +345,7 @@ class RadioSelectView(ConfigView):
 
 class TextInputView(ConfigView):
     def __init__(self, *args, **kwargs):
-        widget = Input(*args, **kwargs)
+        widget = ConfigInput(*args, **kwargs)
         super().__init__(widget)
 
     def compose(self):
@@ -395,7 +407,7 @@ class PathInputView(TextInputView):
     def __init__(self, value, *args, **kwargs):
         super().__init__()
         value = str(value) if value is not None else None
-        self.widget = Input(value, *args, **kwargs)
+        self.widget = ConfigInput(value, *args, **kwargs)
 
     @property
     def value(self):
@@ -494,6 +506,7 @@ class UI(App):
 
     def __init__(self, config: dict):
         self.config = c = config
+
         ansi_color = c.get("ansi_color")
         super().__init__(ansi_color=ansi_color if ansi_color is not None else False)
 
@@ -520,6 +533,7 @@ class UI(App):
         )
         self.log_config = set(
             [
+                # level is always set, regardless whether it has changed or nog
                 "log_path",
             ]
         )
@@ -876,7 +890,7 @@ class UI(App):
     def language(self):
         c = self.config
         file_path = c.get("file_path")
-        if file_path is not None and file_path.suffix and self._language is None:
+        if file_path is not None and file_path.suffix:
             suffix = "".join(file_path.suffixes).split(FILE_SUFFIX)[0].removeprefix(".")
             if str(file_path).endswith(suffix):
                 log.info("continuing without syntax highlighting")
