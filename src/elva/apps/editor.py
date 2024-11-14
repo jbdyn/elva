@@ -1,23 +1,17 @@
 import logging
-import sys
+from copy import deepcopy
 from pathlib import Path
 
-import anyio
 import click
 import tomli_w
-import websockets.exceptions as wsexc
 from pycrdt import Doc, Text
-from rich.text import Text as RichText
 from textual.app import App
 from textual.binding import Binding
 from textual.widgets import Button
+from textual.worker import WorkerState
+from websockets.exceptions import InvalidStatus
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
-
-from elva.auth import basic_authorization_header
+from elva.component import Component
 from elva.log import LOGGER_NAME, DefaultFormatter
 from elva.provider import ElvaWebsocketProvider, WebsocketProvider
 from elva.renderer import TextRenderer
@@ -35,7 +29,6 @@ from elva.widgets.config import (
     URLInputView,
     WebsocketsURLValidator,
 )
-from elva.widgets.screens import ErrorScreen
 from elva.widgets.textarea import YTextArea
 
 log = logging.getLogger(__name__)
@@ -58,8 +51,138 @@ LANGUAGES = {
 }
 
 
+def get_provider(self, ydoc, **config):
+    try:
+        msg = config.pop("messages")
+    except KeyError:
+        msg = None
+
+    match msg:
+        case "yjs" | None:
+            provider = WebsocketProvider(ydoc, **config)
+        case "elva":
+            provider = ElvaWebsocketProvider(ydoc, **config)
+
+    return provider
+
+
 def encode_content(data):
     return tomli_w.dumps(data)
+
+
+class FeatureStatus(Button):
+    def __init__(self, params, *args, config=None, param_map=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params = params
+        self.config = self.trim(config)
+        self.param_map = param_map
+
+    def trim(self, config):
+        return dict((param, config.get(param)) for param in self.params)
+
+    def update(self, config):
+        trimmed = self.trim(config)
+        changed = trimmed != self.config
+
+        if self.param_map is not None:
+            for from_param, to_param in self.param_map.items():
+                trimmed[to_param] = trimmed.pop(from_param)
+
+        self.config = trimmed
+        if changed:
+            self.apply()
+
+    @property
+    def is_ready(self): ...
+
+    def apply(self): ...
+
+
+class LogStatus(FeatureStatus):
+    @property
+    def is_ready(self):
+        path = self.config.get("path")
+        return path is not None and len(path.suffixes) > 0 and not path.is_dir()
+
+    def apply(self):
+        if self.is_ready:
+            c = self.config
+            path = c.get("path")
+
+            for handler in log.handlers[:]:
+                log.removeHandler(handler)
+
+            handler = logging.FileHandler(path)
+            handler.setFormatter(DefaultFormatter())
+            log.addHandler(handler)
+            log.setLevel(c.get("level") or logging.INFO)
+            self.variant = "success"
+        else:
+            self.variant = "default"
+
+
+class ComponentStatus(FeatureStatus):
+    component: Component
+
+    def __init__(self, yobject, params, *args, **kwargs):
+        self.yobject = yobject
+        self.instance = None
+        super().__init__(params, *args, **kwargs)
+
+    def apply(self):
+        if self.is_ready:
+            component = self.component(self.yobject, **self.config)
+            self.run_worker(component.start(), exclusive=True, exit_on_error=False)
+            self.variant = "success"
+        else:
+            self.workers.cancel_node(self)
+            self.variant = "default"
+
+    def on_worker_state_changed(self, message):
+        match message.state:
+            case WorkerState.ERROR:
+                self.variant = "error"
+            case WorkerState.CANCELLED | WorkerState.SUCCESS:
+                self.variant = "default"
+
+    def on_button_pressed(self, message):
+        if message.button.variant == "success":
+            self.workers.cancel_node(self)
+        else:
+            self.apply()
+
+
+class StoreStatus(ComponentStatus):
+    component = SQLiteStore
+
+    @property
+    def is_ready(self):
+        c = self.config
+        path = c.get("path")
+        return (
+            path is not None
+            and len(path.suffixes) > 0
+            and not path.is_dir()
+            and c.get("identifier") is not None
+        )
+
+
+class RendererStatus(ComponentStatus):
+    component = TextRenderer
+
+    @property
+    def is_ready(self):
+        path = self.config.get("path")
+        return path is not None and len(path.suffixes) > 0 and not path.is_dir()
+
+
+class ProviderStatus(ComponentStatus):
+    component = get_provider
+
+    @property
+    def is_ready(self):
+        c = self.config
+        return c.get("identifier") and c.get("server")
 
 
 class UI(App):
@@ -74,35 +197,19 @@ class UI(App):
         ansi_color = c.get("ansi_color")
         super().__init__(ansi_color=ansi_color if ansi_color is not None else False)
 
-        self.store_config = set(
-            [
-                "identifier",
-                "file_path",
-            ]
-        )
-        self.provider_config = set(
-            [
-                "identifier",
-                "server",
-                "messages",
-                "user",
-                "password",
-            ]
-        )
-        self.renderer_config = set(
-            [
-                "render_path",
-                "auto_render",
-            ]
-        )
-        self.log_config = set(
-            [
-                # level is always set, regardless whether it has changed or nog
-                "log_path",
-            ]
+        identifier = c.get("identifier")
+        server = c.get("server")
+        messages = c.get("messages")
+
+        qr = (
+            encode_content(
+                dict(identifier=identifier, server=server, messages=messages)
+            )
+            if all(map(lambda x: x is not None, [identifier, server, messages]))
+            else None
         )
 
-        self.components = dict()
+        c["qr"] = qr
 
         # document structure
         self.ydoc = Doc()
@@ -111,179 +218,17 @@ class UI(App):
 
         self._language = c.get("language")
 
-    # on posted message ConfigPanel.Applied
     async def on_config_panel_applied(self, message):
-        changed = message.changed
-        config = message.config
-
-        log.setLevel(config["level"])
-
-        if not changed.isdisjoint(self.log_config):
-            log_path = config["log_path"]
-
-            for handler in log.handlers[:]:
-                log.removeHandler(handler)
-
-            status_label = self.query_one("#logger")
-
-            if log_path is not None and log_path.suffixes and not log_path.is_dir():
-                handler = logging.FileHandler(log_path)
-                handler.setFormatter(DefaultFormatter())
-                log.addHandler(handler)
-                status_label.variant = "success"
-            else:
-                status_label.variant = "default"
-
-        if not changed.isdisjoint(self.store_config):
-            store_config = dict((key, config[key]) for key in self.store_config)
-            path = store_config.pop("file_path")
-
-            status_label = self.query_one("#store")
-
-            if (
-                path is not None  #  rely on lazy evaluation
-                and path.suffixes  # effectively meaning is_file(), but is independent of existence
-                and not path.is_dir()
-                and store_config["identifier"]
-            ):
-                store_config["path"] = path
-                store = SQLiteStore(self.ydoc, **store_config)
-                self.run_worker(
-                    store.start(),
-                    group="store",
-                    exclusive=True,
-                    exit_on_error=False,
-                )
-                await store.started.wait()
-                status_label.variant = "success"
-                self.components["store"] = store
-            else:
-                try:
-                    self.components.pop("store")
-                except KeyError:
-                    pass
-                self.workers.cancel_group(self, "store")
-                status_label.variant = "default"
-
-        if not changed.isdisjoint(self.renderer_config):
-            renderer_config = dict((key, config[key]) for key in self.renderer_config)
-            path = renderer_config.pop("render_path")
-            renderer_config["path"] = path
-            status_label = self.query_one("#renderer")
-
-            if path is not None and path.suffix and not path.is_dir():
-                renderer = TextRenderer(self.ytext, **renderer_config)
-                self.run_worker(
-                    renderer.start(),
-                    group="renderer",
-                    exclusive=True,
-                    exit_on_error=False,
-                )
-                await renderer.started.wait()
-                status_label.variant = "success"
-            else:
-                self.workers.cancel_group(self, "renderer")
-                status_label.variant = "default"
-
-        if not changed.isdisjoint(self.provider_config):
-            provider_config = dict((key, config[key]) for key in self.provider_config)
-            self.messages = provider_config.pop("messages")
-            Provider = self.get_provider()
-
-            user = provider_config.pop("user")
-            password = provider_config.pop("password") or ""
-            if user:
-                self.basic_authorization_header = basic_authorization_header(
-                    user, password
-                )
-            else:
-                self.basic_authorization_header = None
-
-            status_label = self.query_one("#provider")
-
-            if provider_config["identifier"] and provider_config["server"]:
-                provider = Provider(self.ydoc, **provider_config)
-                self.run_worker(
-                    provider.start(),
-                    group="provider",
-                    exclusive=True,
-                    exit_on_error=False,
-                )
-                await provider.started.wait()
-                status_label.variant = "success"
-            else:
-                self.workers.cancel_group(self, "provider")
-                status_label.variant = "default"
-
-    def get_provider(self):
-        match self.messages:
-            case "yjs" | None:
-                Provider = WebsocketProvider
-            case "elva":
-                Provider = ElvaWebsocketProvider
-
-        return Provider
+        for status_id in ["#provider", "#store", "#renderer", "#logger"]:
+            self.query_one(status_id).update(message.config)
 
     async def on_exception(self, exc):
-        match type(exc):
-            case wsexc.InvalidStatus:
-                if exc.response.status_code == 401:
-                    if (
-                        self.user is not None
-                        and self.password is not None
-                        # we tried this branch already with these credentials
-                        and not self.tried_auto
-                        # these credentials have been supplied via CredentialScreen and are incorrect,
-                        # go directly to modal screen again
-                        and not self.tried_modal
-                    ):
-                        header = basic_authorization_header(self.user, self.password)
-                        self.provider.options["additional_headers"] = header
-                        self.tried_auto = True
-                    else:
-                        body = exc.response.body.decode()
-                        # update manually
-                        self.credential_screen.body.update(
-                            RichText(body, justify="center")
-                        )
-                        self.credential_screen.user.clear()
-                        self.credential_screen.user.insert_text_at_cursor(
-                            self.user or ""
-                        )
-                        # push via screen name
-                        await self.push_screen(
-                            "credential_screen",
-                            self.update_credentials,
-                            # wait for connection retry after screen has been closed
-                            wait_for_dismiss=True,
-                        )
-                        self.tried_modal = True
-                else:
-                    await self.push_screen(
-                        ErrorScreen(exc),
-                        self.quit_on_error,
-                        wait_for_dismiss=True,
-                    )
-                    raise exc
-            case wsexc.InvalidURI:
-                await self.push_screen(
-                    ErrorScreen(exc),
-                    self.quit_on_error,
-                    wait_for_dismiss=True,
-                )
-                raise exc
+        if isinstance(exc, InvalidStatus) and exc.response.status_code == 401:
+            self.query_one(ConfigPanel).remove_class("hidden")
+            self.query_one("#provider").variant = "error"
 
-    def quit_on_error(self, error):
-        self.exit()
-
-    def update_credentials(self, credentials):
-        self.user, self.password = credentials
-
-    async def run_components(self):
-        async with anyio.create_task_group() as self.task_group:
-            for component in self.components.values():
-                await self.task_group.start(component.start)
-            self.task_group.start_soon(anyio.sleep_forever)
+        # reraise to break connection loop
+        raise exc
 
     async def on_mount(self):
         self.query_one(ConfigPanel).add_class("hidden")
@@ -299,13 +244,6 @@ class UI(App):
         #            text = await file.read()
         #            self.ytext += text
 
-    async def on_unmount(self):
-        ...
-        # async with anyio.create_task_group() as tg:
-        #    for component in self.components.values():
-        #        tg.start_soon(component.stopped.wait)
-        # await self.workers.wait_for_complete()
-
     def compose(self):
         c = self.config
 
@@ -317,32 +255,20 @@ class UI(App):
             language=self.language,
         )
 
-        identifier = c.get("identifier")
-        server = c.get("server")
-        messages = c.get("messages")
-
-        qr_label = (
-            encode_content(
-                dict(identifier=identifier, server=server, messages=messages)
-            )
-            if all(map(lambda x: x is not None, [identifier, server, messages]))
-            else None
-        )
-
         yield ConfigPanel(
             [
                 QRCodeView(
-                    qr_label,
+                    c.get("qr"),
                     name="share",
                     id="view-share",
                 ),
                 TextInputView(
-                    value=identifier,
+                    value=c.get("identifier"),
                     name="identifier",
                     id="view-identifier",
                 ),
                 URLInputView(
-                    value=server,
+                    value=c.get("server"),
                     name="server",
                     id="view-server",
                     validators=WebsocketsURLValidator(),
@@ -350,7 +276,7 @@ class UI(App):
                 ),
                 RadioSelectView(
                     list(zip(["yjs", "elva"], ["yjs", "elva"])),
-                    value=messages,
+                    value=c.get("messages") or "yjs",
                     name="messages",
                     id="view-messages",
                 ),
@@ -361,11 +287,13 @@ class UI(App):
                 TextInputView(
                     value=c.get("user"),
                     name="user",
+                    id="view-user",
                 ),
                 TextInputView(
                     value=c.get("password"),
                     name="password",
                     password=True,
+                    id="view-password",
                 ),
                 PathInputView(
                     value=c.get("file_path"),
@@ -389,7 +317,7 @@ class UI(App):
                 ),
                 RadioSelectView(
                     list(LOG_LEVEL_MAP.items()),
-                    value=c.get("level"),
+                    value=c.get("level") or LOG_LEVEL_MAP["INFO"],
                     name="level",
                 ),
             ],
@@ -398,27 +326,57 @@ class UI(App):
 
         with StatusBar():
             yield Button("=", id="config")
-            yield Button("P", id="provider")
-            yield Button("S", id="store")
-            yield Button("R", id="renderer")
-            yield Button("L", id="logger")
+            yield ProviderStatus(
+                self.ydoc,
+                [
+                    "identifier",
+                    "server",
+                    "messages",
+                    "user",
+                    "password",
+                ],
+                "P",
+                config=self.config,
+                id="provider",
+            )
+            yield StoreStatus(
+                self.ydoc,
+                [
+                    "identifier",
+                    "file_path",
+                ],
+                "S",
+                config=self.config,
+                param_map={"file_path": "path"},
+                id="store",
+            )
+            yield RendererStatus(
+                self.ytext,
+                [
+                    "render_path",
+                    "auto_render",
+                ],
+                "R",
+                config=self.config,
+                param_map={"render_path": "path"},
+                id="renderer",
+            )
+            yield LogStatus(
+                [
+                    # level is always set, regardless whether it has changed or nog
+                    "log_path",
+                ],
+                "L",
+                config=self.config,
+                param_map={"log_path": "path"},
+                id="logger",
+            )
 
     def on_button_pressed(self, message):
         button = message.button
         match button.id:
             case "config":
                 self.query_one(ConfigPanel).toggle_class("hidden")
-            case "provider":
-                if button.variant == "success":
-                    self.workers.cancel_group("provider")
-                else:
-                    if self.components.get("provider"):
-                        self.workers.run_worker(
-                            self.components["provider"].start(),
-                            group="provider",
-                            exclusive=True,
-                            exit_on_error=False,
-                        )
 
     def on_config_view_saved(self, message):
         c = self.query_one(ConfigPanel).state

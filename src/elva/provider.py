@@ -5,6 +5,7 @@ import anyio
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus, InvalidURI
 
+from elva.auth import basic_authorization_header
 from elva.component import Component
 from elva.protocol import ElvaMessage, YMessage
 
@@ -69,7 +70,7 @@ class Connection(Component):
 
 
 class WebsocketConnection(Connection):
-    def __init__(self, uri, *args, **kwargs):
+    def __init__(self, uri, user, password, *args, **kwargs):
         self.uri = uri
         self._websocket = None
 
@@ -78,6 +79,16 @@ class WebsocketConnection(Connection):
         self._arguments = sig.bind(uri, *args, **kwargs)
         self.options = self._arguments.arguments
         self.options["logger"] = self.log
+
+        # keep credentials separate to only send them if necessary
+        if user:
+            self.basic_authorization_header = basic_authorization_header(
+                user, password or ""
+            )
+        else:
+            self.basic_authorization_header = None
+
+        self.tried_credentials = False
 
     async def run(self):
         # catch exceptions due to HTTP status codes other than 101, 3xx, 5xx
@@ -115,13 +126,25 @@ class WebsocketConnection(Connection):
             # expect only errors occur due to malformed URI or HTTP status code
             # considered invalid
             except (InvalidStatus, InvalidURI) as exc:
-                try:
-                    options = await self.on_exception(exc)
-                    if options:
-                        self.options.update(options)
-                except Exception as exc:
-                    self.log.error(f"abort due to raised exception {exc}")
-                    break
+                if (
+                    self.basic_authorization_header is not None
+                    and not self.tried_credentials
+                    and isinstance(exc, InvalidStatus)
+                    and exc.response.status_code == 401
+                ):
+                    headers = dict(additional_headers=self.basic_authorization_header)
+                    self.options.update(headers)
+                    self.tried_credentials = True
+                else:
+                    try:
+                        options = await self.on_exception(exc)
+                        if options:
+                            if options.get("additional_headers") is not None:
+                                self.tried_credentials = False
+                            self.options.update(options)
+                    except Exception as exc:
+                        self.log.error(f"abort due to raised exception {exc}")
+                        break
 
         # when reached this point, something clearly went wrong,
         # so we need to stop the connection
