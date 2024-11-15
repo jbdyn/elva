@@ -1,5 +1,4 @@
 import io
-import logging
 import sys
 from pathlib import Path
 
@@ -27,26 +26,6 @@ if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
-
-
-log = logging.getLogger(__name__)
-
-LOG_LEVEL_MAP = dict(
-    FATAL=logging.FATAL,
-    ERROR=logging.ERROR,
-    WARNING=logging.WARNING,
-    INFO=logging.INFO,
-    DEBUG=logging.DEBUG,
-)
-
-LANGUAGES = {
-    "py": "python",
-    "md": "markdown",
-    "sh": "bash",
-    "js": "javascript",
-    "rs": "rust",
-    "yml": "yaml",
-}
 
 
 class QRCodeLabel(Widget):
@@ -81,10 +60,6 @@ class QRCodeLabel(Widget):
 
     def watch_value(self):
         self.generate_qrcode()
-
-
-class StatusBar(Grid):
-    pass
 
 
 class RadioSelect(Container):
