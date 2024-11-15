@@ -135,6 +135,7 @@ def resolve_log(ctx, param, log):
     "verbose",
     help="Verbosity of logging output.",
     count=True,
+    default=LEVEL.index(logging.INFO),
     type=click.IntRange(0, 5, clamp=True),
 )
 #
