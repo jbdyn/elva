@@ -25,6 +25,9 @@ class Component:
         self = super().__new__(cls)
         name = LOGGER_NAME.get(self.__module__)
         self.log = logging.getLogger(f"{name}.{self.__class__.__name__}")
+
+        # level is inherited from parent logger
+        self.log.setLevel(logging.NOTSET)
         return self
 
     def __str__(self):
