@@ -90,12 +90,15 @@ ConfigView {
   }
 }
 
+YTextArea {
+  margin: 0 2 0 0;
+}
+
 ConfigPanel {
-  width: 80;
-  max-width: 50%;
-  min-width: 30;
   height: 100%;
-  padding: 0 1;
+  padding: 1;
+  margin: 0 3 0 0;
+  layer: top;
   
   & > Label {
     width: 100%;
@@ -226,6 +229,7 @@ StatusBar {
   grid-gutter: 1;
   height: auto;
   width: 3;
+  dock: right;
 }
 
 .success {
