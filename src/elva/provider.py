@@ -16,6 +16,7 @@ from elva.protocol import ElvaMessage, YMessage
 
 class Connection(Component):
     _connected = None
+    _disconnected = None
     _outgoing = None
     _incoming = None
 
@@ -24,6 +25,12 @@ class Connection(Component):
         if self._connected is None:
             self._connected = anyio.Event()
         return self._connected
+
+    @property
+    def disconnected(self):
+        if self._disconnected is None:
+            self._disconnected = anyio.Event()
+        return self._disconnected
 
     @property
     def outgoing(self):
@@ -105,24 +112,30 @@ class WebsocketConnection(Connection):
                         self.incoming = self._websocket
                         self.outgoing = self._websocket
                         self.connected.set()
+                        if self.disconnected.is_set():
+                            self._disconnected = None
+                            self.log.debug("unset 'disconnected' event flag")
                         self.log.debug("set 'connected' event flag and streams")
 
                         self._task_group.start_soon(self.on_connect)
                         await self.recv()
                     # we only expect a normal or abnormal connection closing
                     except ConnectionClosed:
-                        self.log.info(f"connection to {self.uri} closed")
-                        self._connected = None
-                        self._outgoing = None
-                        self._incoming = None
-                        self.log.debug("unset 'connected' event flag and streams")
-                        continue
+                        pass
                     # catch everything else and log it
                     # TODO: remove it? helpful for devs only?
                     except Exception as exc:
                         self.log.exception(
                             f"unexpected websocket client exception: {exc}"
                         )
+
+                    self.log.info(f"connection to {self.uri} closed")
+                    self._connected = None
+                    self.disconnected.set()
+                    self.log.debug("set 'disconnected' event flag")
+                    self._outgoing = None
+                    self._incoming = None
+                    self.log.debug("unset 'connected' event flag and streams")
             # expect only errors occur due to malformed URI or HTTP status code
             # considered invalid
             except (InvalidStatus, InvalidURI) as exc:

@@ -109,7 +109,7 @@ class SQLiteStore(Component):
     async def before(self):
         await self._init_db()
         await self.read()
-        self.ydoc.observe(self.callback)
+        self.subscription = self.ydoc.observe(self.callback)
 
     async def run(self):
         self.stream_send, self.stream_recv = create_memory_object_stream(
@@ -120,6 +120,7 @@ class SQLiteStore(Component):
                 await self._write(data)
 
     async def cleanup(self):
+        self.ydoc.unobserve(self.subscription)
         if self.initialized.is_set():
             await self.db.close()
             self.log.debug("closed database")
