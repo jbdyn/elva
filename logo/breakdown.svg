@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-3 -3 6 6" width="64" height="64">
+  <defs>
+    <circle stroke="black" stroke-width="0.05" id="marker" cx="0" cy="0" r="0.05" fill="white" />
+    <polygon stroke="gray" stroke-width="0.025" id="hexagon" points="0.0 -1.0 -0.86603 -0.5 -0.86603 0.5 -0.0 1.0 0.86603 0.5 0.86603 -0.5" fill="transparent" />
+    <g id="trigrid">
+      <g id="trilines">
+        <path stroke="lightgray" stroke-width="0.025" d="M -0.43301 0.25 L -0.43301 -0.25" stroke-linecap="round" />
+        <path stroke="lightgray" stroke-width="0.025" d="M -0.21651 0.375 L -0.21651 -0.375" stroke-linecap="round" />
+        <path stroke="lightgray" stroke-width="0.025" d="M -0.0 0.5 L -0.0 -0.5" stroke-linecap="round" />
+        <path stroke="lightgray" stroke-width="0.025" d="M 0.21651 0.375 L 0.21651 -0.375" stroke-linecap="round" />
+        <path stroke="lightgray" stroke-width="0.025" d="M 0.43301 0.25 L 0.43301 -0.25" stroke-linecap="round" />
+      </g>
+      <use href="#trilines" transform="rotate(60)" />
+      <use href="#trilines" transform="rotate(-60)" />
+    </g>
+  </defs>
+  <g>
+    <use href="#trigrid" transform="translate(0.0 0.0)" />
+    <use href="#trigrid" transform="translate(1.73205 0.0)" />
+    <use href="#trigrid" transform="translate(0.0 -1.0)" />
+    <use href="#trigrid" transform="translate(-0.86603 -0.5)" />
+    <use href="#trigrid" transform="translate(-0.86603 0.5)" />
+    <use href="#trigrid" transform="translate(-0.0 1.0)" />
+    <use href="#trigrid" transform="translate(0.86603 0.5)" />
+    <use href="#trigrid" transform="translate(0.86603 -0.5)" />
+    <use href="#trigrid" transform="translate(0.0 -2.0)" />
+    <use href="#trigrid" transform="translate(-1.73205 -1.0)" />
+    <use href="#trigrid" transform="translate(-1.73205 1.0)" />
+    <use href="#trigrid" transform="translate(-0.0 2.0)" />
+    <use href="#trigrid" transform="translate(1.73205 1.0)" />
+    <use href="#trigrid" transform="translate(1.73205 -1.0)" />
+  </g>
+  <g>
+    <use href="#hexagon" transform="translate(-0.86603 -1.5)" />
+    <use href="#hexagon" transform="translate(-1.73205 -0.0)" />
+    <use href="#hexagon" transform="translate(-0.86603 1.5)" />
+    <use href="#hexagon" transform="translate(0.86603 1.5)" />
+    <use href="#hexagon" transform="translate(1.73205 0.0)" />
+    <use href="#hexagon" transform="translate(0.86603 -1.5)" />
+  </g>
+  <g>
+    <path stroke="black" stroke-width="0.05" d="M 0.21651 -1.625 Q 0.0 -1.75 -0.21651 -1.625 L -1.29904 -1.0 Q -1.51555 -0.875 -1.51555 -0.625 L -1.51555 0.375 Q -1.51555 0.625 -1.29904 0.5 L -1.29904 0.5 Q -1.08253 0.375 -1.08253 0.125 L -1.08253 -0.5 A 0.216505 0.216505 0 0 1 -0.64952 -0.5 L -0.64952 0.125 Q -0.64952 0.625 -1.08253 0.875 L -1.08254 0.875 Q -1.29904 1.0 -1.08254 1.125 L -0.43301 1.5 Q -0.21651 1.625 -0.21651 1.375 L -0.21651 1.0 A 0.216505 0.216505 0 0 1 0.2165 1.0 L 0.2165 1.375 Q 0.2165 1.625 0.43301 1.5 L 1.08254 1.125 Q 1.29904 1.0 1.08254 0.875 L 0.21651 0.375 Q -0.21651 0.125 -0.2165 -0.375 L -0.2165 -1.0 A 0.216505 0.216505 0 0 1 0.2165 -1.0 L 0.21651 -0.375 Q 0.2165 -0.125 0.43301 0.0 L 1.29904 0.5 Q 1.51555 0.625 1.51555 0.375 L 1.51555 0.375 Q 1.51555 0.125 1.29904 0.0 L 0.75777 -0.3125 A 0.216505 0.216505 0 0 1 0.97428 -0.6875 L 1.29904 -0.5 Q 1.51555 -0.375 1.51555 -0.625 L 1.51555 -0.625 Q 1.51555 -0.875 1.29904 -1.0 Z " fill="transparent" />
+    <path stroke="black" stroke-width="0.05" d="M 0.43301 -2.0 Q 0.0 -2.25 -0.43301 -2.0 L -1.51555 -1.375 Q -1.94856 -1.125 -1.94856 -0.625 L -1.94856 0.625 Q -1.94856 1.125 -1.51555 1.375 L -0.43301 2.0 Q 0.0 2.25 0.43301 2.0 L 1.51555 1.375 Q 1.94856 1.125 1.94856 0.625 L 1.94856 -0.625 Q 1.94856 -1.125 1.51555 -1.375 Z " fill="transparent" />
+  </g>
+  <g>
+    <use href="#marker" transform="translate(0.43301 -2.0)" />
+    <use href="#marker" transform="translate(0.0 -2.25)" />
+    <use href="#marker" transform="translate(-0.43301 -2.0)" />
+    <use href="#marker" transform="translate(-1.51555 -1.375)" />
+    <use href="#marker" transform="translate(-1.94856 -1.125)" />
+    <use href="#marker" transform="translate(-1.94856 -0.625)" />
+    <use href="#marker" transform="translate(-1.94856 0.625)" />
+    <use href="#marker" transform="translate(-1.94856 1.125)" />
+    <use href="#marker" transform="translate(-1.51555 1.375)" />
+    <use href="#marker" transform="translate(-0.43301 2.0)" />
+    <use href="#marker" transform="translate(-0.0 2.25)" />
+    <use href="#marker" transform="translate(0.43301 2.0)" />
+    <use href="#marker" transform="translate(1.51555 1.375)" />
+    <use href="#marker" transform="translate(1.94856 1.125)" />
+    <use href="#marker" transform="translate(1.94856 0.625)" />
+    <use href="#marker" transform="translate(1.94856 -0.625)" />
+    <use href="#marker" transform="translate(1.94856 -1.125)" />
+    <use href="#marker" transform="translate(1.51555 -1.375)" />
+    <use href="#marker" transform="translate(0.21651 -1.625)" />
+    <use href="#marker" transform="translate(0.0 -1.75)" />
+    <use href="#marker" transform="translate(-0.21651 -1.625)" />
+    <use href="#marker" transform="translate(-1.29904 -1.0)" />
+    <use href="#marker" transform="translate(-1.51555 -0.875)" />
+    <use href="#marker" transform="translate(-1.51555 -0.625)" />
+    <use href="#marker" transform="translate(-1.51555 0.375)" />
+    <use href="#marker" transform="translate(-1.51555 0.625)" />
+    <use href="#marker" transform="translate(-1.29904 0.5)" />
+    <use href="#marker" transform="translate(-1.29904 0.5)" />
+    <use href="#marker" transform="translate(-1.08253 0.375)" />
+    <use href="#marker" transform="translate(-1.08253 0.125)" />
+    <use href="#marker" transform="translate(-1.08253 -0.5)" />
+    <use href="#marker" transform="translate(-0.64952 -0.5)" />
+    <use href="#marker" transform="translate(-0.64952 0.125)" />
+    <use href="#marker" transform="translate(-0.64952 0.625)" />
+    <use href="#marker" transform="translate(-1.08253 0.875)" />
+    <use href="#marker" transform="translate(-1.08254 0.875)" />
+    <use href="#marker" transform="translate(-1.29904 1.0)" />
+    <use href="#marker" transform="translate(-1.08254 1.125)" />
+    <use href="#marker" transform="translate(-0.43301 1.5)" />
+    <use href="#marker" transform="translate(-0.21651 1.625)" />
+    <use href="#marker" transform="translate(-0.21651 1.375)" />
+    <use href="#marker" transform="translate(-0.21651 1.0)" />
+    <use href="#marker" transform="translate(0.2165 1.0)" />
+    <use href="#marker" transform="translate(0.2165 1.375)" />
+    <use href="#marker" transform="translate(0.2165 1.625)" />
+    <use href="#marker" transform="translate(0.43301 1.5)" />
+    <use href="#marker" transform="translate(1.08254 1.125)" />
+    <use href="#marker" transform="translate(1.29904 1.0)" />
+    <use href="#marker" transform="translate(1.08254 0.875)" />
+    <use href="#marker" transform="translate(0.21651 0.375)" />
+    <use href="#marker" transform="translate(-0.21651 0.125)" />
+    <use href="#marker" transform="translate(-0.2165 -0.375)" />
+    <use href="#marker" transform="translate(-0.2165 -1.0)" />
+    <use href="#marker" transform="translate(0.2165 -1.0)" />
+    <use href="#marker" transform="translate(0.21651 -0.375)" />
+    <use href="#marker" transform="translate(0.2165 -0.125)" />
+    <use href="#marker" transform="translate(0.43301 -0.0)" />
+    <use href="#marker" transform="translate(1.29904 0.5)" />
+    <use href="#marker" transform="translate(1.51555 0.625)" />
+    <use href="#marker" transform="translate(1.51555 0.375)" />
+    <use href="#marker" transform="translate(1.51555 0.375)" />
+    <use href="#marker" transform="translate(1.51555 0.125)" />
+    <use href="#marker" transform="translate(1.29904 0.0)" />
+    <use href="#marker" transform="translate(0.75777 -0.3125)" />
+    <use href="#marker" transform="translate(0.97428 -0.6875)" />
+    <use href="#marker" transform="translate(1.29904 -0.5)" />
+    <use href="#marker" transform="translate(1.51555 -0.375)" />
+    <use href="#marker" transform="translate(1.51555 -0.625)" />
+    <use href="#marker" transform="translate(1.51555 -0.625)" />
+    <use href="#marker" transform="translate(1.51555 -0.875)" />
+    <use href="#marker" transform="translate(1.29904 -1.0)" />
+  </g>
+</svg>
