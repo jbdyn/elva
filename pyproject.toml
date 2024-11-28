@@ -76,6 +76,10 @@ dev = [
 #Repository = "https://url.to/repo"
 #"Bug Tracker" = "https://url.to/bug-tracker"
 #Changelog = "https://url.to/changelog"
+logo = [
+    "svg-py>=1.5.0",
+    "numpy>=2.1.3",
+]
 
 [project.scripts]
 elva = "elva.cli:elva"
