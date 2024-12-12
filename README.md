@@ -48,3 +48,7 @@ twine upload [-r testpypi] dist/*
 ```
 
 by specifing the remote repository with `-r <repository>`, "Test PyPI" in this particular case.
+
+## Licensing
+
+The ELVA source code is dsitributed under the GNU Affero General Public License (AGPL) 3.0, *except* for the `logo/` directory and its contents, which are licensed under the [Creative Commons BY-NC-SA 4.0 License](https://creativecommons.org/licenses/by-nc-sa/4.0/).
