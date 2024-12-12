@@ -1,4 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-3 -3 6 6" width="64" height="64">
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:foaf="http://xmlns.com/foaf/0.1/" xmlns:owl="http://www.w3.org/2002/07/owl#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" viewBox="-3 -3 6 6" width="64" height="64">
+  <metadata>
+    <rdf:RDF>
+      <rdf:Description rdf:about="http://github.com/innocampus/elva/logo/breakdown.svg">
+        <dc:title>ELVA Logo Breakdown</dc:title>
+        <dc:type>Image</dc:type>
+        <dc:format>image/svg+xml</dc:format>
+        <dc:description xml:lang="en">Breakdown of the logo of the ELVA Project of Technische Universität Berlin</dc:description>
+        <dc:relation rdf:resource="http://github.com/innocampus/elva/logo/logo.svg" />
+        <dc:creator>Technische Universität Berlin</dc:creator>
+        <dc:creator>ELVA Team</dc:creator>
+        <dc:creator>Jakob Zahn</dc:creator>
+      </rdf:Description>
+      <cc:License rdf:about="http://creativecommons.org/licenses/by-nc-sa/4.0/">
+        <cc:legalcode xml:lang="en">http://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.en</cc:legalcode>
+        <cc:licenseClass rdf:resource="http://creativecommons.org/license/" />
+        <cc:permits rdf:resource="http://creativecommons.org/ns#DerivateWorks" />
+        <cc:permits rdf:resource="http://creativecommons.org/ns#Distribution" />
+        <cc:permits rdf:resource="http://creativecommons.org/ns#Reproduction" />
+        <cc:prohibits rdf:resource="http://creativecommons.org/ns#CommercialUse" />
+        <cc:requires rdf:resource="http://creativecommons.org/ns#Attribution" />
+        <cc:requires rdf:resource="http://creativecommons.org/ns#Notice" />
+        <cc:requires rdf:resource="http://creativecommons.org/ns#ShareAlike" />
+        <dcterms:LicenseDocument xml:lang="en">http://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.en</dcterms:LicenseDocument>
+        <dcterms:creator rdf:resource="http://creativecommons.org" />
+        <dcterms:hasVersion>4.0</dcterms:hasVersion>
+        <dcterms:identifier>by-nc-sa</dcterms:identifier>
+        <dcterms:source>http://creativecommons.org/licenses/by-nc-sa/3.0/</dcterms:source>
+        <dcterms:title xml:lang="en">Attribution-NonCommercial-ShareAlike 4.0 International</dcterms:title>
+        <foaf:logo rdf:resource="http://licensebuttons.net/l/by-nc-sa/4.0/80x15.png" />
+        <foaf:logo rdf:resource="http://licensebuttons.net/l/by-nc-sa/4.0/88x31.png" />
+        <owl:sameAs rdf:resource="http://creativecommons.org/licenses/by-nc-sa/4.0/" />
+      </cc:License>
+    </rdf:RDF>
+  </metadata>
   <defs>
     <circle stroke="black" stroke-width="0.05" id="marker" cx="0" cy="0" r="0.05" fill="white" />
     <polygon stroke="gray" stroke-width="0.025" id="hexagon" points="0.0 -1.0 -0.86603 -0.5 -0.86603 0.5 -0.0 1.0 0.86603 0.5 0.86603 -0.5" fill="transparent" />

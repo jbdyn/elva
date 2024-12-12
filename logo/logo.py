@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 import svg
+from metadata import metadata
 
 # TODO: find better places to round floats
 
@@ -142,7 +143,15 @@ def save_cleaned_svg(markup, fname):
     """Write the indented `markup` to file `fname`."""
     # to avoid automatic namespace insertions like `ns0:...`, `ns1:...` and so on by the `xml` module,
     # we need to register the namespace "" to the `xmlns` uri
-    ET.register_namespace("", "http://www.w3.org/2000/svg")
+    for ns, uri in [
+        ("", "http://www.w3.org/2000/svg"),
+        ("cc", "http://creativecommons.org/ns#"),
+        ("dc", "http://purl.org/dc/elements/1.1/"),
+        ("dcterms", "http://purl.org/dc/terms/"),
+        ("foaf", "http://xmlns.com/foaf/0.1/"),
+        ("owl", "http://www.w3.org/2002/07/owl#"),
+    ]:
+        ET.register_namespace(ns, uri)
 
     # indent the parsed tree
     tree = ET.fromstring(markup)
@@ -153,7 +162,7 @@ def save_cleaned_svg(markup, fname):
 
     # save to disk
     with open(fname, "wb") as f:
-        f.write(ET.tostring(tree))
+        ET.ElementTree(tree).write(f, encoding="utf-8", xml_declaration=True)
 
 
 ###
@@ -287,6 +296,7 @@ linear_gradient = svg.LinearGradient(
 # element arrangement
 #
 elements = [
+    svg.Metadata(text=metadata("logo")),
     svg.Defs(elements=[linear_gradient]),
     svg.Mask(
         id="inner",
@@ -382,6 +392,7 @@ edges = np.concat((np.array([ORIGIN, (o[5] + o[4]) / 2]), i, o)).round(
 points = np.array(list(flatten(outer_points + inner_points))).round(decimals=DECIMALS)
 
 elements = [
+    svg.Metadata(text=metadata("breakdown")),
     svg.Defs(elements=[marker, hexagon, trigrid]),
     svg.G(elements=[svg.Use(href="#trigrid", **translate(point)) for point in edges]),
     svg.G(elements=[svg.Use(href="#hexagon", **translate(point)) for point in middle]),
