@@ -1,4 +1,4 @@
-<img src="./logo/logo.svg" alt="ELVA Logo" style="display: block; float: none; margin-left: auto; margin-right: auto; width:60%"/>
+<div style="text-align: center;"><img src="./logo/logo.svg" alt="ELVA Logo" width="200"/></div>
 
 # ELVA
 
