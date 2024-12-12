@@ -1,3 +1,5 @@
+<div style="text-align: center;"><img src="./logo/logo.svg" alt="ELVA Logo" width="200"/></div>
+
 # ELVA
 
 A suite of apps enabling real-time collaboration locally, with CRDTs at its heart ❤️.
