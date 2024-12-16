@@ -1,3 +1,5 @@
+<img src="./logo/logo.svg" alt="ELVA Logo" width="200"/>
+
 # ELVA
 
 A suite of apps enabling real-time collaboration locally, with CRDTs at its heart ❤️.
@@ -48,3 +50,7 @@ twine upload [-r testpypi] dist/*
 ```
 
 by specifing the remote repository with `-r <repository>`, "Test PyPI" in this particular case.
+
+## Licensing
+
+The ELVA source code is dsitributed under the GNU Affero General Public License (AGPL) 3.0, *except* for the `logo/` directory and its contents, which are licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).
