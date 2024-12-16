@@ -77,9 +77,9 @@ dev = [
 #"Bug Tracker" = "https://url.to/bug-tracker"
 #Changelog = "https://url.to/changelog"
 logo = [
-    "svg-py>=1.5.0",
-    "numpy>=2.1.3",
-    "rdflib>=7.1.1",
+    "svg-py",
+    "rdflib",
+    "numpy",
 ]
 
 [project.scripts]
