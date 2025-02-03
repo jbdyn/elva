@@ -379,7 +379,7 @@ hexagon = svg.Polygon(
     id="hexagon",
     points=hexagon_coords,
     stroke="gray",
-    fill="transparent",
+    fill="none",
     stroke_width=STROKE_WIDTH / 2,
 )
 
@@ -410,13 +410,13 @@ elements = [
                 d=inner_path,
                 stroke="black",
                 stroke_width=STROKE_WIDTH,
-                fill="transparent",
+                fill="none",
             ),
             svg.Path(
                 d=outer_path,
                 stroke="black",
                 stroke_width=STROKE_WIDTH,
-                fill="transparent",
+                fill="none",
             ),
         ]
     ),
