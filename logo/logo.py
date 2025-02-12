@@ -291,13 +291,7 @@ linear_gradient = svg.LinearGradient(
     ],
 )
 
-
-#
-# element arrangement
-#
-elements = [
-    svg.Metadata(text=metadata("logo")),
-    svg.Defs(elements=[linear_gradient]),
+mask = (
     svg.Mask(
         id="inner",
         elements=[
@@ -315,6 +309,20 @@ elements = [
                 fill="black",
             ),
         ],
+    ),
+)
+
+
+#
+# element arrangement
+#
+elements = [
+    svg.Metadata(text=metadata("logo")),
+    svg.Defs(
+        elements=[
+            linear_gradient,
+            mask,
+        ]
     ),
     svg.Path(
         d=outer_path,
@@ -371,7 +379,7 @@ hexagon = svg.Polygon(
     id="hexagon",
     points=hexagon_coords,
     stroke="gray",
-    fill="transparent",
+    fill="none",
     stroke_width=STROKE_WIDTH / 2,
 )
 
@@ -402,13 +410,13 @@ elements = [
                 d=inner_path,
                 stroke="black",
                 stroke_width=STROKE_WIDTH,
-                fill="transparent",
+                fill="none",
             ),
             svg.Path(
                 d=outer_path,
                 stroke="black",
                 stroke_width=STROKE_WIDTH,
-                fill="transparent",
+                fill="none",
             ),
         ]
     ),
