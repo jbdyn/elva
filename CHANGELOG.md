@@ -9,6 +9,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 
 
+## 0.32 - 2025-02-13
+
+### Added
+
+- Add `CHANGELOG.md` up to version v0.31
+- Add `git-cliff` along side config
+
+### Changed
+
+- Change fill color from `transparent` to `none`
+
+### Fixed
+
+- Fix logo `mask` element not being in definitions
+
+
+
 ## 0.31 - 2024-12-16
 
 ### Added
