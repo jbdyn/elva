@@ -1,0 +1,61 @@
+# git-cliff ~ configuration file
+# https://git-cliff.org/docs/configuration
+#
+# templates are written for Tera
+# https://keats.github.io/tera/
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), but uses the custom versioning scheme `MAJOR.MINOR`:
+
+- `MAJOR` denotes the switch from test to production phase for `0 -> 1` and fundamental codebase rewrites afterwards.
+- `MINOR` indicates the index of releasable features and patches made.\n
+"""
+
+body = """\n
+{% if version -%}
+    ## {{ version | trim_start_matches(pat="v") }} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+    ## [Unreleased]
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | upper_first }}
+    {% for commit in commits %}
+        - {{ commit.message | split(pat="\n") | first | upper_first | trim }}\
+    {% endfor %}
+{% endfor %}\n
+"""
+
+# remove the leading and trailing whitespace from the templates
+trim = true
+
+[git]
+tag_pattern = "v[0-9].[0-9]+"
+# parse the commits based on https://www.conventionalcommits.org
+conventional_commits = false
+# filter out the commits that are not conventional
+filter_unconventional = false
+# regex for parsing and grouping commits
+commit_parsers = [
+    { message = "^[a|A]dd", group = "Added" },
+    { message = "^[s|S]upport", group = "Added" },
+    { message = "^[r|R]emove", group = "Removed" },
+    { message = "^.*: add", group = "Added" },
+    { message = "^.*: support", group = "Added" },
+    { message = "^.*: remove", group = "Removed" },
+    { message = "^.*: delete", group = "Removed" },
+    { message = "^[t|T]est", group = "Fixed" },
+    { message = "^[f|F]ix", group = "Fixed" },
+    { message = "^.*: fix", group = "Fixed" },
+    { message = "^.*", group = "Changed" },
+]
+# filter out the commits that are not matched by commit parsers
+filter_commits = false
+# sort the tags topologically
+topo_order = false
+# sort the commits inside sections by oldest/newest order
+sort_commits = "newest"

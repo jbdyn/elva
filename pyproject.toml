@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools", "setuptools-scm", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -51,7 +51,7 @@ dependencies = [
     "tomli-w>=1.1.0",
     "tomli>=1.1.0",
 ]
-version = "0.0.1"
+dynamic = ["version"]
 
 [project.optional-dependencies]
 dev = [
@@ -66,6 +66,7 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocstrings>=0.25.2",
     "textual-dev>=1.5.1",
+    "git-cliff>=2.7.0",
 ]
 
 # TODO complete url list
@@ -87,3 +88,5 @@ elva = "elva.cli:elva"
 
 [tool.pdm]
 distribution = true
+
+[tool.setuptools_scm]
