@@ -67,6 +67,9 @@ dev = [
     "mkdocstrings>=0.25.2",
     "textual-dev>=1.5.1",
     "git-cliff>=2.7.0",
+    "mkdocs-terminal>=4.7.0",
+    "mkdocs-material>=9.6.5",
+    "mkdocstrings-python>=1.16.1",
 ]
 
 # TODO complete url list

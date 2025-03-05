@@ -1,17 +1,16 @@
-# Welcome to MkDocs
+<h1 align="center">
+  <img src="img/logo.svg" alt="ELVA Logo" width="200"/>
+</h1>
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
 
-## Commands
+# Welcome
 
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
+This is the documentation for ELVA, a real-time collaboration software suite.
 
-## Project layout
+If you want to get started using ELVA, head over to our [user guide](./user-guide.md).
 
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files.
+You want to run a server? Check out the [server guide](./server-guide.md).
+
+Looking for how to contribute? We have some notes for you in our [developer guide](./developer-guide.md).
+
+
