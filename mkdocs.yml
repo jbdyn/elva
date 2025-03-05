@@ -1,7 +1,72 @@
 site_name: ELVA
+nav:
+  - Welcome: index.md
+  - User Guide: user-guide.md
+  - Server Guide: server-guide.md
+  - Developer Guide: developer-guide.md
+  - Reference:
+      - reference/index.md
+      - Apps:
+          - Editor: reference/apps/editor.md
+          - Chat: reference/apps/chat.md
+          - Service: reference/apps/service.md
+          - Server: reference/apps/server.md
+      - Widgets:
+          - TextArea: reference/widgets/textarea.md
+          - Config: reference/widgets/config.md
+          - Status: reference/widgets/status.md
+          - Screens: reference/widgets/screens.md
+      - CLI: reference/cli.md
+      - CLI Utils: reference/utils.md
+      - Component: reference/component.md
+      - Authentication: reference/auth.md
+      - Server: reference/server.md
+      - Provider: reference/provider.md
+      - Store: reference/store.md
+      - Renderer: reference/renderer.md
+      - Protocol: reference/protocol.md
+      - Parser: reference/parser.md
+      - Log: reference/log.md
+  - Changelog: changelog.md
+  - Stories:
+    - stories/index.md
+    - stories/how-to-not-write-textual-apps.md
+    - stories/indexing-y-crdts.md
+    - stories/set-up-logging.md
+    - stories/write-a-realtime-editor.md
+    - stories/writing-a-textual-application-repl.md
+extra:
+  generator: false
+extra_css:
+  - css/extra.css
 theme:
   name: material
+  favicon: img/logo.svg
+  logo: img/logo.svg
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: elva-light 
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: elva-dark
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
 plugins:
-- search
-- autoref
-- mkdocstrings
+  - search
+  - autorefs
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_root_heading: true
