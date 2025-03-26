@@ -35,42 +35,42 @@ classifiers = [
   "Programming Language :: Python :: 3"
 ]
 dependencies = [
-    "websockets>=13.1",
-    "pycrdt>=0.9.8",
-    "pycrdt-websocket>=0.14.2",
-    "anyio>=4.4.0",
-    "click>=8.1.7",
-    "rich>=13.8.0",
-    "emoji>=2.12.1",
-    "python-json-logger>=2.0.7",
-    "watchdog>=5.0.0",
-    "ldap3>=2.9.1",
-    "textual[syntax]>=0.82.0",
+    "websockets",
+    "pycrdt",
+    "pycrdt-websocket",
+    "anyio",
+    "click",
+    "rich",
+    "emoji",
+    "python-json-logger",
+    "watchdog",
+    "ldap3",
+    "textual[syntax]",
     "tree-sitter-language-pack",
-    "pyperclip>=1.9.0",
-    "qrcode>=8.0",
-    "tomli-w>=1.1.0",
-    "tomli>=1.1.0",
+    "pyperclip",
+    "qrcode",
+    "tomli-w",
+    "tomli",
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3.2",
-    "trio>=0.26.2",
-    "ruff>=0.6.3",
-    "isort>=5.13.2",
-    "build>=1.2.1",
-    "setuptools-scm>=8.1.0",
-    "tox>=4.18.0",
-    "twine>=5.1.1",
-    "mkdocs>=1.6.1",
-    "mkdocstrings>=0.25.2",
-    "textual-dev>=1.5.1",
-    "git-cliff>=2.7.0",
-    "mkdocs-terminal>=4.7.0",
-    "mkdocs-material>=9.6.5",
-    "mkdocstrings-python>=1.16.1",
+    "pytest",
+    "trio",
+    "ruff",
+    "isort",
+    "build",
+    "setuptools-scm",
+    "tox",
+    "twine",
+    "mkdocs",
+    "mkdocstrings",
+    "textual-dev",
+    "git-cliff",
+    "mkdocs-terminal",
+    "mkdocs-material",
+    "mkdocstrings-python",
 ]
 
 # TODO complete url list
@@ -94,3 +94,8 @@ elva = "elva.cli:elva"
 distribution = true
 
 [tool.setuptools_scm]
+
+[dependency-groups]
+dev = [
+    "pyinstrument",
+]
