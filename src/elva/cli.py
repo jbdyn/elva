@@ -1,3 +1,9 @@
+"""
+Module providing the main command line interface functionality.
+
+Subcommands are defined in the respective app module.
+"""
+
 import importlib
 import logging
 from pathlib import Path

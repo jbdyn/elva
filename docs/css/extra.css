@@ -137,3 +137,10 @@
     0 4px 10px hsla(0, 0%, 0%, 0.2),
     0 0              1px  hsla(0, 0%, 0%, 0.35);
 }
+
+/* make all sorts of comments and docstrings italic */
+.highlight {
+  :is(.c, .cm, .c1, .ch, .cs, .sd) {
+    font-style: italic;
+  }
+}

@@ -3,21 +3,26 @@ nav:
   - Welcome: index.md
   - User Guide: user-guide.md
   - Server Guide: server-guide.md
+  - App Guide: app-guide.md
   - Developer Guide: developer-guide.md
   - Reference:
-      - reference/index.md
+      - "reference/index.md"
       - Apps:
+          - "reference/apps/index.md"
           - Editor: reference/apps/editor.md
           - Chat: reference/apps/chat.md
           - Service: reference/apps/service.md
           - Server: reference/apps/server.md
       - Widgets:
+          - "reference/widgets/index.md"
           - TextArea: reference/widgets/textarea.md
           - Config: reference/widgets/config.md
           - Status: reference/widgets/status.md
           - Screens: reference/widgets/screens.md
       - CLI: reference/cli.md
       - CLI Utils: reference/utils.md
+      - Click Utilities: reference/click-utils.md
+      - Click Lazy Loading Grous: reference/click-lazy-group.md
       - Component: reference/component.md
       - Authentication: reference/auth.md
       - Server: reference/server.md
@@ -28,18 +33,25 @@ nav:
       - Parser: reference/parser.md
       - Log: reference/log.md
   - Changelog: changelog.md
-  - Stories:
-    - stories/index.md
-    - stories/how-to-not-write-textual-apps.md
-    - stories/indexing-y-crdts.md
-    - stories/set-up-logging.md
-    - stories/write-a-realtime-editor.md
-    - stories/writing-a-textual-application-repl.md
+  - Stories: stories/index.md
 extra:
   generator: false
 extra_css:
   - css/extra.css
+  - css/mkdocstrings.css
+#hooks:
+  #  - scripts/generate_section_index.py
+watch:
+  - src/elva
 theme:
+  features:
+    - navigation.tabs
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - navigation.expand
+    - toc.integrate
+    - content.code.copy
   name: material
   favicon: img/logo.svg
   logo: img/logo.svg
@@ -63,6 +75,12 @@ theme:
         icon: material/brightness-4
         name: Switch to system preference
 plugins:
+  - blog:
+      blog_dir: stories
+      blog_toc: true
+      post_url_format: "{slug}"
+      post_readtime: false
+      archive: false
   - search
   - autorefs
   - mkdocstrings:
@@ -70,3 +88,21 @@ plugins:
         python:
           options:
             show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            summary: true
+            # docstring_options:
+            #   ignore_init_summary: true
+            merge_init_into_class: true
+            members_order: source
+            docstring_section_style: list
+            # exclude private methods and attributes
+            filters: ["!^_[\\s]+"]
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences

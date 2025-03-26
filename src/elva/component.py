@@ -1,3 +1,7 @@
+"""
+Module for generic asynchronous app component.
+"""
+
 import logging
 from contextlib import AsyncExitStack
 
@@ -10,16 +14,29 @@ from anyio import (
     get_cancelled_exc_class,
     sleep_forever,
 )
-from anyio.abc import TaskGroup
+from anyio.abc import TaskGroup, TaskStatus
 
 from elva.log import LOGGER_NAME
 
 
 class Component:
+    """
+    Generic asynchronous app component class.
+
+    This class features graceful shutdown alongside annotated logging.
+    It is used for writing providers, stores, parsers, renderers etc.
+
+    It supports explicit handling via the `start` and `stop` method as
+    well as the asynchronous context manager protocol.
+    """
+
     _started: Event | None = None
     _stopped: Event | None = None
     _task_group: TaskGroup | None = None
     _start_lock: Lock | None = None
+
+    log: logging.Logger
+    """logger instance to write logging messages to."""
 
     def __new__(cls, *args, **kwargs):
         self = super().__new__(cls)
@@ -34,13 +51,19 @@ class Component:
         return f"{self.__class__.__name__}"
 
     @property
-    def started(self):
+    def started(self) -> Event:
+        """
+        Event signaling that the component has been started, i.e. is initialized and running.
+        """
         if self._started is None:
             self._started = Event()
         return self._started
 
     @property
-    def stopped(self):
+    def stopped(self) -> Event:
+        """
+        Event signaling that the component has been stopped, i.e. deinitialized and not running.
+        """
         if self._stopped is None:
             self._stopped = Event()
         return self._stopped
@@ -70,7 +93,7 @@ class Component:
         return await self._exit_stack.__aexit__(exc_type, exc_value, exc_tb)
 
     async def _run(self, task_status):
-        """Handle the `run` method gracefully."""
+        # Handle `run` method gracefully
 
         # start runner and do a shielded cleanup on cancellation
         try:
@@ -97,8 +120,9 @@ class Component:
             # otherwise the behavior is undefined
             raise
 
-    async def start(self, task_status=TASK_STATUS_IGNORED):
-        """Start the component
+    async def start(self, task_status: TaskStatus[None] = TASK_STATUS_IGNORED):
+        """
+        Start the component.
 
         Arguments:
             task_status: The status to set when the task has started.
@@ -113,15 +137,46 @@ class Component:
                 task_status.started()
 
     async def stop(self):
-        """Stop the component by cancelling all inner task groups."""
+        """
+        Stop the component by cancelling all inner task groups.
+        """
         if self._task_group is None:
             raise RuntimeError(f"{self} not running")
 
         self._task_group.cancel_scope.cancel()
         self.log.debug("cancelled")
 
-    async def before(self): ...
+    async def before(self):
+        """
+        Logic to run before the component signals that is has been started.
 
-    async def run(self): ...
+        In here, one would define initializing steps necessary for the component to run.
+        This method must return, otherwise the component will not set the `started` signal.
 
-    async def cleanup(self): ...
+
+        It is defined as a noop and supposed to be implemented in the inheriting class.
+        """
+        ...
+
+    async def run(self):
+        """
+        Logic to run after the component signals that is has been started.
+
+        In here, one would define the main functionality of the component.
+        This method may run indefinitely or return.
+        The component is kept running regardless.
+
+        It is defined as a noop and supposed to be implemented in the inheriting class.
+        """
+        ...
+
+    async def cleanup(self):
+        """
+        Logic to run after the component's `stop` method has been called and before it sets the `stopped` event.
+
+        In here, one would define cleanup tasks such as closing connections.
+        This method must return, otherwise the component will not set the `stopped` signal.
+
+        It is defined as a noop and supposed to be implemented in the inheriting class.
+        """
+        ...
