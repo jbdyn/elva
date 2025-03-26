@@ -1,3 +1,7 @@
+"""
+Module defining a lazy loading `click.Group`.
+"""
+
 # This file is part of Indico.
 # Copyright (C) 2002 - 2024 CERN
 #
@@ -5,15 +9,18 @@
 # modify it under the terms of the MIT License; see the
 # LICENSE file for more details.
 
-import click
 from functools import cached_property
 from importlib import import_module
+
+import click
+
 
 # source: https://github.com/indico/indico/blob/3c2d369b6a76a4362750c06340c6d9664e0de330/indico/cli/util.py#L84
 class LazyGroup(click.Group):
     """
-    A click Group that imports the actual implementation only when
-    needed.  This allows for more resilient CLIs where the top-level
+    A `click.Group` that imports the actual implementation only when needed.
+
+    This allows for more resilient CLIs where the top-level
     command does not fail when a subcommand is broken enough to fail
     at import time.
     """
@@ -24,7 +31,7 @@ class LazyGroup(click.Group):
 
     @cached_property
     def _impl(self):
-        module, name = self._import_name.split(':', 1)
+        module, name = self._import_name.split(":", 1)
         return getattr(import_module(module), name)
 
     def get_command(self, ctx, cmd_name):

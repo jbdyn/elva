@@ -354,6 +354,8 @@ class YDocument(DocumentBase):
 
 
 class YTextArea(TextArea):
+    """The coolest thing ever"""
+
     def __init__(self, ytext, *args, **kwargs):
         super().__init__(str(ytext), *args, **kwargs)
         self.document = YDocument(ytext, kwargs.get("language"))

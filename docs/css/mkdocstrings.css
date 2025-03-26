@@ -1,0 +1,15 @@
+.doc-object {
+  margin-bottom: 50pt;
+}
+
+.doc-class:not(.first) {
+  margin-top: 75pt;
+}
+
+.doc-contents {
+  padding-left: 10pt;
+}
+
+.doc-children {
+  margin-top: 35pt;
+}

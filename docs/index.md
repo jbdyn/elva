@@ -1,3 +1,9 @@
+---
+hide:
+  - navigation
+  - toc
+---
+
 <h1 align="center">
   <img src="img/logo.svg" alt="ELVA Logo" width="200"/>
 </h1>
