@@ -260,7 +260,7 @@ class ElvaRoom(Room):
     uuid: str
     """As `elva.protocol.ElvaMessage` encoded `self.identifier`."""
 
-    def __init__(self, identifier, persistent, path):
+    def __init__(self, identifier: str, persistent: bool, path: Path):
         """
         If `persistent = False` and `path = None`, messages will be broadcasted only.
         Nothing is saved.
@@ -279,7 +279,7 @@ class ElvaRoom(Room):
         super().__init__(identifier, persistent=persistent, path=path)
         self.uuid, _ = ElvaMessage.ID.encode(self.identifier.encode())
 
-    def broadcast(self, data, client):
+    def broadcast(self, data: bytes, client: ClientConnection):
         """
         Broadcast `data` to all clients except `client`.
 
@@ -289,7 +289,7 @@ class ElvaRoom(Room):
         """
         super().broadcast(self.uuid + data, client)
 
-    async def process(self, data, client):
+    async def process(self, data: bytes, client: ClientConnection):
         """
         Process incoming messages from `client`.
 
@@ -320,7 +320,7 @@ class ElvaRoom(Room):
             # simply forward incoming messages to all other clients
             self.broadcast(data, client)
 
-    async def process_sync_step1(self, state, client):
+    async def process_sync_step1(self, state: bytes, client: ClientConnection):
         """
         Process a sync step 1 payload `state` from `client`.
 
@@ -341,7 +341,7 @@ class ElvaRoom(Room):
         message, _ = ElvaMessage.SYNC_STEP1.encode(state)
         await client.send(self.uuid + message)
 
-    async def process_sync_update(self, update, client):
+    async def process_sync_update(self, update: bytes, client: ClientConnection):
         """
         Process a sync update message payload `update` from `client`.
 
@@ -507,7 +507,7 @@ class ElvaWebsocketServer(WebsocketServer):
     Serving component using `ElvaRoom` as internal connection handler.
     """
 
-    def check_path(self, path, request):
+    def check_path(self, path: Path, request: dict):
         """
         Check if a request path is valid.
 
@@ -520,7 +520,7 @@ class ElvaWebsocketServer(WebsocketServer):
         if request.path[1:] != "":
             return HTTPStatus.FORBIDDEN, {}, b""
 
-    async def get_room(self, identifier):
+    async def get_room(self, identifier: str) -> ElvaRoom:
         """
         Get or create a `Room` via its corresponding `identifier`.
 
@@ -539,7 +539,7 @@ class ElvaWebsocketServer(WebsocketServer):
 
         return room
 
-    async def handle(self, websocket):
+    async def handle(self, websocket: ClientConnection):
         """
         Handle a `websocket` connection.
 
