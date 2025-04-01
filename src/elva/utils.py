@@ -1,21 +1,47 @@
+"""
+Module with utility functionality for ELVA's command line interface.
+"""
+
 import uuid
 from pathlib import Path
+from typing import Any
 
 import tomllib
+from click import Context
 
 from elva.store import SQLiteStore
 
 FILE_SUFFIX = ".y"
+"""ELVA file type annotation."""
+
 LOG_SUFFIX = ".log"
+"""Log file type annotation."""
 
 
-def update_none_only(d, key, value):
+def update_none_only(d: dict, key: str, value: Any):
+    """
+    Update a key in a dictionary only if present or holding value `None`.
+
+    Arguments:
+        d: mapping object to update.
+        key: key to update in the mapping `d`.
+        value: value to insert for `key`.
+    """
     if d.get(key) is None:
         # `key` does not exist or its value is `None`
         d[key] = value
 
 
-def get_params_from_file(file):
+def get_params_from_file(file: Path) -> dict:
+    """
+    Get metdata from file as parameter mapping.
+
+    Arguments:
+        file: path where the ELVA SQLite database is stored.
+
+    Returns:
+        parameter mapping stored in the ELVA SQLite database.
+    """
     # resolve to absolute, direct path
     file = file.resolve()
 
@@ -49,7 +75,16 @@ def get_params_from_file(file):
     return params
 
 
-def get_params_from_configs(configs):
+def get_params_from_configs(configs: list[Path]) -> dict:
+    """
+    Get parameters defined in configuration files.
+
+    Arguments:
+        configs: list of paths to ELVA configuration files.
+
+    Returns:
+        parameter mapping from all configuration files. The value from the highest priority configuration overwrites all other parameter values.
+    """
     params = dict()
 
     # last listed config file has lowest priority
@@ -65,7 +100,17 @@ def get_params_from_configs(configs):
     return params
 
 
-def gather_context_information(ctx, file=None, app=None):
+def gather_context_information(
+    ctx: Context, file: None | Path = None, app: None | str = None
+):
+    """
+    Update the user-defined parameters with parameters from files.
+
+    Arguments:
+        ctx: `click.Context` instance holding the parameter mapping to be updated.
+        file: path to an ELVA SQLite database.
+        app: parameters from the same named section in the configuration files.
+    """
     c = ctx.obj
 
     params = dict()

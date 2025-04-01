@@ -1,6 +1,11 @@
+"""
+Configpanel widgets for `Textual` apps.
+"""
+
 import io
 import sys
 from pathlib import Path
+from typing import Any
 
 import qrcode
 from pyperclip import copy as copy_to_clipboard
@@ -8,7 +13,7 @@ from textual.containers import Container, Grid, VerticalScroll
 from textual.message import Message
 from textual.reactive import reactive
 from textual.suggester import Suggester
-from textual.validation import Validator
+from textual.validation import ValidationResult, Validator
 from textual.widget import Widget
 from textual.widgets import (
     Button,
@@ -28,42 +33,404 @@ else:
     import tomli as tomllib
 
 
-class QRCodeLabel(Widget):
-    value = reactive("")
+class ConfigPanel(Container):
+    """
+    Container for ConfigView widgets.
+    """
 
-    def __init__(self, content, *args, collapsed=True, **kwargs):
-        super().__init__(*args, **kwargs)
+    class Applied(Message):
+        """
+        Message object holding configuration change information.
+        """
 
-        self.version = 1
-        self.qr = qrcode.QRCode(
-            version=self.version,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            border=0,
-        )
-        self.label = Static()
-        self.collapsible = Collapsible(title="QR", collapsed=collapsed)
+        last: dict
+        """Previous configuration mapping."""
+
+        config: dict
+        """Current configuration mapping."""
+
+        changed: dict
+        """Mapping of changed configuration parameters."""
+
+        def __init__(self, last: dict, config: dict, changed: dict):
+            """
+            Arguments:
+                last: previous configuration mapping.
+                config: current configuration mapping.
+                changed: mapping of changed configuration parameters.
+            """
+            super().__init__()
+            self.last = last
+            self.config = config
+            self.changed = changed
+
+    def __init__(self, config: dict, applied: bool = False, label: str = None):
+        """
+        Arguments:
+            config: configuration parameter mapping to apply to write to the panel.
+            applied: if `False`, treat all values of `ConfigView`s as changed.
+            label: label string for the panel itself to be displayed at the top.
+        """
+        super().__init__()
+        self.config = config
+        self.applied = applied
+        self.label = label
+
+    @property
+    def state(self):
+        """
+        Current configuration parameters.
+        """
+        return dict((c.name, c.value) for c in self.config)
+
+    @property
+    def last(self):
+        """Previous configuration parameters."""
+        return dict((c.name, c.last) for c in self.config)
+
+    @property
+    def changed(self):
+        """Changed configuration parameters."""
+        if self.applied:
+            return set(c.name for c in self.config if c.changed)
+        else:
+            return set(c.name for c in self.config)
 
     def compose(self):
-        with self.collapsible:
-            yield self.label
+        """
+        Hook arranging the `ConfigView`s.
+        """
+        if self.label:
+            yield Label(self.label)
+        with Grid():
+            with VerticalScroll():
+                for c in self.config:
+                    yield c
+            with Grid():
+                yield Button("Apply", id="apply")
+                yield Button("Reset", id="reset")
 
-    def generate_qrcode(self):
-        qr = self.qr
-        qr.clear()
+    def apply(self):
+        """Store the current value also as last value."""
+        for c in self.config:
+            c.apply()
+        self.applied = True
 
-        f = io.StringIO()
+    def reset(self):
+        """Reset the current value to the last value."""
+        for c in self.config:
+            c.reset()
 
-        qr.version = self.version
-        qr.add_data(self.value)
-        qr.print_ascii(out=f)
-        self.label.update(f.getvalue())
+    def post_applied_config(self):
+        """Send an `Applied` message."""
+        self.post_message(self.Applied(self.last, self.state, self.changed))
+        self.apply()
 
-    def watch_value(self):
-        self.generate_qrcode()
+    def on_button_pressed(self, message: Message):
+        """
+        Hook called on a pressed button.
+
+        Either posts an `Applied` message or resets the `ConfigView`s.
+
+        Arguments:
+            message: message object from the pressed button event.
+        """
+        match message.button.id:
+            case "apply":
+                self.post_applied_config()
+            case "reset":
+                self.reset()
+
+    def decode_content(self, content: str) -> dict:
+        """
+        Try to decode content according to TOML syntax.
+
+        Arguments:
+            content: TOML data string to be parsed.
+
+        Returns:
+            parsed configuration mapping
+        """
+        try:
+            config = tomllib.loads(content)
+        # tomli exceptions may change in the future according to its docs
+        except Exception:
+            config = None
+        return config
+
+    def on_paste(self, message: Message):
+        """
+        Hook called on a paste event.
+
+        The pasted content is assumed to be TOML syntax and tried to be parsed.
+        On success, the `ConfigView`s get updated if the corresponding keys have been pasted.
+
+        Arguments:
+            message: message object from the paste event.
+        """
+        config = self.decode_content(message.text)
+        if config:
+            for c in self.config:
+                value = config.get(c.name)
+                if value is not None:
+                    c.value = value
+
+
+class ConfigView(Container):
+    """
+    Wrapper Container around user-facing input widgets.
+
+    It allows consistant styling via TCSS classes.
+    """
+
+    last: Any
+    """Previous value of the configuration parameter."""
+
+    hover: bool = reactive(False)
+    """Flag whether the mouse pointer is hovering over this container."""
+
+    focus_within: bool = reactive(False)
+    """Flag whether the child widgets have focus."""
+
+    class Changed(Message):
+        """
+        Message object posted on change events.
+        """
+
+        name: str
+        """Key of the configuration parameter."""
+
+        value: Any
+        """Value of the configuration parameter."""
+
+        def __init__(self, name: str, value: Any):
+            """
+            Arguments:
+                name: key of the configuration parameter.
+                value: value of the configuration parameter.
+            """
+            super().__init__()
+            self.name = name
+            self.value = value
+
+    class Saved(Message):
+        """
+        Message object posted on change events.
+        """
+
+        name: str
+        """Key of the configuration parameter."""
+
+        value: Any
+        """Value of the configuration parameter."""
+
+        def __init__(self, name: str, value: Any):
+            """
+            Arguments:
+                name: key of the configuration parameter.
+                value: value of the configuration parameter.
+            """
+            super().__init__()
+            self.name = name
+            self.value = value
+
+    def __init__(self, widget: Widget):
+        """
+        Arguments:
+            widget: internal user-facing input widget.
+        """
+        super().__init__()
+        self.widget = widget
+
+    def compose(self):
+        """
+        Hook arranging the `ConfigView`s.
+        """
+        yield Label(self.name or "")
+        yield self.widget
+
+    def on_mount(self):
+        """
+        Hook applying the configuration parameters when mounted.
+        """
+        self.apply()
+
+    def apply(self):
+        """
+        Set the last value to the current value.
+        """
+        self.last = self.value
+
+    def reset(self):
+        """
+        Set the current value to the last value.
+        """
+        self.value = self.last
+
+    @property
+    def changed(self) -> bool:
+        """Flag whether the configuration value has changed."""
+        return self.last != self.value
+
+    @property
+    def name(self) -> str:
+        """Key of the configuration parameter."""
+        return self.widget.name
+
+    @property
+    def value(self) -> Any:
+        """Value of the configuration parameter."""
+        return self.widget.value
+
+    @value.setter
+    def value(self, new: Any):
+        """
+        Update the inner widget's value.
+
+        Arguments:
+            new: new value to set in the input widget.
+        """
+        self.widget.value = new
+
+    def toggle_button_visibility(self, state: bool):
+        """
+        Manage the `invisible` TCSS class on `Button` widgets.
+
+        Arguments:
+            state: if `True`, remove the `invisible` TCSS class from `Button` widgets, else add it to them.
+        """
+        if state:
+            self.query(Button).remove_class("invisible")
+        else:
+            self.query(Button).add_class("invisible")
+
+    def on_enter(self, message: Message):
+        """
+        Hook called on pressed `Enter` key.
+
+        This sets the `self.hover` flag to `True`.
+
+        Arguments:
+            message: message object posted on the pressed `Enter` key event.
+        """
+        self.hover = True
+
+    def on_leave(self, message: Message):
+        """
+        Hook called on the mouse pointer leaving the widget's bounds.
+
+        This sets the `self.hover` flag to `False` only if the mouse has really left the own boundaries and the inner input widget is not focused.
+
+        Arguments:
+            message: message object posted on the pressed `Enter` key event.
+        """
+        if not self.is_mouse_over and not self.focus_within:
+            self.hover = False
+
+    def watch_hover(self, hover: bool):
+        """
+        Hook called on hover changed.
+
+        This toggles the button visibility accordingly.
+
+        Arguments:
+            hover: current value of `self.hover`.
+        """
+        self.toggle_button_visibility(hover)
+
+    def on_descendant_focus(self, message: Message):
+        """
+        Hook called on child widgets gaining focus.
+
+        This sets the `self.focus_within` flag to `True`.
+
+        Arguments:
+           message: message object posted on focus gain event in child widgets.
+        """
+        self.focus_within = True
+
+    def on_descendant_blur(self, message: Message):
+        """
+        Hook called on child widgets loosing focus.
+
+        This sets the `self.focus_within` flag to `False`.
+
+        Arguments:
+           message: message object posted on focus loss event in child widgets.
+        """
+        if not any(node.has_focus for node in self.query()):
+            self.focus_within = False
+
+    def watch_focus_within(self, focus: bool):
+        """
+        Hook called on focus changed in child widgets.
+
+        This toggles the button visibility accordingly.
+
+        Arguments:
+            focus: current value of `self.focus_within`.
+        """
+        self.toggle_button_visibility(focus)
+
+
+class ConfigInput(Input):
+    """
+    Input widget being able to let paste event messages bubble.
+    """
+
+    def _on_paste(self, message: Message):
+        """
+        Hook called on a paste event.
+
+        This allows `message` to bubble up if the pasted content is valid TOML syntax, but does nothing else with it.
+
+        Arguments:
+            message: message object posted in a paste event.
+        """
+        try:
+            tomllib.loads(message.text)
+        except Exception:
+            pass
+        else:
+            # prevent Input._on_paste() being called,
+            # so the Paste message can bubble up to ConfigPanel.on_paste()
+            message.prevent_default()
 
 
 class RadioSelect(Container):
-    def __init__(self, options, *args, value=None, **kwargs):
+    """
+    List of options with radio buttons.
+    """
+
+    names: list[str]
+    """List of names representing the values."""
+
+    values: list[Any]
+    """List of values at choice."""
+
+    options: dict[str, Any]
+    """Mapping of values to their corresponding name."""
+
+    buttons: dict[str, RadioButton]
+    """Mapping of `RadioButton` instances to the values' names."""
+
+    radio_set: RadioSet
+    """Instance of the inner `RadioSet` widget."""
+
+    def __init__(
+        self,
+        options: list[tuple[str, Any]],
+        *args: tuple,
+        value: None | Any = None,
+        **kwargs: dict,
+    ):
+        """
+        Arguments:
+            options: name-value-tuples holding values alongside their displayable names.
+            value: current value to select upfront.
+            args: positional arguments passed to the `Container` class.
+            kwargs: keyword arguments passed to the `Container` class.
+        """
         super().__init__(*args, **kwargs)
         self.names, self.values = list(zip(*options))
         if value is None:
@@ -79,221 +446,135 @@ class RadioSelect(Container):
         self.radio_set = RadioSet()
 
     @classmethod
-    def from_values(cls, options, *args, value=None, **kwargs):
+    def from_values(
+        cls, options: list[Any], *args: tuple, value: None | Any = None, **kwargs: dict
+    ):
+        """
+        Create a new `RadioSelect` instance from a list of `options`.
+
+        Arguments:
+            options: list of values at choice with their string representation as displayed names.
+            value: current value to select upfront.
+            args: positional arguments passed to the `Container` class.
+            kwargs: keyword arguments passed to the `Container` class.
+        """
         options = [(str(option), option) for option in options]
 
         return cls(options, *args, value=value, **kwargs)
 
     def compose(self):
+        """
+        Hook arranging the `RadioSet` and `RadioButton` widgets.
+        """
         with self.radio_set:
             for button in self.buttons.values():
                 yield button
 
     @property
-    def value(self):
+    def value(self) -> Any:
+        """
+        Value of currently active, i.e. selected, radio button.
+        """
         return self.options[self.radio_set.pressed_button.name]
 
     @value.setter
-    def value(self, new):
+    def value(self, new: Any):
+        """
+        Update the currently active, i.e. selected, radio button.
+
+        Arguments:
+            new: value to be currently active.
+        """
         name = self.names[self.values.index(new)]
         self.buttons[name].value = True
 
-    def on_click(self, message):
+    def on_click(self, message: Message):
+        """
+        Hook called on mouse click event.
+
+        This sets the focus to the currently active radio button.
+
+        Arguments:
+            message: message object posted in a mouse click event.
+        """
         self.radio_set.pressed_button.focus()
 
 
-class ConfigPanel(Container):
-    class Applied(Message):
-        def __init__(self, last, config, changed):
-            super().__init__()
-            self.last = last
-            self.config = config
-            self.changed = changed
-
-    def __init__(self, config, applied=False, label=None):
-        super().__init__()
-        self.config = config
-        self.applied = applied
-        self.label = label
-
-    @property
-    def state(self):
-        return dict((c.name, c.value) for c in self.config)
-
-    @property
-    def last(self):
-        return dict((c.name, c.last) for c in self.config)
-
-    @property
-    def changed(self):
-        if self.applied:
-            return set(c.name for c in self.config if c.changed)
-        else:
-            return set(c.name for c in self.config)
-
-    def compose(self):
-        if self.label:
-            yield Label(self.label)
-        with Grid():
-            with VerticalScroll():
-                for c in self.config:
-                    yield c
-            with Grid():
-                yield Button("Apply", id="apply")
-                yield Button("Reset", id="reset")
-
-    def apply(self):
-        for c in self.config:
-            c.apply()
-        self.applied = True
-
-    def reset(self):
-        for c in self.config:
-            c.reset()
-
-    def post_applied_config(self):
-        self.post_message(self.Applied(self.last, self.state, self.changed))
-        self.apply()
-
-    def on_button_pressed(self, message):
-        match message.button.id:
-            case "apply":
-                self.post_applied_config()
-            case "reset":
-                self.reset()
-
-    def decode_content(self, content):
-        try:
-            config = tomllib.loads(content)
-        # tomli exceptions may change in the future according to its docs
-        except Exception:
-            config = None
-        return config
-
-    def on_paste(self, message):
-        config = self.decode_content(message.text)
-        if config:
-            for c in self.config:
-                value = config.get(c.name)
-                if value is not None:
-                    c.value = value
-
-
-class ConfigView(Container):
-    hover = reactive(False)
-    focus_within = reactive(False)
-
-    class Changed(Message):
-        def __init__(self, name, value):
-            super().__init__()
-            self.name = name
-            self.value = value
-
-    class Saved(Message):
-        def __init__(self, name, value):
-            super().__init__()
-            self.name = name
-            self.value = value
-
-    def __init__(self, widget):
-        super().__init__()
-        self.widget = widget
-
-    def compose(self):
-        yield Label(self.name or "")
-        yield self.widget
-
-    def on_mount(self):
-        self.apply()
-
-    def apply(self):
-        self.last = self.value
-
-    def reset(self):
-        self.value = self.last
-
-    @property
-    def changed(self):
-        return self.last != self.value
-
-    @property
-    def name(self):
-        return self.widget.name
-
-    @property
-    def value(self):
-        return self.widget.value
-
-    @value.setter
-    def value(self, new):
-        self.widget.value = new
-
-    def toggle_button_visibility(self, state):
-        if state:
-            self.query(Button).remove_class("invisible")
-        else:
-            self.query(Button).add_class("invisible")
-
-    def on_enter(self, message):
-        self.hover = True
-
-    def on_leave(self, message):
-        if not self.is_mouse_over and not self.focus_within:
-            self.hover = False
-
-    def watch_hover(self, hover):
-        self.toggle_button_visibility(hover)
-
-    def on_descendant_focus(self, message):
-        self.focus_within = True
-
-    def on_descendant_blur(self, message):
-        if not any(node.has_focus for node in self.query()):
-            self.focus_within = False
-
-    def watch_focus_within(self, focus):
-        self.toggle_button_visibility(focus)
-
-
-class ConfigInput(Input):
-    def _on_paste(self, message):
-        try:
-            tomllib.loads(message.text)
-        except Exception:
-            pass
-        else:
-            # prevent Input._on_paste() being called,
-            # so the Paste message can bubble up to ConfigPanel.on_paste()
-            message.prevent_default()
-
-
 class RadioSelectView(ConfigView):
-    def __init__(self, *args, **kwargs):
+    """
+    Configuration view wrapper around a `RadioSelect` widget.
+    """
+
+    def __init__(self, *args: tuple, **kwargs: dict):
+        """
+        Arguments:
+            args: positional arguments passed to the `RadioSelect` widget.
+            kwargs: keyword arguments passed to the `RadioSelect` widget.
+        """
         widget = RadioSelect(*args, **kwargs)
         super().__init__(widget)
 
     def compose(self):
+        """
+        Hook arranging the child widgets.
+        """
         with Grid():
             yield Label(self.name or "")
             yield Button("S", id=f"save-{self.name}")
             yield self.widget
 
-    def on_button_pressed(self, message):
+    def on_button_pressed(self, message: Message):
+        """
+        Hook called on a button pressed event from the child widgets.
+
+        This posts then a `self.Saved` message.
+
+        Arguments:
+            message: message object posted on a button pressed event.
+        """
         self.post_message(self.Saved(self.name, self.value))
 
-    def on_click(self, message):
+    def on_click(self, message: Message):
+        """
+        Hook called on a mouse click event.
+
+        This sets the focus to the inner `RadioSet` widget.
+
+        Arguments:
+            message: message object posted on a mouse click event.
+        """
         self.widget.radio_set.focus()
 
-    def on_radio_set_changed(self, message):
+    def on_radio_set_changed(self, message: Message):
+        """
+        Hook called when the `RadioSet` widget changes.
+
+        This posts then a `self.Changed` message itself.
+
+        Arguments:
+            message: message object posted on a radio set changed event.
+        """
         self.post_message(self.Changed(self.name, self.value))
 
 
 class TextInputView(ConfigView):
-    def __init__(self, *args, **kwargs):
+    """
+    Configuration view wrapper around a `ConfigInput` widget for generic text input.
+    """
+
+    def __init__(self, *args: tuple, **kwargs: dict):
+        """
+        Arguments:
+            args: positional arguments passed to the `ConfigInput` widget.
+            kwargs: keyword arguments passed to the `ConfigInput` widget.
+        """
         widget = ConfigInput(*args, **kwargs)
         super().__init__(widget)
 
     def compose(self):
+        """
+        Hook arranging the child widgets.
+        """
         with Grid():
             yield Label(self.name or "")
             with Grid():
@@ -302,7 +583,15 @@ class TextInputView(ConfigView):
                 yield Button("S", id=f"save-{self.name}")
             yield self.widget
 
-    def on_button_pressed(self, message):
+    def on_button_pressed(self, message: Message):
+        """
+        Hook called on a button pressed event from the child widgets.
+
+        This either copies the current value to clipboard or posts a `self.Saved` message.
+
+        Arguments:
+            message: message object posted on a button pressed event.
+        """
         button_id = message.button.id
         cut_id = f"cut-{self.name}"
         copy_id = f"copy-{self.name}"
@@ -316,16 +605,42 @@ class TextInputView(ConfigView):
         elif button_id == save_id:
             self.post_message(self.Saved(self.name, self.value))
 
-    def on_input_changed(self, message):
+    def on_input_changed(self, message: Message):
+        """
+        Hook called on an input change event.
+
+        This posts then a `self.Changed` message.
+
+        Arguments:
+            message: message object posted on an input change event.
+        """
         self.post_message(self.Changed(self.name, self.value))
 
 
 class URLInputView(TextInputView):
-    def __init__(self, *args, **kwargs):
+    """
+    Configuration view wrapper around a `ConfigInput` widget for URLs.
+    """
+
+    def __init__(self, *args: tuple, **kwargs: dict):
+        """
+        Arguments:
+            args: positional arguments passed to the `ConfigInput` widget.
+            kwargs: keyword arguments passed to the `ConfigInput` widget.
+        """
         super().__init__(*args, **kwargs)
         self.is_valid = True
 
-    def on_input_changed(self, message):
+    def on_input_changed(self, message: Message):
+        """
+        Hook called on an input change event.
+
+        This posts then a `self.Changed` message if no validation result is present, i.e. no `Validator` has been passed to the constructor, or the validation succeeded.
+        Additionally, the TCSS class `invalid` is added or removed to the `ConfigInput` widget depending on the validation result.
+
+        Arguments:
+            message: message object posted on an input change event.
+        """
         validation_result = message.validation_result
         if validation_result is not None:
             if validation_result.is_valid:
@@ -340,67 +655,217 @@ class URLInputView(TextInputView):
 
     @property
     def value(self):
+        """Value of the input field if being a valid URL."""
         entry = self.widget.value
         return entry if entry and self.is_valid else None
 
     @value.setter
-    def value(self, new):
+    def value(self, new: Any):
+        """
+        Update the currently displayed value in the input field.
+
+        Arguments:
+            new: new value to be shown.
+        """
         self.widget.value = str(new) if new is not None else ""
 
 
 class PathInputView(TextInputView):
-    def __init__(self, value, *args, **kwargs):
+    """
+    Configuration view wrapper around a `ConfigInput` widget for paths.
+    """
+
+    def __init__(self, value: Any, *args: tuple, **kwargs: dict):
+        """
+        Arguments:
+            value: currently set value in the `ConfigInput` widget.
+            args: positional arguments passed to the `ConfigInput` widget.
+            kwargs: keyword arguments passed to the `ConfigInput` widget.
+        """
         super().__init__()
         value = str(value) if value is not None else None
         self.widget = ConfigInput(value, *args, **kwargs)
 
     @property
     def value(self):
+        """Path object of the current value in the `ConfigInput` widget."""
         entry = self.widget.value
         return Path(entry) if entry else None
 
     @value.setter
-    def value(self, new):
+    def value(self, new: Any):
+        """
+        Update the currently displayed value in the input field.
+
+        Arguments:
+            new: new value to be shown.
+        """
         self.widget.value = str(new) if new is not None else ""
 
 
 class SwitchView(ConfigView):
-    def __init__(self, *args, **kwargs):
+    """
+    Configuration view wrapper around a `Switch` widget.
+    """
+
+    def __init__(self, *args: tuple, **kwargs: dict):
+        """
+        Arguments:
+            args: positional arguments passed to the `Switch` widget.
+            kwargs: keyword arguments passed to the `Switch` widget.
+        """
         widget = Switch(*args, **kwargs)
         super().__init__(widget)
 
     def compose(self):
+        """
+        Hook arranging the child widgets.
+        """
         with Grid():
             yield Label(self.name or "")
             yield Button("S", id=f"save-{self.name}")
             with Container():
                 yield self.widget
 
-    def on_button_pressed(self, message):
+    def on_button_pressed(self, message: Message):
+        """
+        Hook called on a button pressed event from the child widgets.
+
+        This posts then a `self.Saved` message.
+
+        Arguments:
+            message: message object posted on a button pressed event.
+        """
         self.post_message(self.Saved(self.name, self.value))
 
 
+class QRCode(Widget):
+    """
+    Collapsible QR Code displaying widget.
+    """
+
+    value = reactive("")
+    """QR-encoded data."""
+
+    qr: qrcode.QRCode
+    """Instance of the QR encoding object."""
+
+    code: Static
+    """`Static` widget instance holding the string representation of the QR code."""
+
+    def __init__(self, *args: tuple, collapsed: bool = True, **kwargs: dict):
+        """
+        Arguments:
+            collapsed: flag whether the view is collapsed on mount.
+            args: positional arguments passed to the `Widget` class.
+            kwargs: keyword arguments passed to the `Widget` class.
+        """
+        super().__init__(*args, **kwargs)
+
+        self.version = 1
+        self.qr = qrcode.QRCode(
+            version=self.version,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            border=0,
+        )
+        self.code = Static()
+        self.collapsible = Collapsible(title="QR", collapsed=collapsed)
+
+    def compose(self):
+        """
+        Hook arrange the child widgets.
+        """
+
+        with self.collapsible:
+            yield self.code
+
+    def update_qrcode(self):
+        """
+        Update the displayed QR code.
+        """
+        qr = self.qr
+        qr.clear()
+
+        f = io.StringIO()
+
+        qr.version = self.version
+        qr.add_data(self.value)
+        qr.print_ascii(out=f)
+        self.code.update(f.getvalue())
+
+    def watch_value(self):
+        """
+        Hook called on changed value.
+
+        This updates the displayed QR code from the new value.
+        """
+        self.update_qrcode()
+
+
 class QRCodeView(ConfigView):
-    def __init__(self, *args, **kwargs):
-        widget = QRCodeLabel(*args, **kwargs)
+    """
+    Configuration view wrapper around a `QRCode` widget.
+    """
+
+    def __init__(self, *args: tuple, **kwargs: dict):
+        """
+        Arguments:
+            args: positional arguments passed to the `QRCode` widget.
+            kwargs: keyword arguments passed to the `QRCode` widget.
+        """
+        widget = QRCode(*args, **kwargs)
         super().__init__(widget)
 
     def compose(self):
+        """
+        Hook arranging the child widgets.
+        """
         with Grid():
             yield Label(self.name or "")
             yield Button("C", id=f"copy-{self.name or "qrcode"}")
             yield self.widget
 
-    def on_button_pressed(self, message):
+    def on_button_pressed(self, message: Message):
+        """
+        Hook called on a button pressed event from the child widgets.
+
+        This copies the current QR encoded value to clipboard.
+
+        Arguments:
+            message: message object posted on a button pressed event.
+        """
         copy_to_clipboard(self.value)
 
-    def on_click(self, message):
+    def on_click(self, message: Message):
+        """
+        Hook called on a mouse click event.
+
+        This toggles the collapsed state.
+
+        Arguments:
+            message: message object posted on a mouse click event.
+        """
         collapsible = self.query_one(Collapsible)
         collapsible.collapsed = not collapsible.collapsed
 
 
 class WebsocketsURLValidator(Validator):
-    def validate(self, value):
+    """
+    Websocket URL validator.
+
+    This class is designed for use in the `URLInputView`.
+    """
+
+    def validate(self, value: str) -> ValidationResult:
+        """
+        Hook called when validation is requested.
+
+        Arguments:
+            value: current `ConfigInput` value to be validated.
+
+        Returns:
+            a result object holding information about the validation outcome.
+        """
         if value:
             try:
                 parse_uri(value)
@@ -413,7 +878,22 @@ class WebsocketsURLValidator(Validator):
 
 
 class PathSuggester(Suggester):
-    async def get_suggestion(self, value):
+    """
+    Suggester for paths.
+
+    This class is designed for use in the `PathInputView` widget.
+    """
+
+    async def get_suggestion(self, value: str) -> str:
+        """
+        Hook called when a suggestion is requested.
+
+        Arguments:
+            value: current `ConfigInput` value on which to base suggestions on.
+
+        Returns:
+            suggested extended or completed path.
+        """
         path = Path(value)
 
         if path.is_dir():

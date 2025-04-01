@@ -148,7 +148,7 @@ class Component:
 
     async def before(self):
         """
-        Logic to run before the component signals that is has been started.
+        Hook to run before the component signals that is has been started.
 
         In here, one would define initializing steps necessary for the component to run.
         This method must return, otherwise the component will not set the `started` signal.
@@ -160,7 +160,7 @@ class Component:
 
     async def run(self):
         """
-        Logic to run after the component signals that is has been started.
+        Hook to run after the component signals that is has been started.
 
         In here, one would define the main functionality of the component.
         This method may run indefinitely or return.
@@ -172,7 +172,7 @@ class Component:
 
     async def cleanup(self):
         """
-        Logic to run after the component's `stop` method has been called and before it sets the `stopped` event.
+        Hook to run after the component's `stop` method has been called and before it sets the `stopped` event.
 
         In here, one would define cleanup tasks such as closing connections.
         This method must return, otherwise the component will not set the `stopped` signal.

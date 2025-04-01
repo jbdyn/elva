@@ -1,7 +1,13 @@
-from inspect import signature
+"""
+Module holding provider components.
+"""
+
+from inspect import Signature, signature
+from typing import Any
 from urllib.parse import urljoin
 
 import anyio
+from pycrdt import Doc, Event, Subscription
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus, InvalidURI
 
@@ -15,25 +21,38 @@ from elva.protocol import ElvaMessage, YMessage
 
 
 class Connection(Component):
+    """
+    Abstract base class for connection objects.
+    """
+
     _connected = None
     _disconnected = None
     _outgoing = None
     _incoming = None
 
     @property
-    def connected(self):
+    def connected(self) -> anyio.Event:
+        """
+        Event signaling being connected.
+        """
         if self._connected is None:
             self._connected = anyio.Event()
         return self._connected
 
     @property
-    def disconnected(self):
+    def disconnected(self) -> anyio.Event:
+        """
+        Event signaling being disconnected.
+        """
         if self._disconnected is None:
             self._disconnected = anyio.Event()
         return self._disconnected
 
     @property
-    def outgoing(self):
+    def outgoing(self) -> Any:
+        """
+        Outgoing stream.
+        """
         if self._outgoing is None:
             raise RuntimeError("no outgoing stream set")
         return self._outgoing
@@ -43,7 +62,10 @@ class Connection(Component):
         self._outgoing = stream
 
     @property
-    def incoming(self):
+    def incoming(self) -> Any:
+        """
+        Incoming stream.
+        """
         if self._incoming is None:
             raise RuntimeError("no incoming stream set")
         return self._incoming
@@ -52,7 +74,13 @@ class Connection(Component):
     def incoming(self, stream):
         self._incoming = stream
 
-    async def send(self, data):
+    async def send(self, data: Any):
+        """
+        Wrapper around the `self.outgoing.send` method.
+
+        Arguments:
+            data: data to be send via the `self.outgoing` stream.
+        """
         if self.connected.is_set():
             try:
                 self.log.debug(f"sending {data}")
@@ -62,6 +90,9 @@ class Connection(Component):
                 self.log.debug(f"cancelled due to exception: {exc}")
 
     async def recv(self):
+        """
+        Wrapper around the `self.incoming` stream.
+        """
         self.log.debug("waiting for connection")
         await self.connected.wait()
         try:
@@ -73,18 +104,57 @@ class Connection(Component):
             self.log.info("cancelled listening for incoming data")
             self.log.debug(f"cancelled due to exception: {exc}")
 
-    async def on_recv(self, data): ...
+    async def on_recv(self, data: Any):
+        """
+        Hook executed on received `data` from `self.incoming`.
+
+        This is defined as a noop and intended to be defined in the inheriting subclass.
+
+        Arguments:
+            data: data received from `self.incoming`.
+        """
+        ...
 
 
 class WebsocketConnection(Connection):
-    def __init__(self, uri, user, password, *args, **kwargs):
+    """
+    Websocket connection handling component.
+    """
+
+    signature: Signature
+    """Object holding the positional and keyword arguments for `websockets.asyncio.client.connect`."""
+
+    options: dict
+    """Mapping of arguments to the signature of `websockets.asyncio.client.connect`."""
+
+    basic_authorization_header: dict
+    """Mapping of `Authorization` HTTP request header to encoded `Basic Authentication` information."""
+
+    tried_credentials: bool
+    """Flag whether given credentials have already been tried."""
+
+    def __init__(
+        self,
+        uri: str,
+        user: None | str = None,
+        password: None | str = None,
+        *args: tuple[Any],
+        **kwargs: dict[Any],
+    ):
+        """
+        Arguments:
+            uri: websocket address to connect to.
+            user: username to be sent in the `Basic Authentication` HTTP request header.
+            password: password to be sent in the `Basic Authentication` HTTP request header.
+            *args: positional arguments passed to `websockets.asyncio.client.connect`.
+            **kwargs: keyword arguments passed to `websockets.asyncio.client.connect`.
+        """
         self.uri = uri
         self._websocket = None
 
         # construct a dictionary of args and kwargs
-        sig = signature(connect)
-        self._arguments = sig.bind(uri, *args, **kwargs)
-        self.options = self._arguments.arguments
+        self.signature = signature(connect).bind(uri, *args, **kwargs)
+        self.options = self.signature.arguments
         self.options["logger"] = self.log
 
         # keep credentials separate to only send them if necessary
@@ -98,13 +168,22 @@ class WebsocketConnection(Connection):
         self.tried_credentials = False
 
     async def run(self):
+        """
+        Main loop connecting and listening for incoming data.
+
+        - It retries on HTTP response status other than `101` automatically.
+        - It sends given credentials only after a failed connection attempt.
+        - It gives the opportunity to update the connection arguments with credentials via the `self.on_exception` hook, if previously given information result in a failed connection.
+
+        This method is called by the class itself automatically.
+        """
         # catch exceptions due to HTTP status codes other than 101, 3xx, 5xx
         while True:
             try:
                 # accepts only 101 and 3xx HTTP status codes,
                 # retries only on 5xx by default
                 async for self._websocket in connect(
-                    *self._arguments.args, **self._arguments.kwargs
+                    *self.signature.args, **self.signature.kwargs
                 ):
                     try:
                         self.log.info(f"connection to {self.uri} opened")
@@ -164,36 +243,103 @@ class WebsocketConnection(Connection):
         await self.stop()
 
     async def cleanup(self):
+        """
+        Close the websocket connection gracefully if cancelled.
+
+        This method is called by the class itself automatically.
+        """
         if self._websocket is not None:
             self.log.debug("closing connection")
             await self._websocket.close()
 
-    async def on_connect(self): ...
+    async def on_connect(self):
+        """
+        Hook method run on connection.
 
-    async def on_exception(self, exc):
+        This is defined as a noop and supposed to be implemented in the inheriting subclass.
+        """
+        ...
+
+    async def on_exception(self, exc: InvalidURI | InvalidStatus):
+        """
+        Hook method run on otherwise unhandled invalid URI or invalid HTTP response status.
+
+        This method defaults to re-raise `exc`, is supposed to be implemented in the inheriting subclass and intended to be integrated in a user interface.
+
+        Arguments:
+            exc: exception raised by `websockets.async.client.connect`.
+        """
         raise exc
 
 
 class WebsocketProvider(WebsocketConnection):
-    def __init__(self, ydoc, identifier, server, *args, **kwargs):
+    """
+    Handler for Y messages sent and received over a websocket connection.
+
+    This component follows the [Yjs protocol spec](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md).
+    """
+
+    ydoc: Doc
+    """Instance of the synchronized Y Document."""
+
+    subscription: Subscription
+    """Object holding subscription information to changes in `self.ydoc`."""
+
+    def __init__(
+        self,
+        ydoc: Doc,
+        identifier: str,
+        server: str,
+        *args: tuple[Any],
+        **kwargs: dict[Any],
+    ):
+        """
+        Arguments:
+            ydoc: instance if the synchronized Y Document.
+            identifier: identifier of the synchronized Y Document.
+            server: address of the Y Document synchronizing websocket server.
+            *args: positional arguments passed to `elva.provider.WebsocketConnection`.
+            **kwargs: keyword arguments passed to `elva.provider.WebsocketConnection`.
+        """
         self.ydoc = ydoc
         uri = urljoin(server, identifier)
         super().__init__(uri, *args, **kwargs)
 
     async def run(self):
+        """
+        Main loop observing changes and handling connection.
+
+        This method is run by the class itself automatically.
+        """
         self.subscription = self.ydoc.observe(self.callback)
         await super().run()
 
     async def cleanup(self):
+        """
+        Hook cancelling the subscription to changes in `self.ydoc`.
+        """
         self.ydoc.unobserve(self.subscription)
 
-    def callback(self, event):
+    def callback(self, event: Event):
+        """
+        Hook called on changes in `self.ydoc`.
+
+        When called, the `event` data are encoded as Y update message and sent over the established websocket connection.
+
+        Arguments:
+            event: object holding event information.
+        """
         if event.update != b"\x00\x00":
             message, _ = YMessage.SYNC_UPDATE.encode(event.update)
             self.log.debug("callback with non-empty update triggered")
             self._task_group.start_soon(self.send, message)
 
     async def on_connect(self):
+        """
+        Hook initializing cross synchronization.
+
+        When called, it sends a Y sync step 1 message and a Y sync step 2 message with respect to the null state, effectively doing a pro-active cross synchronization.
+        """
         # init sync
         state = self.ydoc.get_state()
         step1, _ = YMessage.SYNC_STEP1.encode(state)
@@ -204,7 +350,16 @@ class WebsocketProvider(WebsocketConnection):
         step2, _ = YMessage.SYNC_STEP2.encode(update)
         await self.send(step2)
 
-    async def on_recv(self, data):
+    async def on_recv(self, data: bytes):
+        """
+        Hook called on received `data` over the websocket connection.
+
+        When called, `data` is assumed to be a `YMessage` and tried to be decoded.
+        On successful decoding, the payload is dispatched to the appropriate method.
+
+        Arguments:
+            data: message received from the synchronizing server.
+        """
         try:
             message_type, payload, _ = YMessage.infer_and_decode(data)
         except Exception as exc:
@@ -223,44 +378,129 @@ class WebsocketProvider(WebsocketConnection):
                     f"message type '{message_type}' does not match any YMessage"
                 )
 
-    async def on_sync_step1(self, state):
+    async def on_sync_step1(self, state: bytes):
+        """
+        Dispatch method called on received Y sync step 1 message.
+
+        It answers the message with a Y sync step 2 message according to the [Yjs protocol spec](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md).
+
+        Arguments:
+            state: payload included in the incoming Y sync step 1 message.
+        """
         update = self.ydoc.get_update(state)
         step2, _ = YMessage.SYNC_STEP2.encode(update)
         await self.send(step2)
 
-    async def on_sync_update(self, update):
+    async def on_sync_update(self, update: bytes):
+        """
+        Dispatch method called on received Y sync update message.
+
+        The `update` gets applied to the internal Y Document instance.
+
+        Arguments:
+            update: payload included in the incoming Y sync update message.
+        """
         if update != b"\x00\x00":
             self.ydoc.apply_update(update)
 
     # TODO: add awareness functionality
-    async def on_awareness(self, state): ...
+    async def on_awareness(self, state: bytes):
+        """
+        Dispatch method called on received Y awareness message.
+
+        Currently, this is defined as a noop.
+
+        Arguments:
+            state: payload included in the incoming Y awareness message.
+        """
+        ...
 
 
 class ElvaWebsocketProvider(WebsocketConnection):
-    def __init__(self, ydoc, identifier, server, *args, **kwargs):
+    """
+    Handler for Y messages sent and received over a websocket connection.
+
+    This component follows the ELVA protocol.
+    """
+
+    ydoc: Doc
+    """Instance of the synchronized Y Document."""
+
+    identifier: str
+    """Identifier of the synchronized Y Document."""
+
+    uuid: bytes
+    """As `ElvaMessage.ID` message encoded `self.identifier`."""
+
+    subscription: Subscription
+    """Object holding subscription information to changes in `self.ydoc`."""
+
+    def __init__(
+        self,
+        ydoc: Doc,
+        identifier: str,
+        server: str,
+        *args: tuple[Any],
+        **kwargs: dict[Any],
+    ):
+        """
+        Arguments:
+            ydoc: instance if the synchronized Y Document.
+            identifier: identifier of the synchronized Y Document.
+            server: address of the Y Document synchronizing websocket server.
+            *args: positional arguments passed to `elva.provider.WebsocketConnection`.
+            **kwargs: keyword arguments passed to `elva.provider.WebsocketConnection`.
+        """
         self.ydoc = ydoc
         self.identifier = identifier
         self.uuid, _ = ElvaMessage.ID.encode(self.identifier.encode())
         super().__init__(server, *args, **kwargs)
 
     async def run(self):
+        """
+        Main loop observing changes and handling connection.
+
+        This method is run by the class itself automatically.
+        """
         self.subscription = self.ydoc.observe(self.callback)
         await super().run()
 
     async def cleanup(self):
+        """
+        Hook cancelling the subscription to changes in `self.ydoc`.
+        """
         self.ydoc.unobserve(self.subscription)
 
-    async def send(self, data):
+    async def send(self, data: bytes):
+        """
+        Send `data` with `self.uuid` prepended.
+
+        Arguments:
+            data: data to be send over the websocket connection.
+        """
         message = self.uuid + data
         await super().send(message)
 
-    def callback(self, event):
+    def callback(self, event: Event):
+        """
+        Hook called on changes in `self.ydoc`.
+
+        When called, the `event` data are encoded as Y update message and sent over the established websocket connection.
+
+        Arguments:
+            event: object holding event information.
+        """
         if event != b"\x00\x00":
             message, _ = ElvaMessage.SYNC_UPDATE.encode(event.update)
             self.log.debug("callback with non-empty update triggered")
             self._task_group.start_soon(self.send, message)
 
     async def on_connect(self):
+        """
+        Hook initializing cross synchronization.
+
+        When called, it sends a Y sync step 1 message and a Y sync step 2 message with respect to the null state, effectively doing a pro-active cross synchronization.
+        """
         state = self.ydoc.get_state()
         step1, _ = ElvaMessage.SYNC_STEP1.encode(state)
         await self.send(step1)
@@ -270,7 +510,16 @@ class ElvaWebsocketProvider(WebsocketConnection):
         step2, _ = ElvaMessage.SYNC_STEP2.encode(update)
         await self.send(step2)
 
-    async def on_recv(self, data):
+    async def on_recv(self, data: bytes):
+        """
+        Hook called on received `data` over the websocket connection.
+
+        When called, `data` is assumed to be an `ElvaMessage` and tried to be decoded.
+        On successful decoding, the payload is dispatched to the appropriate method.
+
+        Arguments:
+            data: message received from the synchronizing server.
+        """
         try:
             uuid, length = ElvaMessage.ID.decode(data)
         except ValueError as exc:
@@ -305,14 +554,39 @@ class ElvaWebsocketProvider(WebsocketConnection):
                     f"message type '{message_type}' does not match any ElvaMessage"
                 )
 
-    async def on_sync_step1(self, state):
+    async def on_sync_step1(self, state: bytes):
+        """
+        Hook called on received Y sync step 1 message.
+
+        It answers the message with a Y sync step 2 message according to the ELVA protocol.
+
+        Arguments:
+            state: payload included in the incoming Y sync step 1 message.
+        """
         update = self.ydoc.get_update(state)
         step2, _ = ElvaMessage.SYNC_STEP2.encode(update)
         await self.send(step2)
 
-    async def on_sync_update(self, update):
+    async def on_sync_update(self, update: bytes):
+        """
+        Hook called on received Y sync update message.
+
+        The `update` gets applied to the internal Y Document instance.
+
+        Arguments:
+            update: payload included in the incoming Y sync update message.
+        """
         if update != b"\x00\x00":
             self.ydoc.apply_update(update)
 
     # TODO: add awareness functionality
-    async def on_awareness(self, state): ...
+    async def on_awareness(self, state: bytes):
+        """
+        Hook called on received Y awareness message.
+
+        Currently, this is defined as a noop.
+
+        Arguments:
+            state: payload included in the incoming Y awareness message.
+        """
+        ...

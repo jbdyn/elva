@@ -22,7 +22,7 @@ nav:
       - CLI: reference/cli.md
       - CLI Utils: reference/utils.md
       - Click Utilities: reference/click-utils.md
-      - Click Lazy Loading Grous: reference/click-lazy-group.md
+      - Click Lazy Loading Group: reference/click-lazy-group.md
       - Component: reference/component.md
       - Authentication: reference/auth.md
       - Server: reference/server.md
