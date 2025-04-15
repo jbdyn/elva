@@ -5,10 +5,9 @@ Module holding store components.
 import sqlite3
 import uuid
 
-import pycrdt.Event
 import sqlite_anyio as sqlite
 from anyio import Event, Lock, Path, create_memory_object_stream
-from pycrdt import Doc, Subscription
+from pycrdt import Doc, Subscription, TransactionEvent
 
 from elva.component import Component
 
@@ -104,7 +103,7 @@ class SQLiteStore(Component):
         else:
             db.close()
 
-    def callback(self, event: pycrdt.Event):
+    def callback(self, event: TransactionEvent):
         """
         Hook called on changes in `self.ydoc`.
 
