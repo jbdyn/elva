@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import urljoin
 
 import anyio
-from pycrdt import Doc, Event, Subscription
+from pycrdt import Doc, Subscription, TransactionEvent
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus, InvalidURI
 
@@ -320,7 +320,7 @@ class WebsocketProvider(WebsocketConnection):
         """
         self.ydoc.unobserve(self.subscription)
 
-    def callback(self, event: Event):
+    def callback(self, event: TransactionEvent):
         """
         Hook called on changes in `self.ydoc`.
 
@@ -481,7 +481,7 @@ class ElvaWebsocketProvider(WebsocketConnection):
         message = self.uuid + data
         await super().send(message)
 
-    def callback(self, event: Event):
+    def callback(self, event: TransactionEvent):
         """
         Hook called on changes in `self.ydoc`.
 
