@@ -1,3 +1,7 @@
+"""
+ELVA editor app.
+"""
+
 import logging
 from pathlib import Path
 
@@ -212,7 +216,7 @@ class RendererStatus(ComponentStatus):
     """Instance of the controlled TextRenderer component."""
 
     @property
-    def is_ready(self):
+    def is_ready(self) -> bool:
         """
         Flag whether all conditions for successful rendering are fulfilled.
 
@@ -248,7 +252,7 @@ class ProviderStatus(ComponentStatus):
     """Instance of the controlled provider component."""
 
     @property
-    def is_ready(self):
+    def is_ready(self) -> bool:
         """
         Flag whether all conditions for successful storing are fulfilled.
 
@@ -349,7 +353,7 @@ class UI(App):
 
     async def on_exception(self, exc: Exception) -> Exception:
         """
-        Hook called on an excption raised in the provider component.
+        Hook called on an exception raised in the provider component.
 
         This method opens the config panel and updates the provider status widget to signal the issue to the user.
 
@@ -357,7 +361,7 @@ class UI(App):
             exc: the exception that the provide component raised.
 
         Raises:
-            `exc`
+            exc: the exception that was raised by the provider component.
         """
         if isinstance(exc, InvalidStatus) and exc.response.status_code == 401:
             self.query_one(ConfigPanel).remove_class("hidden")

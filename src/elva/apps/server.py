@@ -1,3 +1,7 @@
+"""
+ELVA server app.
+"""
+
 import logging
 import signal
 import sys
@@ -14,7 +18,29 @@ from elva.utils import gather_context_information
 log = logging.getLogger(__name__)
 
 
-async def main(messages, host, port, persistent, path, ldap, dummy):
+async def main(
+    messages: str,
+    host: str,
+    port: int,
+    persistent: bool,
+    path: None | Path,
+    ldap: None | bool,
+    dummy: bool,
+):
+    """
+    Main app routine.
+
+    Starts a server component and handles process signals.
+
+    Arguments:
+        messages: the message type to use.
+        host: the host address to listen on for new connections.
+        port: the port to listen on for new connections.
+        persistent: flag whether to store Y updates somewhere.
+        path: path where to store Y updates. If `None`, Y updates are stored in volatile memory, else under the given path.
+        ldap: flag whether to use LDAP self bind authentication.
+        dummy: flag whether to use dummy authentication.
+    """
     if ldap is not None:
         process_request = LDAPBasicAuth(*ldap).authenticate
     elif dummy:
@@ -85,9 +111,24 @@ async def main(messages, host, port, persistent, path, ldap, dummy):
     help="Enable Dummy Basic Authentication. DO NOT USE IN PRODUCTION.",
     is_flag=True,
 )
-def cli(ctx: click.Context, host, port, persistent, ldap, dummy):
+def cli(
+    ctx: click.Context,
+    host: str,
+    port: int,
+    persistent: None | str,
+    ldap: str,
+    dummy: bool,
+):
     """
     Run a websocket server.
+
+    Arguments:
+        ctx: the click context holding the configuration parameter object.
+        host: the host address to listen on for new connections.
+        port: the port to listen on for new connections.
+        persistent: flag whether and how Y updates should be stored.
+        ldap: flag how to setup an LDAP self bind authentication.
+        dummy: flag whether to use dummy authentication.
     """
 
     gather_context_information(ctx, app="server")
