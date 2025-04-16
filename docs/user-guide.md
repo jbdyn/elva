@@ -144,7 +144,7 @@ The chat enables real-time previews of composed messages and stores the history.
 ### Service
 
 ```
-elva serice
+elva service
 ```
 
 The service is mainly intended for background synchronization.
