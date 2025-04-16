@@ -2,9 +2,7 @@
 
 ## Project Setup
 
-You need to at least have [`git`](https://git-scm.com/) and [`pdm`](https://pdm-project.org/latest/) installed on your system to get started.
-
-Either fork the project on GitHub if you want to contribute and clone this fork locally with 
+With [`git`](https://git-scm.com/) fork the project on GitHub if you want to contribute and clone this fork locally with 
 
 ```sh
 git clone <url-of-your-forked-elva-project>
@@ -19,25 +17,25 @@ git clone https://github.com/innocampus/elva <location>
 Then run
 
 ```sh
-pdm install .[dev]
+uv pip install .[dev]
 ```
 
-to also install the development dependencies.
+or an equivalent package manager command to also install the development dependencies.
 
 If you want to work on the logo, you will need to install the dependencies from the `logo` group:
 
 ```sh
-pdm install .[logo]
+uv pip install .[logo]
 ```
 
 
 ## Orientation
 
-- We use [`pdm`](https://pdm-project.org/latest/) for Python package management including building, [`git-cliff`](https://git-cliff.org/) in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format for changelog drafting and [`mkdocs`](https://www.mkdocs.org/) for documentation.
+- We use [`git-cliff`](https://git-cliff.org/) in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format for changelog drafting and [`mkdocs`](https://www.mkdocs.org/) for documentation.
 - This project ships both: The end-user facing code in `src/elva/apps` and the developer-facing library in `src/elva`.
 - We follow the [GitHub flow](https://docs.github.com/de/get-started/using-github/github-flow) for collaboration.
 - The naming scheme is `MAJOR.MINOR` and depends on git tags.
-- The core idea is to combine the libraries [`pycrdt`](https://github.com/jupyter-server/pycrdt) and [`textual`](https://github.com/Textualize/textual) and networking libraries like [`websockets`](https://github.com/python-websockets/websockets) to make useful apps for real-time collaboration.
+- The core idea is to combine the libraries [`pycrdt`](https://github.com/jupyter-server/pycrdt), [`textual`](https://github.com/Textualize/textual) and networking libraries like [`websockets`](https://github.com/python-websockets/websockets) to make useful apps for real-time collaboration.
 
 
 ## Version Change Workflow
