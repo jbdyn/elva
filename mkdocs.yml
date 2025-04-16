@@ -13,6 +13,7 @@ nav:
           - Chat: reference/apps/chat.md
           - Service: reference/apps/service.md
           - Server: reference/apps/server.md
+          - Drive: reference/apps/drive.md
       - Widgets:
           - "reference/widgets/index.md"
           - TextArea: reference/widgets/textarea.md

@@ -128,4 +128,4 @@ class ErrorScreen(ModalScreen):
         Arguments:
             event: the message object holding information about the button pressed event.
         """
-        self.dismiss()
+        self.dismiss(self.exc)

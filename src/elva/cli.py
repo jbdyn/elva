@@ -21,7 +21,10 @@ from elva.utils import gather_context_information
 #
 # names
 APP_NAME = "elva"
+"""Default app name."""
+
 CONFIG_NAME = APP_NAME + ".toml"
+"""Default ELVA configuration file name."""
 
 # sort logging levels by verbosity
 # source: https://docs.python.org/3/library/logging.html#logging-levels
@@ -40,6 +43,7 @@ LEVEL = [
     # -vvvvv
     logging.DEBUG,
 ]
+"""Logging levels sorted by verbosity."""
 
 
 ###
@@ -48,13 +52,21 @@ LEVEL = [
 #
 
 CONFIG_PATHS = list()
+"""List containing all found default ELVA configuration file paths."""
 
 USER_HOME_CONFIG = Path(platformdirs.user_config_dir(APP_NAME)) / CONFIG_NAME
+"""Path to the calling system user's ELVA configuration file."""
+
 if USER_HOME_CONFIG.exists():
     CONFIG_PATHS.append(USER_HOME_CONFIG)
 
 
 def find_config_path():
+    """
+    Find the next ELVA configuration file.
+
+    This function searches the directory tree from bottom to top.
+    """
     cwd = Path.cwd()
     for path in [cwd] + list(cwd.parents):
         config = path / CONFIG_NAME
@@ -64,22 +76,32 @@ def find_config_path():
 
 config_path = find_config_path()
 
+PROJECT_PATH = None
+"""The path to the current active project."""
+
 if config_path is not None:
     CONFIG_PATHS.insert(0, config_path)
     PROJECT_PATH = config_path.parent
-else:
-    PROJECT_PATH = None
 
 
 ###
 #
 # cli input callbacks
 #
-
-
 def resolve_configs(
-    ctx: click.Context, param: click.Parameter, paths: None | tuple[Path]
-):
+    ctx: click.Context, param: click.Parameter, paths: None | list[Path]
+) -> list[Path]:
+    """
+    Hook sanitizing configuration file paths on invoking the ELVA command.
+
+    Arguments:
+        ctx: the click context of the current invokation.
+        param: the parameter currently being parsed.
+        paths: the paths given to the parameter.
+
+    Returns:
+        a list of paths to all given and found ELVA configuration files.
+    """
     if paths is not None:
         paths = [path.resolve() for path in paths]
         param_source = ctx.get_parameter_source(param.name)
@@ -89,7 +111,20 @@ def resolve_configs(
     return paths
 
 
-def resolve_log(ctx, param, log):
+def resolve_log(
+    ctx: click.Context, param: click.Parameter, log: None | Path
+) -> None | Path:
+    """
+    Hook sanitizing the log file path on invoking the ELVA command.
+
+    Arguments:
+        ctx: the click context of the current invokation.
+        param: the parameter currently being parsed.
+        log: the path of the log file given to the parameter.
+
+    Returns:
+       the resolved path of the log file if one was given, else `None`.
+    """
     if log is not None:
         log = log.resolve()
 
@@ -201,7 +236,7 @@ def resolve_log(ctx, param, log):
 #
 def elva(
     ctx: click.Context,
-    configs: Path,
+    configs: list[Path],
     log: Path,
     verbose: int,
     name: str,
@@ -211,7 +246,21 @@ def elva(
     identifier: str | None,
     messages: str,
 ):
-    """ELVA - A suite of real-time collaboration TUI apps."""
+    """
+    ELVA - A suite of real-time collaboration TUI apps.
+
+    Arguments:
+        ctx: the click context holding the configuration parameter object.
+        configs: list of configuration files to parse.
+        log: path of the log file.
+        verbose: verbosity, i.e. log level, indicator from 0 (no logging) to 5 (log everything).
+        name: the name to display instead of the user name.
+        user: the user name to login with.
+        password: the password to login with.
+        server: the address of the remote server for synchronization.
+        identifier: the identifier of the Y document.
+        messages: the type of messages to use for synchronization.
+    """
 
     ctx.ensure_object(dict)
     c = ctx.obj
@@ -254,7 +303,14 @@ def elva(
     help="Include the parameters defined in the app.APP config file section.",
 )
 def context(ctx: click.Context, file: None | Path, app: None | str):
-    """Print the parameters passed to apps and other subcommands."""
+    """
+    Print the parameters passed to apps and other subcommands.
+
+    Arguments:
+        ctx: the click context holding the configuration parameter object.
+        file: the path to the ELVA SQLite database file.
+        app: the app section to take additional configuration parameters from.
+    """
     c = ctx.obj
 
     gather_context_information(ctx, file, app)
