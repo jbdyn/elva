@@ -753,9 +753,10 @@ class QRCode(Widget):
     code: Static
     """`Static` widget instance holding the string representation of the QR code."""
 
-    def __init__(self, *args: tuple, collapsed: bool = True, **kwargs: dict):
+    def __init__(self, content: str, *args: tuple, collapsed: bool = True, **kwargs: dict):
         """
         Arguments:
+            content: the content to encode in the QR code.
             collapsed: flag whether the view is collapsed on mount.
             args: positional arguments passed to the `Widget` class.
             kwargs: keyword arguments passed to the `Widget` class.
@@ -770,6 +771,7 @@ class QRCode(Widget):
         )
         self.code = Static()
         self.collapsible = Collapsible(title="QR", collapsed=collapsed)
+        self.value = content
 
     def compose(self):
         """
