@@ -53,8 +53,8 @@ async def main(messages, host, port, persistent, path, ldap, dummy):
 
 @click.command()
 @click.pass_context
-@click.argument("host", default="localhost")
-@click.argument("port", default=8000)
+@click.argument("host", required=False)
+@click.argument("port", required=False)
 @click.option(
     "--persistent",
     # one needs to set this manually here since one cannot use
@@ -127,14 +127,16 @@ def cli(ctx: click.Context, host, port, persistent, ldap, dummy):
     log.setLevel(level)
 
     for name, param in [
-        ("host", host),
-        ("port", port),
         ("persistent", persistent),
         ("path", path),
         ("ldap", ldap),
         ("dummy", dummy),
     ]:
         if c.get(name) is None:
+            c[name] = param
+
+    for name, param in (("host", host), ("port", port)):
+        if param is not None:
             c[name] = param
 
     anyio.run(
