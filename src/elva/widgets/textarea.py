@@ -12,7 +12,7 @@ from textual.document._document_navigator import DocumentNavigator
 from textual.document._wrapped_document import WrappedDocument
 from textual.geometry import Size
 from textual.widgets import TextArea
-from tree_sitter_languages import get_language, get_parser
+from tree_sitter_language_pack import get_language, get_parser
 
 NEWLINE_CHARS = "\n\r"
 
