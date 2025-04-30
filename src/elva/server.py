@@ -8,7 +8,8 @@ from typing import Callable
 
 import anyio
 from pycrdt import Doc
-from websockets import ClientConnection, ConnectionClosed, broadcast, serve
+from websockets import ClientConnection, ServerConnection, ConnectionClosed, broadcast, serve
+from websockets.http11 import Request
 
 from elva.component import Component
 from elva.protocol import ElvaMessage, YMessage
@@ -28,7 +29,7 @@ class RequestProcessor:
         self.funcs = funcs
 
     def process_request(
-        self, path: str, request: dict[str, str]
+        self, websocket: ServerConnection, request: Request
     ) -> None | tuple[HTTPStatus, dict[str, str], None | bytes]:
         """
         Process a HTTP request for given functions.
@@ -36,14 +37,14 @@ class RequestProcessor:
         This function is designed to be given to `websockets.serve`.
 
         Arguments:
-            path: path to which the HTTP request was sent.
-            request: HTTP request headers.
+            websocket: connection object.
+            request: HTTP request header object.
 
         Returns:
             Abort information like in `elva.auth.abort_basic_auth` on first occurence, else `None`.
         """
         for func in self.funcs:
-            out = func(path, request)
+            out = func(websocket, request)
             if out is not None:
                 return out
 
@@ -243,7 +244,7 @@ class Room(Component):
             message, _ = YMessage.SYNC_UPDATE.encode(update)
             self.broadcast(message, client)
 
-    async def process_awareness(self, state, client):
+    async def process_awareness(self, state: bytes, client: ClientConnection):
         """
         Process an awareness message payload `state` from `client`.
 
@@ -257,10 +258,10 @@ class ElvaRoom(Room):
     Connection handler for one Y Document following the ELVA protocol.
     """
 
-    uuid: str
+    uuid: bytes
     """As `elva.protocol.ElvaMessage` encoded `self.identifier`."""
 
-    def __init__(self, identifier: str, persistent: bool, path: Path):
+    def __init__(self, identifier: str, persistent: bool, path: None | Path):
         """
         If `persistent = False` and `path = None`, messages will be broadcasted only.
         Nothing is saved.
@@ -439,15 +440,15 @@ class WebsocketServer(Component):
             # keep the server active indefinitely
             await anyio.sleep_forever()
 
-    def check_path(self, path: Path, request: dict):
+    def check_path(self, websocket: ServerConnection, request: Request):
         """
         Check if a request path is valid.
 
         This function is a request processing callable and automatically passed to the inner `websockets.serve` function.
 
         Arguments:
-            path: path of the requested URL
-            request: mapping of the HTTP request headers.
+            websocket: connection object.
+            request: HTTP request header object.
         """
         if request.path[1:] == "":
             return HTTPStatus.FORBIDDEN, {}, b""
@@ -507,15 +508,15 @@ class ElvaWebsocketServer(WebsocketServer):
     Serving component using `ElvaRoom` as internal connection handler.
     """
 
-    def check_path(self, path: Path, request: dict):
+    def check_path(self, websocket: ServerConnection, request: Request):
         """
         Check if a request path is valid.
 
         This function is a request processing callable and automatically passed to the inner `websockets.serve` function.
 
         Arguments:
-            path: path of the requested URL
-            request: mapping of the HTTP request headers.
+            websocket: connection object.
+            request: HTTP request header object.
         """
         if request.path[1:] != "":
             return HTTPStatus.FORBIDDEN, {}, b""
