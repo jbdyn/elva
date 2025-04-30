@@ -46,7 +46,7 @@ dependencies = [
     "watchdog",
     "ldap3",
     "textual[syntax]",
-    "tree-sitter-languages",
+    "tree-sitter-language-pack",
     "pyperclip",
     "qrcode",
     "tomli-w",

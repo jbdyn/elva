@@ -18,7 +18,7 @@ from textual.geometry import Size
 from textual.strip import Strip
 from textual.widgets import TextArea
 from tree_sitter import Language, Node, Parser, Point, Query, Tree
-from tree_sitter_languages import get_language, get_parser
+from tree_sitter_language_pack import get_language, get_parser
 
 # TODO: Define these as methods of YTextArea when that is merged with YDocument
 # TODO: Use an Array[Text] Y data type to represent document contents
