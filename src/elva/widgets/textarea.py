@@ -170,7 +170,7 @@ class YDocument(DocumentBase):
             self.parser = get_parser(language)
             self.tree = self.parser.parse(self.get_btext_slice)
             self.syntax_enabled = True
-        except AttributeError:
+        except LookupError:
             self.syntax_enabled = False
 
     ##
