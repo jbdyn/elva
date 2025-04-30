@@ -38,7 +38,7 @@ nav:
 extra:
   generator: false
 extra_css:
-  - css/extra.css
+  - css/mkdocs-material.css
   - css/mkdocstrings.css
 #hooks:
   #  - scripts/generate_section_index.py
