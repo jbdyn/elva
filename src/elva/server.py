@@ -211,8 +211,8 @@ class WebsocketServer(Component):
             # keep the server active indefinitely
             await anyio.sleep_forever()
 
-    def check_path(self, path, request):
-        if path[1:] == "":
+    def check_path(self, websocket, request):
+        if request.path[1:] == "":
             return HTTPStatus.FORBIDDEN, {}, b""
 
     async def get_room(self, identifier):
@@ -227,7 +227,7 @@ class WebsocketServer(Component):
 
     async def handle(self, websocket):
         # use the connection path as identifier with leading `/` removed
-        identifier = websocket.path[1:]
+        identifier = websocket.request.path[1:]
         room = await self.get_room(identifier)
 
         room.add(websocket)
@@ -248,7 +248,7 @@ class WebsocketServer(Component):
 
 class ElvaWebsocketServer(WebsocketServer):
     def check_path(self, path, request):
-        if path[1:] != "":
+        if request.path[1:] != "":
             return HTTPStatus.FORBIDDEN, {}, b""
 
     async def get_room(self, identifier):
