@@ -57,10 +57,6 @@ theme:
   favicon: img/logo.svg
   logo: img/logo.svg
   palette:
-    - media: "(prefers-color-scheme)"
-      toggle:
-        icon: material/brightness-auto
-        name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: elva-light 
       primary: custom
@@ -74,7 +70,7 @@ theme:
       accent: custom
       toggle:
         icon: material/brightness-4
-        name: Switch to system preference
+        name: Switch to light mode
 plugins:
   - blog:
       blog_dir: stories

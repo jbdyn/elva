@@ -1,11 +1,3 @@
-[data-md-color-scheme="default"] {
-  color-scheme: elva-light;
-  img[src$="#only-dark"],
-  img[src$="#gh-dark-mode-only"] {
-    display: none;
-  }
-}
-
 [data-md-color-scheme="elva-light"] {
   /* Catppuccin Latte color palette */
 
@@ -35,71 +27,8 @@
   --base:       #eff1f5;
   --mantle:     #e6e9ef;
   --crust:      #dce0e8;
-
-  --md-primary-fg-color:               var(--base);
-  --md-primary-fg-color--light:        var(--base);
-  --md-primary-fg-color--dark:         var(--base);
-  --md-primary-bg-color:               var(--text);
-  --md-primary-bg-color--light:        var(--subtext-1); 
-  --md-accent-fg-color:                var(--sky);  /* link:hover */
-  --md-accent-fg-color--transparent:   var(--crust);  /* link:hover background */
-  --md-accent-bg-color:                var(--text);
-  --md-accent-bg-color--light:         var(--text);
-
-  --md-hue: 0deg;
-  --md-default-fg-color:               var(--text);
-  --md-default-fg-color--light:        var(--subtext-1);  /* headings */
-  --md-default-fg-color--lighter:      var(--subtext-0);
-  --md-default-fg-color--lightest:     var(--surface-0);  /* subsection */
-  --md-default-bg-color:               var(--base);
-  --md-default-bg-color--light:        var(--base);  /* footer */
-  --md-default-bg-color--lighter:      var(--mantle);
-  --md-default-bg-color--lightest:     var(--crust);
-  --md-code-fg-color:                  var(--text);
-  --md-code-bg-color:                  var(--crust);
-  --md-code-hl-color:                  var(--flamingo);
-  --md-code-hl-color--light:           var(--rosewater);
-  --md-code-hl-number-color:           var(--peach);
-  --md-code-hl-special-color:          var(--teal);
-  --md-code-hl-function-color:         var(--blue);
-  --md-code-hl-constant-color:         var(--peach);
-  --md-code-hl-keyword-color:          var(--mauve);
-  --md-code-hl-string-color:           var(--green);
-  --md-code-hl-name-color:             var(--md-code-fg-color);
-  --md-code-hl-operator-color:         var(--sky);
-  --md-code-hl-punctuation-color:      var(--md-default-fg-color--light);
-  --md-code-hl-comment-color:          var(--md-default-fg-color--light);
-  --md-code-hl-generic-color:          var(--md-default-fg-color--light);
-  --md-code-hl-variable-color:         var(--md-default-fg-color--light);
-  --md-typeset-color:                  var(--md-default-fg-color);
-  --md-typeset-a-color:                var(--blue);  /* links */
-  --md-typeset-del-color:              var(--maroon);
-  --md-typeset-ins-color:              var(--teal);
-  --md-typeset-kbd-color:              var(--subtext-1);
-  --md-typeset-kbd-accent-color:       var(--rosewater);
-  --md-typeset-kbd-border-color:       var(--rosewater);
-  --md-typeset-mark-color:             var(--rosewater);
-  --md-typeset-table-color:            var(--text);
-  --md-typeset-table-color--light:     var(--subtext-1);
-  --md-admonition-fg-color:            var(--md-default-fg-color);
-  --md-admonition-bg-color:            var(--md-default-bg-color);
-  --md-warning-fg-color:               var(--text);
-  --md-warning-bg-color:               var(--yellow);
-  --md-footer-fg-color:                var(--md-default-fg-color);
-  --md-footer-fg-color--light:         var(--md-default-fg-color--light);
-  --md-footer-fg-color--lighter:       var(--md-default-fg-color--lighter);
-  --md-footer-bg-color:                var(--md-default-bg-color);
-  --md-footer-bg-color--dark:          var(--md-default-bg-color);
-  --md-shadow-z1:
-    0 4px 10px hsla(0, 0%, 0%, 0.05),
-    0 0              1px  hsla(0, 0%, 0%, 0.1);
-  --md-shadow-z2:
-    0 4px 10px hsla(0, 0%, 0%, 0.1),
-    0 0              1px  hsla(0, 0%, 0%, 0.25);
-  --md-shadow-z3:
-    0 4px 10px hsla(0, 0%, 0%, 0.2),
-    0 0              1px  hsla(0, 0%, 0%, 0.35);
 }
+
 
 [data-md-color-scheme="elva-dark"] {
   /* Catppuccin Mocha color palette */
@@ -130,7 +59,10 @@
   --base:       #1e1e2e;
   --mantle:     #181825;
   --crust:      #11111b;
+}
 
+
+[data-md-color-scheme] {
   --md-primary-fg-color:               var(--base);
   --md-primary-fg-color--light:        var(--base);
   --md-primary-fg-color--dark:         var(--base);
@@ -141,7 +73,6 @@
   --md-accent-bg-color:                var(--text);
   --md-accent-bg-color--light:         var(--text);
 
-  --md-hue: 0deg;
   --md-default-fg-color:               var(--text);
   --md-default-fg-color--light:        var(--subtext-1);  /* headings */
   --md-default-fg-color--lighter:      var(--subtext-0);
@@ -160,10 +91,10 @@
   --md-code-hl-constant-color:         var(--peach);
   --md-code-hl-keyword-color:          var(--mauve);
   --md-code-hl-string-color:           var(--green);
-  --md-code-hl-name-color:             var(--md-code-fg-color);
+  --md-code-hl-name-color:             var(--md-code-fg-color); /* object (func, attr, ...) name */
   --md-code-hl-operator-color:         var(--sky);
   --md-code-hl-punctuation-color:      var(--md-default-fg-color--light);
-  --md-code-hl-comment-color:          var(--md-default-fg-color--light);
+  --md-code-hl-comment-color:          var(--overlay-2);
   --md-code-hl-generic-color:          var(--md-default-fg-color--light);
   --md-code-hl-variable-color:         var(--md-default-fg-color--light);
   --md-typeset-color:                  var(--md-default-fg-color);
@@ -195,6 +126,7 @@
     0 4px 10px hsla(0, 0%, 0%, 0.2),
     0 0              1px  hsla(0, 0%, 0%, 0.35);
 }
+
 
 /* make all sorts of comments and docstrings italic */
 .highlight {
