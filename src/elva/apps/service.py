@@ -316,6 +316,7 @@ async def main(server: WebsocketMetaProvider, host: str, port: int):
 def cli(ctx: click.Context, host: str, port: int):
     """
     Launch a relay to an ELVA websocket server.
+    \f
 
     Arguments:
         ctx: the click context holding the configuration parameter object.

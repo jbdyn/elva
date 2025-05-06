@@ -646,6 +646,7 @@ def cli(
 ):
     """
     Edit text documents collaboratively in real-time.
+    \f
 
     Arguments:
         ctx: the click context holding the configuration parameter mapping.

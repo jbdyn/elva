@@ -121,6 +121,7 @@ def cli(
 ):
     """
     Run a websocket server.
+    \f
 
     Arguments:
         ctx: the click context holding the configuration parameter object.

@@ -248,6 +248,7 @@ def elva(
 ):
     """
     ELVA - A suite of real-time collaboration TUI apps.
+    \f
 
     Arguments:
         ctx: the click context holding the configuration parameter object.

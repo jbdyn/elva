@@ -675,6 +675,7 @@ class UI(App):
 def cli(ctx, show_self: bool, file: None | Path):
     """
     Send messages with real-time preview.
+    \f
 
     Arguments:
         show_self: flag whether to show the own currently composed message.
