@@ -9,9 +9,9 @@ hide:
   <p>ELVA</p>
 </h1>
 
-<h3 align="center">
+<h6 align="center">
     <p style="font-style: italic;">Norwegian: "the river", German: "Evaluation von Lösungen für verteilte Arbeit"</p>
-</h3>
+</h6>
 
 
 # Welcome
