@@ -1,4 +1,7 @@
 site_name: ELVA
+repo_url: "https://github.com/innocampus/elva"
+repo_name: "GitHub"
+edit_uri: "blob/main/docs/"
 nav:
   - Welcome: index.md
   - User Guide: user-guide.md
@@ -36,7 +39,11 @@ nav:
   - Changelog: changelog.md
   - Stories: stories/index.md
 extra:
-  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/innocampus/elva
+    - icon: innocampus-icon
+      link: https://www.tu.berlin/innocampus
 extra_css:
   - css/mkdocs-material.css
   - css/mkdocstrings.css
@@ -54,6 +61,7 @@ theme:
     - toc.integrate
     - content.code.copy
   name: material
+  custom_dir: mkdocs/overrides
   favicon: img/logo.svg
   logo: img/logo.svg
   palette:
@@ -88,8 +96,6 @@ plugins:
             show_symbol_type_heading: true
             show_symbol_type_toc: true
             summary: true
-            # docstring_options:
-            #   ignore_init_summary: true
             merge_init_into_class: true
             members_order: source
             docstring_section_style: list
@@ -103,3 +109,9 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      options:
+        custom_icons:
+           - mkdocs/overrides/.icons
