@@ -40,8 +40,8 @@ extra:
 extra_css:
   - css/mkdocs-material.css
   - css/mkdocstrings.css
-#hooks:
-  #  - scripts/generate_section_index.py
+hooks:
+  - mkdocs/hooks/changelog.py
 watch:
   - src/elva
 theme:
