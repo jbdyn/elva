@@ -258,7 +258,7 @@ class ProviderStatus(ComponentStatus):
     @property
     def is_ready(self) -> bool:
         """
-        Flag whether all conditions for successful storing are fulfilled.
+        Flag whether all conditions for successful connection are fulfilled.
 
         Returns:
             `True` if all conditions are fulfilled, else `False`.
