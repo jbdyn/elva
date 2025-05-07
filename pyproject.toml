@@ -1,3 +1,5 @@
+# spec: see https://packaging.python.org/en/latest/specifications/pyproject-toml/
+
 [build-system]
 requires = ["setuptools", "setuptools-scm", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -7,6 +9,8 @@ name = "elva"
 description = "A suite of local-first TUI realtime collaboration apps based on CRDTs."
 readme = "README.md"
 requires-python = ">=3.10"
+dynamic = ["version"]
+
 keywords = [
   "real time",
   "real-time",
@@ -24,16 +28,42 @@ keywords = [
   "text",
   "terminal",
 ]
+
 authors = [
   { name = "ELVA Team", email = "elva@innocampus.tu-berlin.de" },
 ]
+
 maintainers = [
   { name = "Jakob Zahn", email = "jakob.zahn@mailbox.org" },
 ]
-license = { file = "LICENSE" }
-classifiers = [
-  "Programming Language :: Python :: 3"
+
+# specs: see https://packaging.python.org/en/latest/specifications/license-expression/
+# syntax: see https://peps.python.org/pep-0639/#spdx-license-expression-syntax
+# SPDX expression: see https://spdx.org/licenses/
+license = "AGPL-3.0-only"
+license-files = [
+  "LICENSE"
 ]
+
+# see https://pypi.org/classifiers/
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Framework :: AnyIO",
+  "Framework :: MkDocs",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Education",
+  "Intended Audience :: End Users/Desktop",
+  "Operating System :: OS Independent",
+  "Topic :: Communications"
+]
+
+# see https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies-optional-dependencies
 dependencies = [
     "websockets",
     "pycrdt",
@@ -52,8 +82,9 @@ dependencies = [
     "tomli-w",
     "tomli",
 ]
-dynamic = ["version"]
 
+
+# see https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies-optional-dependencies
 [project.optional-dependencies]
 dev = [
     "pytest",
@@ -71,31 +102,23 @@ dev = [
     "mkdocs-terminal",
     "mkdocs-material",
     "mkdocstrings-python",
+    "pyinstrument",
 ]
 
-# TODO complete url list
-#[project.urls]
-#Homepage = "https://url.to/homepage"
-#Issues = "https://url.to/issues"
-#Documentation = "https://url.to/docs"
-#Repository = "https://url.to/repo"
-#"Bug Tracker" = "https://url.to/bug-tracker"
-#Changelog = "https://url.to/changelog"
 logo = [
     "svg-py",
     "rdflib",
     "numpy",
 ]
 
+# see https://packaging.python.org/en/latest/specifications/well-known-project-urls/#well-known-labels
+[project.urls]
+homepage = "https://elva.mintgruen.tu-berlin.de"
+source = "https://github.com/innocampus/elva"
+issues = "https://github.com/innocampus/elva/issues"
+changelog = "https://github.com/innocampus/elva/blob/main/CHANGELOG.md"
+
 [project.scripts]
 elva = "elva.cli:elva"
 
-[tool.pdm]
-distribution = true
-
 [tool.setuptools_scm]
-
-[dependency-groups]
-dev = [
-    "pyinstrument",
-]
