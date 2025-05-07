@@ -14,9 +14,9 @@ from elva.click_lazy_group import LazyGroup
 
 def lazy_cli(f: Callable) -> Group:
     """
-    Wrapper around `click.group()`.
+    Wrapper around [`group`][click.group].
 
-    In addtion, the returned `Group` object gets a `lazy_load(import_name, **kwargs)` method being a wrapper around its `group(cls=LazyGroup, import_name=import_name, invoke_without_command=True, **kwargs)` method.
+    In addtion, the returned [`Group`][click.Group] object gets a `lazy_load(import_name, **kwargs)` method being a wrapper around its `group(cls=LazyGroup, import_name=import_name, invoke_without_command=True, **kwargs)` method.
 
     `invoke_without_command` is set to `True` so that it can be set in the lazy loaded command.
 
@@ -46,7 +46,7 @@ def lazy_cli(f: Callable) -> Group:
 
 def elva_app_cli(**kwargs):
     """
-    Wrapper around `click.group(**kwargs)` with `invoke_without_command=True`.
+    Wrapper around [`group`][click.group] with `invoke_without_command=True`.
     """
 
     def decorator(f: Callable):
@@ -64,7 +64,7 @@ def elva_app_cli(**kwargs):
 
 def lazy_group_without_invoke(**kwargs) -> Callable[[Callable], Group]:
     """
-    Wrapper around `click.group(**kwargs)` with `invoke_without_command=False`.
+    Wrapper around [`group`][click.group] with `invoke_without_command=False`.
     """
 
     def decorator(f: Callable):
@@ -82,7 +82,7 @@ def lazy_group_without_invoke(**kwargs) -> Callable[[Callable], Group]:
 
 def lazy_group(**kwargs) -> Callable[[Callable], Group]:
     """
-    Decorator for `Group` object from `elva_app_cli`.
+    Decorator for a [`Group`][click.Group] object from [`elva_app_cli`][elva.click_utils.elva_app_cli].
     """
 
     def decorator(f: Callable):
@@ -123,7 +123,7 @@ def _lazy_app_processing_callback(ctx: Context, param: None = None, value: None 
 
 def print_help(f: Command):
     """
-    Print help of function `f` with `click.echo`, considering `f`'s context
+    Print help of function `f` with [`echo`][click.echo], considering `f`'s context
     """
 
     try:

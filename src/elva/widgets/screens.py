@@ -1,5 +1,5 @@
 """
-Screens for ELVA apps.
+[`Textual`](https://textual.textualize.io/) screens for ELVA apps.
 """
 
 from typing import Any
@@ -37,7 +37,7 @@ class CredentialScreen(ModalScreen):
         Arguments:
             options: mapping of options for the connection provider.
             body: informational message displayed above the credential form.
-            user: user name
+            user: user name.
         """
         super().__init__(classes="modalscreen", id="credentialscreen")
         self.options = options
@@ -61,7 +61,7 @@ class CredentialScreen(ModalScreen):
         """
         Save input credentials and return them after closing the screen.
 
-        This method saves the credentials encoded in a basic authorization header in the `options` attribute for usage in the connection provider.
+        This method saves the credentials encoded in a basic authorization header in the [`options`][elva.widgets.screens.CredentialScreen.options] attribute for usage in the connection provider.
         """
         credentials = (self.user.value, self.password.value)
         header = basic_authorization_header(*credentials)

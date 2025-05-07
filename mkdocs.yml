@@ -101,6 +101,13 @@ plugins:
             docstring_section_style: list
             # exclude private methods and attributes
             filters: ["!^_[\\s]+"]
+          inventories:
+            - "https://docs.python.org/3/objects.inv"
+            - "https://textual.textualize.io/objects.inv"
+            - "https://y-crdt.github.io/pycrdt/objects.inv"
+            - "https://click.palletsprojects.com/en/stable/objects.inv"
+            - "https://anyio.readthedocs.io/en/stable/objects.inv"
+            - "https://websockets.readthedocs.io/en/stable/objects.inv"
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true

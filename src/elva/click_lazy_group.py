@@ -1,5 +1,5 @@
 """
-Module defining a lazy loading `click.Group`.
+Module defining a lazy loading for CLI.
 """
 
 # This file is part of Indico.
@@ -18,7 +18,7 @@ import click
 # source: https://github.com/indico/indico/blob/3c2d369b6a76a4362750c06340c6d9664e0de330/indico/cli/util.py#L84
 class LazyGroup(click.Group):
     """
-    A `click.Group` that imports the actual implementation only when needed.
+    A command group that imports the actual implementation only when needed.
 
     This allows for more resilient CLIs where the top-level
     command does not fail when a subcommand is broken enough to fail

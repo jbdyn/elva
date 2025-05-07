@@ -133,7 +133,7 @@ class WebsocketMetaProvider(WebsocketConnection):
         Send a message over the remote connection.
 
         Arguments:
-            message: the message to send
+            message: the message to send.
             uuid: the UUID of the Y document the message belongs to.
             origin_ws: the websocket connection from which the message came.
             origin_name: the identifier of the websocket connection the message came from.
@@ -154,7 +154,7 @@ class WebsocketMetaProvider(WebsocketConnection):
         Send a message to local connections.
 
         Arguments:
-            message: the message to send
+            message: the message to send.
             uuid: the UUID of the Y document the message belongs to.
             origin_ws: the websocket connection from which the message came.
             origin_name: the identifier of the websocket connection the message came from.

@@ -35,7 +35,7 @@ class SQLiteStore(Component):
     """Object for restricted resource management."""
 
     subscription: Subscription
-    """Object holding subscription information to changes in `self.ydoc`."""
+    """Object holding subscription information to changes in [`ydoc`][elva.store.SQLiteStore.ydoc]."""
 
     def __init__(self, ydoc: Doc, identifier: str, path: str):
         """
@@ -105,12 +105,12 @@ class SQLiteStore(Component):
 
     def callback(self, event: TransactionEvent):
         """
-        Hook called on changes in `self.ydoc`.
+        Hook called on changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
 
         When called, the `event` data are written to the ELVA SQLite database.
 
         Arguments:
-            event: object holding event information of changes in `self.ydoc`.
+            event: object holding event information of changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
         """
         self._task_group.start_soon(self.write, event.update)
 
@@ -165,10 +165,10 @@ class SQLiteStore(Component):
 
     async def before(self):
         """
-        Hook executed before the component sets its `started` signal.
+        Hook executed before the component sets its [`started`][elva.component.Component.started] signal.
 
         The ELVA SQLite database is being initialized and read.
-        Also, the component subscribes to changes in `self.ydoc`.
+        Also, the component subscribes to changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
         """
         await self._init_db()
         await self.read()
@@ -176,9 +176,7 @@ class SQLiteStore(Component):
 
     async def run(self):
         """
-        Main loop writing data to the ELVA SQLite database.
-
-        This method is is called by the class itself automatically.
+        Hook writing data to the ELVA SQLite database.
         """
         self.stream_send, self.stream_recv = create_memory_object_stream(
             max_buffer_size=65543
@@ -203,9 +201,7 @@ class SQLiteStore(Component):
 
     async def read(self):
         """
-        Read in metadata and updates from the ELVA SQLite database and apply them.
-
-        This method is called by the class itself automatically.
+        Hook to read in metadata and updates from the ELVA SQLite database and apply them.
         """
         await self._wait_running()
 

@@ -8,7 +8,13 @@ from typing import Callable
 
 import anyio
 from pycrdt import Doc
-from websockets import ClientConnection, ServerConnection, ConnectionClosed, broadcast, serve
+from websockets import (
+    ConnectionClosed,
+    broadcast,
+    serve,
+)
+from websockets.asyncio.client import ClientConnection
+from websockets.asyncio.server import ServerConnection
 from websockets.http11 import Request
 
 from elva.component import Component
@@ -34,14 +40,14 @@ class RequestProcessor:
         """
         Process a HTTP request for given functions.
 
-        This function is designed to be given to `websockets.serve`.
+        This function is designed to be given to [`serve`][websockets.asyncio.server.serve].
 
         Arguments:
             websocket: connection object.
             request: HTTP request header object.
 
         Returns:
-            Abort information like in `elva.auth.abort_basic_auth` on first occurence, else `None`.
+            Abort information like in [`abort_basic_auth`][elva.auth.abort_basic_auth] on first occurence, else `None`.
         """
         for func in self.funcs:
             out = func(websocket, request)
@@ -64,7 +70,7 @@ class Room(Component):
     """Path where to save a Y Document on disk."""
 
     clients: set[ClientConnection]
-    """Set of active connections to this `Room`."""
+    """Set of active connections."""
 
     ydoc: Doc
     """Y Document instance holding received updates."""
@@ -82,10 +88,10 @@ class Room(Component):
         If `persistent = False` and `path = None`, messages will be broadcasted only.
         Nothing is saved.
 
-        If `persistent = True` and `path = None`, a Y Document will be present in this `Room`, saving all incoming Y updates in there. This happens only in volatile memory.
+        If `persistent = True` and `path = None`, a Y Document will be present in this room, saving all incoming Y updates in there. This happens only in volatile memory.
 
         If `persistent = True` and `path = Path(to/some/directory)`, a Y Document will be present and its contents will be saved to disk under the given directory.
-        The name of the corresponding file is derived from `identifier`.
+        The name of the corresponding file is derived from [`identifier`][elva.server.Room.identifier].
 
         Arguments:
             identifier: identifier for the used Y Document.
@@ -109,23 +115,19 @@ class Room(Component):
 
     async def before(self):
         """
-        Run before the `Room` component sets its `started` signal.
+        Hook runnig before the [`started`][elva.component.Component.started] signal is set.
 
         Used to start the Y Document store.
-
-        This method is called automatically by the class itself.
         """
         if self.persistent and self.path is not None:
             await self._task_group.start(self.store.start)
 
     async def cleanup(self):
         """
-        Run after `Room` got cancelled and before its `stopped` signal is set.
+        Hook running after the component got cancelled and before its [`stopped`][elva.component.Component.stopped] signal is set.
 
         Used to close all client connections gracefully.
         The store is closed automatically and calls its cleanup method separately.
-
-        This method is called automatically by the class itself.
         """
         async with anyio.create_task_group() as tg:
             # close all clients
@@ -136,7 +138,7 @@ class Room(Component):
 
     def add(self, client: ClientConnection):
         """
-        Add a client to this `Room`.
+        Add a client connection.
 
         Arguments:
             client: connection to add the list of connections.
@@ -148,7 +150,7 @@ class Room(Component):
 
     def remove(self, client: ClientConnection):
         """
-        Remove a client from this `Room`.
+        Remove a client connection.
 
         Arguments:
             client: connection to remove from the list of connections.
@@ -178,7 +180,7 @@ class Room(Component):
         """
         Process incoming messages from `client`.
 
-        If `persistent = False`, just call `self.broadcast(data, client)`.
+        If `persistent = False`, just call [`broadcast(data, client)`][elva.server.Room.broadcast].
 
         If `persistent = True`, `data` is assumed to be a Y message and tried to be decomposed.
         On successful decomposition, actions are taken according to the [Yjs protocol spec](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md).
@@ -230,7 +232,7 @@ class Room(Component):
         """
         Process a sync update message payload `update` from `client`.
 
-        Apply the update to the internal `self.ydoc` instance and broadcast the same update to all other clients than `client`.
+        Apply the update to the internal [`ydoc`][elva.server.Room.ydoc] instance and broadcast the same update to all other clients than `client`.
 
         Arguments:
             update: payload of the received sync update message from `client`.
@@ -248,7 +250,7 @@ class Room(Component):
         """
         Process an awareness message payload `state` from `client`.
 
-        Currently, this is implemented as a noop.
+        Currently, this is implemented as a no-op.
         """
         self.log.debug(f"got AWARENESS message {state} from {client}, do nothing")
 
@@ -259,17 +261,17 @@ class ElvaRoom(Room):
     """
 
     uuid: bytes
-    """As `elva.protocol.ElvaMessage` encoded `self.identifier`."""
+    """As [`ElvaMessage`][elva.protocol.ElvaMessage] encoded [`identifier`][elva.server.Room.identifier]."""
 
     def __init__(self, identifier: str, persistent: bool, path: None | Path):
         """
         If `persistent = False` and `path = None`, messages will be broadcasted only.
         Nothing is saved.
 
-        If `persistent = True` and `path = None`, a Y Document will be present in this `Room`, saving all incoming Y updates in there. This happens only in volatile memory.
+        If `persistent = True` and `path = None`, a Y Document will be present in this room, saving all incoming Y updates in there. This happens only in volatile memory.
 
         If `persistent = True` and `path = Path(to/some/directory)`, a Y Document will be present and its contents will be saved to disk under the given directory.
-        The name of the corresponding file is derived from `identifier`.
+        The name of the corresponding file is derived from [`identifier`][elva.server.Room.identifier].
 
         Arguments:
             identifier: identifier for the used Y Document.
@@ -294,7 +296,7 @@ class ElvaRoom(Room):
         """
         Process incoming messages from `client`.
 
-        If `persistent = False`, just call `self.broadcast(data, client)`.
+        If `persistent = False`, just call [`broadcast(data, client)`][elva.server.ElvaRoom.broadcast].
 
         If `persistent = True`, `data` is assumed to be a Y message and tried to be decomposed.
         On successful decomposition, actions are taken according to the [Yjs protocol spec](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md).
@@ -363,7 +365,7 @@ class ElvaRoom(Room):
 
 class WebsocketServer(Component):
     """
-    Serving component using `Room` as internal connection handler.
+    Serving component using [`Room`][elva.server.Room] as internal connection handler.
     """
 
     host: str
@@ -416,9 +418,7 @@ class WebsocketServer(Component):
 
     async def run(self):
         """
-        Main loop handling incoming connections and messages.
-
-        This method is called automatically by the class itself.
+        Hook handling incoming connections and messages.
         """
         async with serve(
             self.handle,
@@ -444,7 +444,7 @@ class WebsocketServer(Component):
         """
         Check if a request path is valid.
 
-        This function is a request processing callable and automatically passed to the inner `websockets.serve` function.
+        This function is a request processing callable and automatically passed to the inner [`serve`][websockets.asyncio.server.serve] function.
 
         Arguments:
             websocket: connection object.
@@ -455,7 +455,7 @@ class WebsocketServer(Component):
 
     async def get_room(self, identifier: str) -> Room:
         """
-        Get or create a `Room` via its corresponding `identifier`.
+        Get or create a [`Room`][elva.server.Room] via its corresponding `identifier`.
 
         Arguments:
             identifier: string identifiying the underlying Y Document.
@@ -476,9 +476,9 @@ class WebsocketServer(Component):
         """
         Handle a `websocket` connection.
 
-        Upon connection, a `Room` is provided, to which the data are given for further processing.
+        Upon connection, a room is provided, to which the data are given for further processing.
 
-        This methods is passed to `websockets.serve` internally.
+        This methods is passed to [`serve`][websockets.asyncio.server.serve] internally.
 
         Arguments:
             websocket: connection from data are being received.
@@ -505,14 +505,14 @@ class WebsocketServer(Component):
 
 class ElvaWebsocketServer(WebsocketServer):
     """
-    Serving component using `ElvaRoom` as internal connection handler.
+    Serving component using [`ElvaRoom`][elva.server.ElvaRoom] as internal connection handler.
     """
 
     def check_path(self, websocket: ServerConnection, request: Request):
         """
         Check if a request path is valid.
 
-        This function is a request processing callable and automatically passed to the inner `websockets.serve` function.
+        This function is a request processing callable and automatically passed to the inner [`serve`][websockets.asyncio.server.serve] function.
 
         Arguments:
             websocket: connection object.
@@ -523,7 +523,7 @@ class ElvaWebsocketServer(WebsocketServer):
 
     async def get_room(self, identifier: str) -> ElvaRoom:
         """
-        Get or create a `Room` via its corresponding `identifier`.
+        Get or create an [`ElvaRoom`][elva.server.ElvaRoom] via its corresponding `identifier`.
 
         Arguments:
             identifier: string identifiying the underlying Y Document.
@@ -544,9 +544,9 @@ class ElvaWebsocketServer(WebsocketServer):
         """
         Handle a `websocket` connection.
 
-        Upon connection, an `ElvaRoom` is provided, to which the data are given for further processing.
+        Upon connection, an room is provided, to which the data are given for further processing.
 
-        This method is passed to `websockets.serve` internally.
+        This method is passed to [`serve`][websockets.asyncio.server.serve] internally.
 
         Arguments:
             websocket: connection from data are being received.

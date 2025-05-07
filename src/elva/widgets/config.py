@@ -1,5 +1,5 @@
 """
-Configpanel widgets for `Textual` apps.
+Configuration panel widgets for [`Textual`](https://textual.textualize.io/) apps.
 """
 
 import io
@@ -35,7 +35,7 @@ else:
 
 class ConfigPanel(Container):
     """
-    Container for ConfigView widgets.
+    Container for [`ConfigView`][elva.widgets.config.ConfigView] widgets.
     """
 
     class Applied(Message):
@@ -68,7 +68,7 @@ class ConfigPanel(Container):
         """
         Arguments:
             config: configuration parameter mapping to apply to write to the panel.
-            applied: if `False`, treat all values of `ConfigView`s as changed.
+            applied: if `False`, treat all config view values as changed.
             label: label string for the panel itself to be displayed at the top.
         """
         super().__init__()
@@ -85,12 +85,16 @@ class ConfigPanel(Container):
 
     @property
     def last(self):
-        """Previous configuration parameters."""
+        """
+        Previous configuration parameters.
+        """
         return dict((c.name, c.last) for c in self.config)
 
     @property
     def changed(self):
-        """Changed configuration parameters."""
+        """
+        Changed configuration parameters.
+        """
         if self.applied:
             return set(c.name for c in self.config if c.changed)
         else:
@@ -98,7 +102,7 @@ class ConfigPanel(Container):
 
     def compose(self):
         """
-        Hook arranging the `ConfigView`s.
+        Hook arranging config view widgets.
         """
         if self.label:
             yield Label(self.label)
@@ -111,18 +115,22 @@ class ConfigPanel(Container):
                 yield Button("Reset", id="reset")
 
     def apply(self):
-        """Store the current value also as last value."""
+        """
+        Store the current value also as last value.
+        """
         for c in self.config:
             c.apply()
         self.applied = True
 
     def reset(self):
-        """Reset the current value to the last value."""
+        """
+        Reset the current value to the last value.
+        """
         for c in self.config:
             c.reset()
 
     def post_applied_config(self):
-        """Send an `Applied` message."""
+        """Send an [`Applied`][elva.widgets.config.ConfigPanel.Applied] message."""
         self.post_message(self.Applied(self.last, self.state, self.changed))
         self.apply()
 
@@ -130,7 +138,7 @@ class ConfigPanel(Container):
         """
         Hook called on a pressed button.
 
-        Either posts an `Applied` message or resets the `ConfigView`s.
+        Either posts an [`Applied`][elva.widgets.config.ConfigPanel.Applied] message or resets the config views.
 
         Arguments:
             message: message object from the pressed button event.
@@ -149,7 +157,7 @@ class ConfigPanel(Container):
             content: TOML data string to be parsed.
 
         Returns:
-            parsed configuration mapping
+            parsed configuration mapping.
         """
         try:
             config = tomllib.loads(content)
@@ -163,7 +171,7 @@ class ConfigPanel(Container):
         Hook called on a paste event.
 
         The pasted content is assumed to be TOML syntax and tried to be parsed.
-        On success, the `ConfigView`s get updated if the corresponding keys have been pasted.
+        On success, the config views get updated if the corresponding keys have been pasted.
 
         Arguments:
             message: message object from the paste event.
@@ -180,7 +188,7 @@ class ConfigView(Container):
     """
     Wrapper Container around user-facing input widgets.
 
-    It allows consistant styling via TCSS classes.
+    It allows consistent styling via TCSS classes.
     """
 
     last: Any
@@ -215,7 +223,7 @@ class ConfigView(Container):
 
     class Saved(Message):
         """
-        Message object posted on change events.
+        Message object posted on save events.
         """
 
         name: str
@@ -244,7 +252,7 @@ class ConfigView(Container):
 
     def compose(self):
         """
-        Hook arranging the `ConfigView`s.
+        Hook arranging child widgets.
         """
         yield Label(self.name or "")
         yield self.widget
@@ -269,17 +277,23 @@ class ConfigView(Container):
 
     @property
     def changed(self) -> bool:
-        """Flag whether the configuration value has changed."""
+        """
+        Flag whether the configuration value has changed.
+        """
         return self.last != self.value
 
     @property
     def name(self) -> str:
-        """Key of the configuration parameter."""
+        """
+        Key of the configuration parameter.
+        """
         return self.widget.name
 
     @property
     def value(self) -> Any:
-        """Value of the configuration parameter."""
+        """
+        Value of the configuration parameter.
+        """
         return self.widget.value
 
     @value.setter
@@ -294,10 +308,10 @@ class ConfigView(Container):
 
     def toggle_button_visibility(self, state: bool):
         """
-        Manage the `invisible` TCSS class on `Button` widgets.
+        Manage the `invisible` TCSS class on [`Button`][textual.widgets.Button] widgets.
 
         Arguments:
-            state: if `True`, remove the `invisible` TCSS class from `Button` widgets, else add it to them.
+            state: if `True`, remove the `invisible` TCSS class from button widgets, else add it to them.
         """
         if state:
             self.query(Button).remove_class("invisible")
@@ -308,7 +322,7 @@ class ConfigView(Container):
         """
         Hook called on pressed `Enter` key.
 
-        This sets the `self.hover` flag to `True`.
+        This sets the [`hover`][elva.widgets.config.ConfigView.hover] flag to `True`.
 
         Arguments:
             message: message object posted on the pressed `Enter` key event.
@@ -319,7 +333,7 @@ class ConfigView(Container):
         """
         Hook called on the mouse pointer leaving the widget's bounds.
 
-        This sets the `self.hover` flag to `False` only if the mouse has really left the own boundaries and the inner input widget is not focused.
+        This sets the [`hover`][elva.widgets.config.ConfigView.hover] flag to `False` only if the mouse has really left the own boundaries and the inner input widget is not focused.
 
         Arguments:
             message: message object posted on the pressed `Enter` key event.
@@ -334,7 +348,7 @@ class ConfigView(Container):
         This toggles the button visibility accordingly.
 
         Arguments:
-            hover: current value of `self.hover`.
+            hover: current value of [`hover`][elva.widgets.config.ConfigView.hover].
         """
         self.toggle_button_visibility(hover)
 
@@ -342,7 +356,7 @@ class ConfigView(Container):
         """
         Hook called on child widgets gaining focus.
 
-        This sets the `self.focus_within` flag to `True`.
+        This sets the [`focus_within`][elva.widgets.config.ConfigView.focus_within] flag to `True`.
 
         Arguments:
            message: message object posted on focus gain event in child widgets.
@@ -353,7 +367,7 @@ class ConfigView(Container):
         """
         Hook called on child widgets loosing focus.
 
-        This sets the `self.focus_within` flag to `False`.
+        This sets the [`focus_within`][elva.widgets.config.ConfigView.focus_within] flag to `False`.
 
         Arguments:
            message: message object posted on focus loss event in child widgets.
@@ -368,7 +382,7 @@ class ConfigView(Container):
         This toggles the button visibility accordingly.
 
         Arguments:
-            focus: current value of `self.focus_within`.
+            focus: current value of [`focus_within`][elva.widgets.config.ConfigView.focus_within].
         """
         self.toggle_button_visibility(focus)
 
@@ -382,7 +396,7 @@ class ConfigInput(Input):
         """
         Hook called on a paste event.
 
-        This allows `message` to bubble up if the pasted content is valid TOML syntax, but does nothing else with it.
+        This allows the `message` object to bubble up if the pasted content is valid TOML syntax, but does nothing else with it.
 
         Arguments:
             message: message object posted in a paste event.
@@ -412,10 +426,10 @@ class RadioSelect(Container):
     """Mapping of values to their corresponding name."""
 
     buttons: dict[str, RadioButton]
-    """Mapping of `RadioButton` instances to the values' names."""
+    """Mapping of [`RadioButton`][textual.widgets.RadioButton] instances to the values' names."""
 
     radio_set: RadioSet
-    """Instance of the inner `RadioSet` widget."""
+    """Instance of the inner [`RadioSet`][textual.widgets.RadioSet] widget."""
 
     def __init__(
         self,
@@ -428,8 +442,8 @@ class RadioSelect(Container):
         Arguments:
             options: name-value-tuples holding values alongside their displayable names.
             value: current value to select upfront.
-            args: positional arguments passed to the `Container` class.
-            kwargs: keyword arguments passed to the `Container` class.
+            args: positional arguments passed to the [`Container`][textual.containers.Container] class.
+            kwargs: keyword arguments passed to the [`Container`][textual.containers.Container] class.
         """
         super().__init__(*args, **kwargs)
         self.names, self.values = list(zip(*options))
@@ -450,13 +464,13 @@ class RadioSelect(Container):
         cls, options: list[Any], *args: tuple, value: None | Any = None, **kwargs: dict
     ):
         """
-        Create a new `RadioSelect` instance from a list of `options`.
+        Create a new instance from a list of options.
 
         Arguments:
             options: list of values at choice with their string representation as displayed names.
             value: current value to select upfront.
-            args: positional arguments passed to the `Container` class.
-            kwargs: keyword arguments passed to the `Container` class.
+            args: positional arguments passed to the [`Container`][textual.containers.Container] class.
+            kwargs: keyword arguments passed to the [`Container`][textual.containers.Container] class.
         """
         options = [(str(option), option) for option in options]
 
@@ -464,7 +478,7 @@ class RadioSelect(Container):
 
     def compose(self):
         """
-        Hook arranging the `RadioSet` and `RadioButton` widgets.
+        Hook arranging child widgets.
         """
         with self.radio_set:
             for button in self.buttons.values():
@@ -502,21 +516,22 @@ class RadioSelect(Container):
 
 class RadioSelectView(ConfigView):
     """
-    Configuration view wrapper around a `RadioSelect` widget.
+    Configuration view wrapper around a [`RadioSelect`][elva.widgets.config.RadioSelect] widget.
     """
 
     def __init__(self, *args: tuple, **kwargs: dict):
         """
         Arguments:
-            args: positional arguments passed to the `RadioSelect` widget.
-            kwargs: keyword arguments passed to the `RadioSelect` widget.
+            args: positional arguments passed to [`RadioSelect`][elva.widgets.config.RadioSelect].
+            kwargs: keyword arguments passed to [`RadioSelect`][elva.widgets.config.RadioSelect].
+
         """
         widget = RadioSelect(*args, **kwargs)
         super().__init__(widget)
 
     def compose(self):
         """
-        Hook arranging the child widgets.
+        Hook arranging child widgets.
         """
         with Grid():
             yield Label(self.name or "")
@@ -527,7 +542,7 @@ class RadioSelectView(ConfigView):
         """
         Hook called on a button pressed event from the child widgets.
 
-        This posts then a `self.Saved` message.
+        This posts then a [`Saved`][elva.widgets.config.ConfigView.Saved] message.
 
         Arguments:
             message: message object posted on a button pressed event.
@@ -538,7 +553,7 @@ class RadioSelectView(ConfigView):
         """
         Hook called on a mouse click event.
 
-        This sets the focus to the inner `RadioSet` widget.
+        This sets the focus to the inner radio set widget.
 
         Arguments:
             message: message object posted on a mouse click event.
@@ -547,9 +562,9 @@ class RadioSelectView(ConfigView):
 
     def on_radio_set_changed(self, message: Message):
         """
-        Hook called when the `RadioSet` widget changes.
+        Hook called when the radio set changes.
 
-        This posts then a `self.Changed` message itself.
+        This posts then a [`Changed`][elva.widgets.config.ConfigView.Changed] message itself.
 
         Arguments:
             message: message object posted on a radio set changed event.
@@ -559,21 +574,21 @@ class RadioSelectView(ConfigView):
 
 class TextInputView(ConfigView):
     """
-    Configuration view wrapper around a `ConfigInput` widget for generic text input.
+    Configuration view wrapper around a [`ConfigInput`][elva.widgets.config.ConfigInput] widget for generic text input.
     """
 
     def __init__(self, *args: tuple, **kwargs: dict):
         """
         Arguments:
-            args: positional arguments passed to the `ConfigInput` widget.
-            kwargs: keyword arguments passed to the `ConfigInput` widget.
+            args: positional arguments passed to [`ConfigInput`][elva.widgets.config.ConfigInput].
+            kwargs: keyword arguments passed to [`ConfigInput`][elva.widgets.config.ConfigInput].
         """
         widget = ConfigInput(*args, **kwargs)
         super().__init__(widget)
 
     def compose(self):
         """
-        Hook arranging the child widgets.
+        Hook arranging child widgets.
         """
         with Grid():
             yield Label(self.name or "")
@@ -587,7 +602,7 @@ class TextInputView(ConfigView):
         """
         Hook called on a button pressed event from the child widgets.
 
-        This either copies the current value to clipboard or posts a `self.Saved` message.
+        This either copies the current value to clipboard or posts a [`Changed`][elva.widgets.config.ConfigView.Saved] message.
 
         Arguments:
             message: message object posted on a button pressed event.
@@ -609,7 +624,7 @@ class TextInputView(ConfigView):
         """
         Hook called on an input change event.
 
-        This posts then a `self.Changed` message.
+        This posts then a [`Changed`][elva.widgets.config.ConfigView.Saved] message.
 
         Arguments:
             message: message object posted on an input change event.
@@ -619,14 +634,14 @@ class TextInputView(ConfigView):
 
 class URLInputView(TextInputView):
     """
-    Configuration view wrapper around a `ConfigInput` widget for URLs.
+    Configuration view wrapper around a [`ConfigInput`][elva.widgets.config.ConfigInput] widget for URLs.
     """
 
     def __init__(self, *args: tuple, **kwargs: dict):
         """
         Arguments:
-            args: positional arguments passed to the `ConfigInput` widget.
-            kwargs: keyword arguments passed to the `ConfigInput` widget.
+            args: positional arguments passed to [`ConfigInput`][elva.widgets.config.ConfigInput].
+            kwargs: keyword arguments passed to [`ConfigInput`][elva.widgets.config.ConfigInput].
         """
         super().__init__(*args, **kwargs)
         self.is_valid = True
@@ -635,8 +650,8 @@ class URLInputView(TextInputView):
         """
         Hook called on an input change event.
 
-        This posts then a `self.Changed` message if no validation result is present, i.e. no `Validator` has been passed to the constructor, or the validation succeeded.
-        Additionally, the TCSS class `invalid` is added or removed to the `ConfigInput` widget depending on the validation result.
+        This posts then a [`Changed`][elva.widgets.config.ConfigView.Saved] message if no validation result is present, i.e. no [`Validator`][textual.validation.Validator] has been passed to the constructor, or the validation succeeded.
+        Additionally, the TCSS class `invalid` is added or removed to the input widget depending on the validation result.
 
         Arguments:
             message: message object posted on an input change event.
@@ -655,7 +670,9 @@ class URLInputView(TextInputView):
 
     @property
     def value(self):
-        """Value of the input field if being a valid URL."""
+        """
+        Value of the input field if being a valid URL.
+        """
         entry = self.widget.value
         return entry if entry and self.is_valid else None
 
@@ -672,15 +689,15 @@ class URLInputView(TextInputView):
 
 class PathInputView(TextInputView):
     """
-    Configuration view wrapper around a `ConfigInput` widget for paths.
+    Configuration view wrapper around a [`ConfigInput`][elva.widgets.config.ConfigInput] widget for paths.
     """
 
     def __init__(self, value: Any, *args: tuple, **kwargs: dict):
         """
         Arguments:
-            value: currently set value in the `ConfigInput` widget.
-            args: positional arguments passed to the `ConfigInput` widget.
-            kwargs: keyword arguments passed to the `ConfigInput` widget.
+            value: currently set value in the input field.
+            args: positional arguments passed to [`ConfigInput`][elva.widgets.config.ConfigInput].
+            kwargs: keyword arguments passed to [`ConfigInput`][elva.widgets.config.ConfigInput].
         """
         super().__init__()
         value = str(value) if value is not None else None
@@ -688,7 +705,9 @@ class PathInputView(TextInputView):
 
     @property
     def value(self):
-        """Path object of the current value in the `ConfigInput` widget."""
+        """
+        Path object of the current value in the input field.
+        """
         entry = self.widget.value
         return Path(entry) if entry else None
 
@@ -705,21 +724,21 @@ class PathInputView(TextInputView):
 
 class SwitchView(ConfigView):
     """
-    Configuration view wrapper around a `Switch` widget.
+    Configuration view wrapper around a [`Switch`][textual.widgets.Switch] widget.
     """
 
     def __init__(self, *args: tuple, **kwargs: dict):
         """
         Arguments:
-            args: positional arguments passed to the `Switch` widget.
-            kwargs: keyword arguments passed to the `Switch` widget.
+            args: positional arguments passed to [`Switch`][textual.widgets.Switch].
+            kwargs: keyword arguments passed to [`Switch`][textual.widgets.Switch].
         """
         widget = Switch(*args, **kwargs)
         super().__init__(widget)
 
     def compose(self):
         """
-        Hook arranging the child widgets.
+        Hook arranging child widgets.
         """
         with Grid():
             yield Label(self.name or "")
@@ -731,7 +750,7 @@ class SwitchView(ConfigView):
         """
         Hook called on a button pressed event from the child widgets.
 
-        This posts then a `self.Saved` message.
+        This posts then a [`Saved`][elva.widgets.config.ConfigView.Saved] message.
 
         Arguments:
             message: message object posted on a button pressed event.
@@ -741,25 +760,27 @@ class SwitchView(ConfigView):
 
 class QRCode(Widget):
     """
-    Collapsible QR Code displaying widget.
+    Collapsible QR code displaying widget.
     """
 
     value = reactive("")
-    """QR-encoded data."""
+    """QR code encoded data."""
 
     qr: qrcode.QRCode
-    """Instance of the QR encoding object."""
+    """Instance of the QR code encoding object."""
 
     code: Static
-    """`Static` widget instance holding the string representation of the QR code."""
+    """Widget instance holding the string representation of the QR code."""
 
-    def __init__(self, content: str, *args: tuple, collapsed: bool = True, **kwargs: dict):
+    def __init__(
+        self, content: str, *args: tuple, collapsed: bool = True, **kwargs: dict
+    ):
         """
         Arguments:
             content: the content to encode in the QR code.
             collapsed: flag whether the view is collapsed on mount.
-            args: positional arguments passed to the `Widget` class.
-            kwargs: keyword arguments passed to the `Widget` class.
+            args: positional arguments passed to the [`Widget`][textual.widget.Widget] class.
+            kwargs: keyword arguments passed to the [`Widget`][textual.widget.Widget] class.
         """
         super().__init__(*args, **kwargs)
 
@@ -806,21 +827,21 @@ class QRCode(Widget):
 
 class QRCodeView(ConfigView):
     """
-    Configuration view wrapper around a `QRCode` widget.
+    Configuration view wrapper around a [`QRCode`][elva.widgets.config.QRCode] widget.
     """
 
     def __init__(self, *args: tuple, **kwargs: dict):
         """
         Arguments:
-            args: positional arguments passed to the `QRCode` widget.
-            kwargs: keyword arguments passed to the `QRCode` widget.
+            args: positional arguments passed to [`QRCode`][elva.widgets.config.QRCode].
+            kwargs: keyword arguments passed to [`QRCode`][elva.widgets.config.QRCode].
         """
         widget = QRCode(*args, **kwargs)
         super().__init__(widget)
 
     def compose(self):
         """
-        Hook arranging the child widgets.
+        Hook arranging child widgets.
         """
         with Grid():
             yield Label(self.name or "")
@@ -855,7 +876,7 @@ class WebsocketsURLValidator(Validator):
     """
     Websocket URL validator.
 
-    This class is designed for use in the `URLInputView`.
+    This class is designed for use in the [`URLInputView`][elva.widgets.config.URLInputView].
     """
 
     def validate(self, value: str) -> ValidationResult:
@@ -863,7 +884,7 @@ class WebsocketsURLValidator(Validator):
         Hook called when validation is requested.
 
         Arguments:
-            value: current `ConfigInput` value to be validated.
+            value: current input field value to be validated.
 
         Returns:
             a result object holding information about the validation outcome.
@@ -883,7 +904,7 @@ class PathSuggester(Suggester):
     """
     Suggester for paths.
 
-    This class is designed for use in the `PathInputView` widget.
+    This class is designed for use in the [`PathInputView`][elva.widgets.config.PathInputView] widget.
     """
 
     async def get_suggestion(self, value: str) -> str:
@@ -891,7 +912,7 @@ class PathSuggester(Suggester):
         Hook called when a suggestion is requested.
 
         Arguments:
-            value: current `ConfigInput` value on which to base suggestions on.
+            value: current input widget value on which to base suggestions on.
 
         Returns:
             suggested extended or completed path.

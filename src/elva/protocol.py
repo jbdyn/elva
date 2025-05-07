@@ -1,5 +1,5 @@
 """
-Module holding the Y-Protocol specification.
+Module holding the [Y-Protocol](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md) specification.
 """
 
 from codecs import Codec, IncrementalDecoder, IncrementalEncoder
@@ -60,7 +60,7 @@ class YCodec(Codec):
 
         Arguments:
             payload: data to encode
-            errors: noop
+            errors: no-op.
 
         Returns:
             A tuple of two values: `data` with the variable unsigned integer prepended and the length of `data`.
@@ -73,7 +73,7 @@ class YCodec(Codec):
 
         Arguments:
             message: data to decode
-            errors: noop
+            errors: no-op.
 
         Returns:
             A tuple of two values: `data` with the variable unsigned integer stripped and the length of bytes of `data` being processed.
@@ -138,7 +138,7 @@ class Message(YCodec, Enum):
 
         Arguments:
             payload: data to be encoded.
-            errors: noop
+            errors: no-op.
 
         Returns:
             A tuple of two objects: the encoded payload with the message type's magic bytes prepended and the length of bytes being processed.
@@ -152,7 +152,7 @@ class Message(YCodec, Enum):
 
         Arguments:
             message: data to be decoded.
-            errors: noop
+            errors: no-op.
 
         Returns:
             A tuple of two objects: the decoded message with the message type's magic bytes removed and the length of bytes being processed.
@@ -170,7 +170,7 @@ class Message(YCodec, Enum):
 
         Arguments:
             message: data to decode
-            errors: noop
+            errors: no-op.
 
         Returns:
             A tuple of three objects: the inferred message type of `message`, the decoded form of `message` and the length of processed bytes from `message`
@@ -190,49 +190,63 @@ class Message(YCodec, Enum):
 class YMessage(Message):
     """
     Implementation of Y messages according to the [Yjs sync and awareness protocol](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md#sync-protocol-v1-encoding)
-
-    Attributes:
-        SYNC_STEP1: synchronization request message
-        SYNC_STEP2: synchronization reply message
-        SYNC_UPDATE: update message
-        AWARENESS: awareness message
     """
 
     SYNC_STEP1 = (0, 0)
+    """Synchronization request message."""
+
     SYNC_STEP2 = (0, 1)
+    """synchronization reply message."""
+
     SYNC_UPDATE = (0, 2)
+    """Update message."""
+
     AWARENESS = (1,)
+    """Awareness message."""
 
 
 # TODO: rewrite with letter magic bytes
 class ElvaMessage(Message):
     """
     Extension of Y messages with additional message types.
-
-    Attributes:
-        SYNC_STEP1: synchronization request message
-        SYNC_STEP2: synchronization reply message
-        SYNC_UPDATE: update message
-        SYNC_CROSS: cross-synchronization message holding SYNC_STEP1 and SYNC_STEP2
-        AWARENESS: awareness message
-        ID: identitity message
-        READ: read-only message
-        READ_WRITE: read-write message
-        DATA_REQUEST: message requesting a specific blob of data
-        DATA_OFFER: message offering a requested blob of data
-        DATA_ORDER: message ordering a offered blob of data
-        DATA_TRANSFER: message transferring a ordered blob of data
     """
 
     SYNC_STEP1 = (0, 0)
+    """Synchronization request message."""
+
     SYNC_STEP2 = (0, 1)
+    """Synchronization reply message."""
+
     SYNC_UPDATE = (0, 2)
+    """Update message."""
+
     SYNC_CROSS = (0, 3)
+    """
+    Cross-synchronization message holding
+    [`SYNC_STEP1`][elva.protocol.ElvaMessage.SYNC_STEP1] and
+    [`SYNC_STEP2`][elva.protocol.ElvaMessage.SYNC_STEP2].
+    """
+
     AWARENESS = (1,)
+    """Awareness message."""
+
     ID = (2, 0)
+    """Identitity message."""
+
     READ = (2, 1)
+    """Read-only message."""
+
     READ_WRITE = (2, 2)
+    """Read-write message."""
+
     DATA_REQUEST = (3, 0)
+    """Message requesting a specific blob of data."""
+
     DATA_OFFER = (3, 1)
+    """Message offering a requested blob of data."""
+
     DATA_ORDER = (3, 2)
+    """Message ordering a offered blob of data."""
+
     DATA_TRANSFER = (3, 3)
+    """Message transferring a ordered blob of data."""

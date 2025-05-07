@@ -7,7 +7,6 @@ from typing import Any
 
 import anyio
 from pycrdt import ArrayEvent, MapEvent, TextEvent
-from pycrdt._base import BaseEvent
 
 from elva.component import Component
 
@@ -16,12 +15,12 @@ log = getLogger(__name__)
 
 class EventParser(Component):
     """
-    BaseEvent parser base class.
+    Parser base class.
 
     This class is supposed to be inherited from and extended.
     """
 
-    event_type: BaseEvent = BaseEvent
+    event_type: TextEvent | ArrayEvent | MapEvent
     """Event type this parser is supposed to handle."""
 
     async def run(self):
@@ -33,7 +32,7 @@ class EventParser(Component):
             async for event in self.receive_stream:
                 await self.parse_event(event)
 
-    def check(self, event: BaseEvent | ArrayEvent | MapEvent | TextEvent):
+    def check(self, event: TextEvent | ArrayEvent | MapEvent):
         """
         Check for the correct `event` type.
 
@@ -41,14 +40,14 @@ class EventParser(Component):
             event: object holding event information of changes to a Y data type.
 
         Raises:
-            TypeError: if `event` is not an instance of `self.event_type`.
+            TypeError: if `event` is not an instance of [`event_type`][elva.parser.EventParser.event_type].
         """
         if not isinstance(event, self.event_type):
             raise TypeError(
                 f"The event '{event}' is of type {type(event)}, but needs to be {self.event_type}"
             )
 
-    async def parse(self, event: BaseEvent | ArrayEvent | MapEvent | TextEvent):
+    async def parse(self, event: TextEvent | ArrayEvent | MapEvent):
         """
         Queue `event` for parsing asynchronously.
 
@@ -59,7 +58,7 @@ class EventParser(Component):
         await self.send_stream.send(event)
         self.log.debug("sending event")
 
-    def parse_nowait(self, event: BaseEvent | ArrayEvent | MapEvent | TextEvent):
+    def parse_nowait(self, event: TextEvent | ArrayEvent | MapEvent):
         """
         Queue `event` for parsing synchronously.
 
@@ -69,11 +68,11 @@ class EventParser(Component):
         self.check(event)
         self.send_stream.send_nowait(event)
 
-    async def parse_event(self, event: BaseEvent | ArrayEvent | MapEvent | TextEvent):
+    async def parse_event(self, event: TextEvent | ArrayEvent | MapEvent):
         """
         Hook called when an `event` has been queued for parsing and which performs further actions.
 
-        This method is defined as a noop and supposed to be implemented in the inheriting subclass.
+        This method is defined as a no-op and supposed to be implemented in the inheriting subclass.
 
         Arguments:
             event: object holding event information of changes to a Y data type.
@@ -83,7 +82,7 @@ class EventParser(Component):
 
 class TextEventParser(EventParser):
     """
-    TextEvent parser base class.
+    [`TextEvent`][pycrdt.TextEvent] parser base class.
     """
 
     event_type = TextEvent
@@ -115,7 +114,7 @@ class TextEventParser(EventParser):
         """
         Hook called on action `retain`.
 
-        This method is defined as a noop and supposed to be implemented in the inheriting subclass.
+        This method is defined as a no-op and supposed to be implemented in the inheriting subclass.
 
         Arguments:
             range_offset: byte offset in the Y text data type.
@@ -126,7 +125,7 @@ class TextEventParser(EventParser):
         """
         Hook called on action `insert`.
 
-        This method is defined as a noop and supposed to be implemented in the inheriting subclass.
+        This method is defined as a no-op and supposed to be implemented in the inheriting subclass.
 
         Arguments:
             range_offset: byte offset in the Y text data type.
@@ -138,7 +137,7 @@ class TextEventParser(EventParser):
         """
         Hook called on action `delete`.
 
-        This method is defined as a noop and supposed to be implemented in the inheriting subclass.
+        This method is defined as a no-op and supposed to be implemented in the inheriting subclass.
 
         Arguments:
             range_offset: byte offset in the Y text data type.
@@ -149,7 +148,7 @@ class TextEventParser(EventParser):
 
 class ArrayEventParser(EventParser):
     """
-    ArrayEvent parser base class.
+    [`ArrayEvent`][pycrdt.ArrayEvent] parser base class.
     """
 
     event_type = ArrayEvent
@@ -181,7 +180,7 @@ class ArrayEventParser(EventParser):
         """
         Hook called on action `retain`.
 
-        This method is defined as a noop and supposed to be implemented in the inheriting subclass.
+        This method is defined as a no-op and supposed to be implemented in the inheriting subclass.
 
         Arguments:
             range_offset: byte offset in the Y array data type.
@@ -192,7 +191,7 @@ class ArrayEventParser(EventParser):
         """
         Hook called on action `insert`.
 
-        This method is defined as a noop and supposed to be implemented in the inheriting subclass.
+        This method is defined as a no-op and supposed to be implemented in the inheriting subclass.
 
         Arguments:
             range_offset: byte offset in the Y array data type.
@@ -204,7 +203,7 @@ class ArrayEventParser(EventParser):
         """
         Hook called on action `delete`.
 
-        This method is defined as a noop and supposed to be implemented in the inheriting subclass.
+        This method is defined as a no-op and supposed to be implemented in the inheriting subclass.
 
         Arguments:
             range_offset: byte offset in the Y array data type.
@@ -215,7 +214,7 @@ class ArrayEventParser(EventParser):
 
 class MapEventParser(EventParser):
     """
-    MapEvent parser base class.
+    [`MapEvent`][pycrdt.MapEvent] parser base class.
     """
 
     event_type = MapEvent
@@ -244,7 +243,7 @@ class MapEventParser(EventParser):
         """
         Hook called on action `add`.
 
-        This method is defined as a noop and supposed to be implemented in the inheriting subclass.
+        This method is defined as a no-op and supposed to be implemented in the inheriting subclass.
 
         Arguments:
             key: key added to the Y map data type.
@@ -256,7 +255,7 @@ class MapEventParser(EventParser):
         """
         Hook called on action `delete`.
 
-        This method is defined as a noop and supposed to be implemented in the inheriting subclass.
+        This method is defined as a no-op and supposed to be implemented in the inheriting subclass.
 
         Arguments:
             key: key deleted from the Y map data type.

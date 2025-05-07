@@ -26,8 +26,9 @@ class Component:
     This class features graceful shutdown alongside annotated logging.
     It is used for writing providers, stores, parsers, renderers etc.
 
-    It supports explicit handling via the `start` and `stop` method as
-    well as the asynchronous context manager protocol.
+    It supports explicit handling via the [`start`][elva.component.Component.start]
+    and [`stop`][elva.component.Component.stop] method as well as the asynchronous
+    context manager protocol.
     """
 
     _started: Event | None = None
@@ -36,7 +37,7 @@ class Component:
     _start_lock: Lock | None = None
 
     log: logging.Logger
-    """logger instance to write logging messages to."""
+    """Logger instance to write logging messages to."""
 
     def __new__(cls, *args, **kwargs):
         self = super().__new__(cls)
@@ -151,10 +152,10 @@ class Component:
         Hook to run before the component signals that is has been started.
 
         In here, one would define initializing steps necessary for the component to run.
-        This method must return, otherwise the component will not set the `started` signal.
+        This method must return, otherwise the component will not set the
+        [`started`][elva.component.Component.started] signal.
 
-
-        It is defined as a noop and supposed to be implemented in the inheriting class.
+        It is defined as a no-op and supposed to be implemented in the inheriting class.
         """
         ...
 
@@ -166,17 +167,19 @@ class Component:
         This method may run indefinitely or return.
         The component is kept running regardless.
 
-        It is defined as a noop and supposed to be implemented in the inheriting class.
+        It is defined as a no-op and supposed to be implemented in the inheriting class.
         """
         ...
 
     async def cleanup(self):
         """
-        Hook to run after the component's `stop` method has been called and before it sets the `stopped` event.
+        Hook to run after the component's [`stop`][elva.component.Component.stop] method
+        has been called and before it sets the [`stopped`][elva.component.Component.stopped] event.
 
         In here, one would define cleanup tasks such as closing connections.
-        This method must return, otherwise the component will not set the `stopped` signal.
+        This method must return, otherwise the component will not set the
+        [`stopped`][elva.component.Component.stopped] signal.
 
-        It is defined as a noop and supposed to be implemented in the inheriting class.
+        It is defined as a no-op and supposed to be implemented in the inheriting class.
         """
         ...

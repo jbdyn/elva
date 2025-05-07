@@ -1,5 +1,5 @@
 """
-Module providing authentication utilities for `elva.apps.server`.
+Module providing authentication utilities for [`server`][elva.apps.server] app module.
 """
 
 import logging
@@ -98,7 +98,7 @@ class BasicAuth:
     """
     Base class for `Basic Authentication`.
 
-    This class is intended to be used by `elva.apps.server`.
+    This class is intended to be used in the [`server`][elva.apps.server] app module.
     """
 
     def __new__(cls, *args, **kwargs):
@@ -119,14 +119,14 @@ class BasicAuth:
         self, path: str, request_headers: dict
     ) -> None | tuple[HTTPStatus, dict[str, str], None | bytes]:
         """
-        Wrapper around `self.verify` with processing and logging.
+        Wrapper around [`verify`][elva.auth.BasicAuth.verify] with processing and logging.
 
         Arguments:
             path: the path used in the HTTP request.
             request_headers: the HTTP request headers.
 
         Returns:
-            `None` if `self.verify` returns `True`, else it returns the request abort information as specified in `elva.auth.abort_basic_auth`.
+            `None` if [`verify`][elva.auth.BasicAuth.verify] returns `True`, else it returns the request abort information as specified in [`abort_basic_auth`][elva.auth.abort_basic_auth].
         """
         try:
             scheme, credentials = process_authorization_header(request_headers)
@@ -155,7 +155,7 @@ class BasicAuth:
         """
         Decides whether the given credentials are valid or not.
 
-        This is defined as a noop and is intended to implemented in inheriting subclasses.
+        This is defined as a no-op and is intended to implemented in inheriting subclasses.
 
         Arguments:
             username: user name provided in the HTTP request headers.

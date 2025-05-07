@@ -100,7 +100,7 @@ def encode_content(data: dict) -> str:
 
 class LogStatus(FeatureStatus):
     """
-    Widget for reflecting the state of logging.
+    Widget reflecting the state of logging.
     """
 
     @property
@@ -124,7 +124,7 @@ class LogStatus(FeatureStatus):
         """
         Apply the new state.
 
-        If `self.is_ready` returns `True`, logging gets reinitialized with updated parameters.
+        If [`is_ready`][elva.apps.editor.LogStatus.is_ready] returns `True`, logging gets reinitialized with updated parameters.
         Else, logging is stopped.
         """
         if self.is_ready:
@@ -163,11 +163,11 @@ class LogStatus(FeatureStatus):
 
 class StoreStatus(ComponentStatus):
     """
-    Widget for reflecting the state of storage.
+    Widget reflecting the state of storage.
     """
 
     component = SQLiteStore
-    """Instance of the controlled SQLiteStore component."""
+    """Instance of the controlled [`SQLiteStore`][elva.store.SQLiteStore] component."""
 
     @property
     def is_ready(self) -> bool:
@@ -190,7 +190,7 @@ class StoreStatus(ComponentStatus):
         """
         Hook called on a worker state change event.
 
-        This method changes the status depending on the state of the worker the SQLiteStore component is running in.
+        This method changes the status depending on the state of the worker the [`SQLiteStore`][elva.store.SQLiteStore] component is running in.
 
         Arguments:
             message: an object holding information about the worker state change event.
@@ -209,11 +209,11 @@ class StoreStatus(ComponentStatus):
 
 class RendererStatus(ComponentStatus):
     """
-    Widget for reflecting the state of storage.
+    Widget reflecting the state of rendering.
     """
 
     component = TextRenderer
-    """Instance of the controlled TextRenderer component."""
+    """Instance of the controlled [`TextRenderer`][elva.renderer.TextRenderer] component."""
 
     @property
     def is_ready(self) -> bool:
@@ -230,7 +230,7 @@ class RendererStatus(ComponentStatus):
         """
         Hook called on a worker state change event.
 
-        This method changes the status depending on the state of the worker the TextRenderer component is running in.
+        This method changes the status depending on the state of the worker the [`TextRenderer`][elva.renderer.TextRenderer] component is running in.
 
         Arguments:
             message: an object holding information about the worker state change event.
@@ -248,6 +248,10 @@ class RendererStatus(ComponentStatus):
 
 
 class ProviderStatus(ComponentStatus):
+    """
+    Widget reflecting the state of a provider.
+    """
+
     component = get_provider
     """Instance of the controlled provider component."""
 
@@ -299,7 +303,7 @@ class ProviderStatus(ComponentStatus):
 
 class UI(App):
     """
-    User interface
+    User interface.
     """
 
     CSS_PATH = "editor.tcss"
@@ -380,7 +384,7 @@ class UI(App):
 
     def compose(self):
         """
-        Hook arranging the child widgets.
+        Hook arranging child widgets.
         """
         c = self.config
 
@@ -539,7 +543,7 @@ class UI(App):
 
     def on_config_view_changed(self, message: Message):
         """
-        Hook called on a Changed event from a config view.
+        Hook called on a [`Changed`][elva.widgets.config.ConfigView.Changed] event from a config view.
 
         This methods keeps the QR Code updated.
 

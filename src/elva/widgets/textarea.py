@@ -1,5 +1,5 @@
 """
-Widgets for realtime text-editing
+[`Textual`](https://textual.textualize.io/) Widgets for realtime text-editing
 """
 
 from asyncio import Queue
@@ -37,8 +37,8 @@ NEWLINE_CHARS = "\n\r"
 
 
 def ends_with_newline(text: str) -> bool:
-    r"""
-    Check whether a given text ends with a newline character, i.e. `\n` or `\r`.
+    """
+    Check whether a given text ends with a newline character, i.e. `\\n` or `\\r`.
 
     Arguments:
         text: the text to check.
@@ -73,8 +73,8 @@ def get_index_from_binary_index(btext: bytes, bindex: int) -> int:
     Convert the index in UTF-8 encoding to character index.
 
     Arguments:
-        btext: UTF-8 encoded data
-        bindex: index in `btext`
+        btext: UTF-8 encoded data.
+        bindex: index in `btext`.
 
     Returns:
         index in the UTF-8 decoded form of `btext`.
@@ -88,7 +88,7 @@ def get_binary_index_from_index(text: str, index: int) -> int:
 
     Arguments:
         text: string to convert the index on.
-        index: index in `text`
+        index: index in `text`.
 
     Returns:
         index in the UTF-8 encoded form of `text`.
@@ -301,7 +301,7 @@ class YDocument(DocumentBase):
 
     It supports indexing and implements the asynchronous iterator protocol.
 
-    This class is intended for use in `YTextArea`.
+    This class is intended for use in [`YTextArea`][elva.widgets.textarea.YTextArea].
 
     Examples:
         Indexing:
@@ -784,8 +784,8 @@ class YTextArea(TextArea):
         Arguments:
             ytext: Y text data type holding the text.
             language: syntax language the text is written in.
-            args: positional arguments passed to `textual.widgets.TextArea`.
-            kwargs: keyword arguments passed to `textual.widgets.TextArea`
+            args: positional arguments passed to [`TextArea`][textual.widgets.TextArea].
+            kwargs: keyword arguments passed to [`TextArea`][textual.widgets.TextArea].
         """
         super().__init__(str(ytext), *args, **kwargs)
         self.document = YDocument(ytext, language)

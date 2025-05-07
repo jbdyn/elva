@@ -33,12 +33,12 @@ from elva.widgets.textarea import YTextArea
 log = logging.getLogger(__name__)
 
 WHITESPACE_ONLY = re.compile(r"^\s*$")
-"""Regular Expression for whitespace only messages."""
+"""Regular Expression for whitespace-only messages."""
 
 
 class MessageView(Widget):
     """
-    Widget for displaying a single message alongside its metadata.
+    Widget displaying a single message alongside its metadata.
     """
 
     def __init__(self, author: str, text: Text, **kwargs: dict):
@@ -46,7 +46,7 @@ class MessageView(Widget):
         Arguments:
             author: the author of the message.
             text: an instance of a Y text data type holding the message content.
-            kwargs: keyword arguments passed to `textual.widget.Widget`.
+            kwargs: keyword arguments passed to [`Widget`][textual.widget.Widget].
         """
         super().__init__(**kwargs)
         self.text = text
@@ -92,7 +92,7 @@ class MessageView(Widget):
 
 class MessageList(VerticalScroll):
     """
-    Base container class for `MessageView`s.
+    Base container class for [`MessageView`][elva.apps.chat.MessageView] widgets.
     """
 
     def __init__(self, messages: Array | Map, user: str, **kwargs: dict):
@@ -100,7 +100,7 @@ class MessageList(VerticalScroll):
         Arguments:
             messages: Y array or Y map containing message objects.
             user: the current username of the app.
-            kwargs: keyword arguments passed to `textual.containers.VerticalScroll`.
+            kwargs: keyword arguments passed to [`VerticalScroll`][textual.containers.VerticalScroll].
         """
         super().__init__(**kwargs)
         self.user = user
@@ -110,11 +110,11 @@ class MessageList(VerticalScroll):
         self, message: Map | dict, message_id: None | str = None
     ) -> MessageView:
         """
-        Create a `MessageView`.
+        Create a [`MessageView`][elva.apps.chat.MessageView].
 
         Arguments:
             message: mapping of message attributes.
-            message_id: `Textual` DOM tree identifier to assign to the `MessageView`.
+            message_id: `Textual` DOM tree identifier to assign to the message view.
 
         Returns:
             a message view to be mounted inside an instance of this class.
@@ -150,7 +150,7 @@ class HistoryParser(ArrayEventParser):
     """
     Parser for changes in the message history.
 
-    This class reflects the state of the Y array with history message in the `History` message list on changes.
+    This class reflects the state of the Y array with history message in the [`History`][elva.apps.chat.History] message list on changes.
     """
 
     def __init__(self, history: Array, widget: History):
@@ -167,7 +167,7 @@ class HistoryParser(ArrayEventParser):
 
         This method parses the event and calls the defined action hooks accordingly.
 
-        Arguments;
+        Arguments:
             event: an object holding information about the change in the Y array.
         """
         log.debug("history callback triggered")
@@ -175,7 +175,7 @@ class HistoryParser(ArrayEventParser):
 
     async def run(self):
         """
-        Hook called after the component sets the `self.started` signal.
+        Hook called after the component sets the [`started`][elva.component.Component.started] signal.
 
         This method subscribes to changes in the Y array message history.
         """
@@ -186,7 +186,7 @@ class HistoryParser(ArrayEventParser):
         """
         Hook called on an insert action in a Y array change event.
 
-        This methods creates a new `MessageView` and mounts it to the message history.
+        This methods creates a new message view and mounts it to the message history.
 
         Arguments:
             range_offset: the start index of the insert.
@@ -201,7 +201,7 @@ class HistoryParser(ArrayEventParser):
         """
         Hook called on a delete action in a Y array change event.
 
-        This method removes the all `MessageView`s in the given index range.
+        This method removes the all message views in the given index range.
 
         Arguments:
             range_offset: the start index of the deletion.
@@ -227,7 +227,7 @@ class Future(MessageList):
             messages: mapping of message identifiers to their corresponding message object.
             user: the current username of the app.
             show_self: flag whether to show the own currently composed message.
-            kwargs: keyword arguments passed to `MessageList`.
+            kwargs: keyword arguments passed to [`MessageList`][elva.apps.chat.MessageList].
         """
         super().__init__(messages, user, **kwargs)
         self.show_self = show_self
@@ -250,7 +250,7 @@ class FutureParser(MapEventParser):
     """
     Parser for changes in currently composed messages.
 
-    This class reflects the state of the Y map with currently composed messaged in the `Future` message list on changes.
+    This class reflects the state of the Y map with currently composed messaged in the [`Future`][elva.apps.chat.Future] message list on changes.
     """
 
     def __init__(self, future: Map, widget: Future, user: str, show_self: bool):
@@ -280,7 +280,7 @@ class FutureParser(MapEventParser):
 
     async def run(self):
         """
-        Hook called after the component set the `self.started` signal.
+        Hook called after the component set the [`started`][elva.component.Component.started] signal.
 
         This method subscribes to changes in the mapping of currently composed messages.
         """
@@ -331,8 +331,8 @@ class MessagePreview(Static):
         """
         Arguments:
             ytext: Y text with the markdown content of the own currently composed message.
-            args: positional arguments passed to `textual.widgets.Static`.
-            kwargs: keyword arguments passed to `textual.widgets.Static`.
+            args: positional arguments passed to [`Static`][textual.widgets.Static].
+            kwargs: keyword arguments passed to [`Static`][textual.widgets.Static].
         """
         super().__init__(*args, **kwargs)
         self.ytext = ytext
@@ -376,7 +376,7 @@ def get_chat_provider(messages: str) -> WebsocketProvider | ElvaWebsocketProvide
 
 class UI(App):
     """
-    User interface of the chat app.
+    User interface.
     """
 
     CSS_PATH = "chat.tcss"
@@ -575,7 +575,7 @@ class UI(App):
 
     async def quit_on_error(self, exc: Exception):
         """
-        Hook called on closing an `elva.widgets.screens.ErrorScreen`.
+        Hook called on closing an [`ErrorScreen`][elva.widgets.screens.ErrorScreen].
 
         This method exits the app.
 
@@ -596,7 +596,7 @@ class UI(App):
         """
         Hook called on mounting the app.
 
-        This methods waits for all components to set their `started` signal.
+        This methods waits for all components to set their [`started`][elva.component.Component.started] signal.
         """
         self.run_worker(self.run_components())
         self.message_widget.focus()
@@ -609,7 +609,7 @@ class UI(App):
         """
         Hook called when unmounting, i.e. closing, the app.
 
-        This methods waits for all components to set their `stopped` signal.
+        This methods waits for all components to set their [`stopped`][elva.component.Component.stopped] signal.
         """
         async with anyio.create_task_group():
             # TODO: take a closer look on the dependencies between components

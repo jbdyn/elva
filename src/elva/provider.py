@@ -76,10 +76,10 @@ class Connection(Component):
 
     async def send(self, data: Any):
         """
-        Wrapper around the `self.outgoing.send` method.
+        Wrapper around the [`outgoing.send`][elva.provider.Connection.outgoing] method.
 
         Arguments:
-            data: data to be send via the `self.outgoing` stream.
+            data: data to be send via the [`outgoing`][elva.provider.Connection.outgoing] stream.
         """
         if self.connected.is_set():
             try:
@@ -91,7 +91,7 @@ class Connection(Component):
 
     async def recv(self):
         """
-        Wrapper around the `self.incoming` stream.
+        Wrapper around the [`incoming`][elva.provider.Connection.incoming] stream.
         """
         self.log.debug("waiting for connection")
         await self.connected.wait()
@@ -106,12 +106,12 @@ class Connection(Component):
 
     async def on_recv(self, data: Any):
         """
-        Hook executed on received `data` from `self.incoming`.
+        Hook executed on received `data` from [`incoming`][elva.provider.Connection.incoming].
 
-        This is defined as a noop and intended to be defined in the inheriting subclass.
+        This is defined as a no-op and intended to be defined in the inheriting subclass.
 
         Arguments:
-            data: data received from `self.incoming`.
+            data: data received from [`incoming`][elva.provider.Connection.incoming].
         """
         ...
 
@@ -122,10 +122,10 @@ class WebsocketConnection(Connection):
     """
 
     signature: Signature
-    """Object holding the positional and keyword arguments for `websockets.asyncio.client.connect`."""
+    """Object holding the positional and keyword arguments for [`connect`][websockets.asyncio.client.connect]."""
 
     options: dict
-    """Mapping of arguments to the signature of `websockets.asyncio.client.connect`."""
+    """Mapping of arguments to the signature of [`connect`][websockets.asyncio.client.connect]."""
 
     basic_authorization_header: dict
     """Mapping of `Authorization` HTTP request header to encoded `Basic Authentication` information."""
@@ -146,8 +146,8 @@ class WebsocketConnection(Connection):
             uri: websocket address to connect to.
             user: username to be sent in the `Basic Authentication` HTTP request header.
             password: password to be sent in the `Basic Authentication` HTTP request header.
-            *args: positional arguments passed to `websockets.asyncio.client.connect`.
-            **kwargs: keyword arguments passed to `websockets.asyncio.client.connect`.
+            *args: positional arguments passed to [`connect`][websockets.asyncio.client.connect].
+            **kwargs: keyword arguments passed to [`connect`][websockets.asyncio.client.connect].
         """
         self.uri = uri
         self._websocket = None
@@ -169,13 +169,13 @@ class WebsocketConnection(Connection):
 
     async def run(self):
         """
-        Main loop connecting and listening for incoming data.
+        Hook connecting and listening for incoming data.
 
         - It retries on HTTP response status other than `101` automatically.
         - It sends given credentials only after a failed connection attempt.
-        - It gives the opportunity to update the connection arguments with credentials via the `self.on_exception` hook, if previously given information result in a failed connection.
-
-        This method is called by the class itself automatically.
+        - It gives the opportunity to update the connection arguments with credentials via the
+          [`on_exception`][elva.provider.WebsocketConnection.on_exception] hook, if previously
+          given information result in a failed connection.
         """
         # catch exceptions due to HTTP status codes other than 101, 3xx, 5xx
         while True:
@@ -244,9 +244,7 @@ class WebsocketConnection(Connection):
 
     async def cleanup(self):
         """
-        Close the websocket connection gracefully if cancelled.
-
-        This method is called by the class itself automatically.
+        Hook closing the websocket connection gracefully if cancelled.
         """
         if self._websocket is not None:
             self.log.debug("closing connection")
@@ -256,7 +254,7 @@ class WebsocketConnection(Connection):
         """
         Hook method run on connection.
 
-        This is defined as a noop and supposed to be implemented in the inheriting subclass.
+        This is defined as a no-op and supposed to be implemented in the inheriting subclass.
         """
         ...
 
@@ -267,7 +265,7 @@ class WebsocketConnection(Connection):
         This method defaults to re-raise `exc`, is supposed to be implemented in the inheriting subclass and intended to be integrated in a user interface.
 
         Arguments:
-            exc: exception raised by `websockets.async.client.connect`.
+            exc: exception raised by [`connect`][websockets.asyncio.client.connect].
         """
         raise exc
 
@@ -283,7 +281,7 @@ class WebsocketProvider(WebsocketConnection):
     """Instance of the synchronized Y Document."""
 
     subscription: Subscription
-    """Object holding subscription information to changes in `self.ydoc`."""
+    """Object holding subscription information to changes in [`ydoc`][elva.provider.WebsocketProvider.ydoc]."""
 
     def __init__(
         self,
@@ -298,8 +296,8 @@ class WebsocketProvider(WebsocketConnection):
             ydoc: instance if the synchronized Y Document.
             identifier: identifier of the synchronized Y Document.
             server: address of the Y Document synchronizing websocket server.
-            *args: positional arguments passed to `elva.provider.WebsocketConnection`.
-            **kwargs: keyword arguments passed to `elva.provider.WebsocketConnection`.
+            *args: positional arguments passed to [`WebsocketConnection`][elva.provider.WebsocketConnection].
+            **kwargs: keyword arguments passed to [`WebsocketConnection`][elva.provider.WebsocketConnection].
         """
         self.ydoc = ydoc
         uri = urljoin(server, identifier)
@@ -307,22 +305,20 @@ class WebsocketProvider(WebsocketConnection):
 
     async def run(self):
         """
-        Main loop observing changes and handling connection.
-
-        This method is run by the class itself automatically.
+        Hook observing changes and handling connection.
         """
         self.subscription = self.ydoc.observe(self.callback)
         await super().run()
 
     async def cleanup(self):
         """
-        Hook cancelling the subscription to changes in `self.ydoc`.
+        Hook cancelling the subscription to changes in [`ydoc`][elva.provider.WebsocketProvider.ydoc].
         """
         self.ydoc.unobserve(self.subscription)
 
     def callback(self, event: TransactionEvent):
         """
-        Hook called on changes in `self.ydoc`.
+        Hook called on changes in [`ydoc`][elva.provider.WebsocketProvider.ydoc].
 
         When called, the `event` data are encoded as Y update message and sent over the established websocket connection.
 
@@ -354,7 +350,7 @@ class WebsocketProvider(WebsocketConnection):
         """
         Hook called on received `data` over the websocket connection.
 
-        When called, `data` is assumed to be a `YMessage` and tried to be decoded.
+        When called, `data` is assumed to be a [`YMessage`][elva.protocol.YMessage] and tried to be decoded.
         On successful decoding, the payload is dispatched to the appropriate method.
 
         Arguments:
@@ -408,7 +404,7 @@ class WebsocketProvider(WebsocketConnection):
         """
         Dispatch method called on received Y awareness message.
 
-        Currently, this is defined as a noop.
+        Currently, this is defined as a no-op.
 
         Arguments:
             state: payload included in the incoming Y awareness message.
@@ -430,10 +426,10 @@ class ElvaWebsocketProvider(WebsocketConnection):
     """Identifier of the synchronized Y Document."""
 
     uuid: bytes
-    """As `ElvaMessage.ID` message encoded `self.identifier`."""
+    """As `ElvaMessage.ID` message encoded [`identifier`][elva.provider.ElvaWebsocketProvider.identifier]."""
 
     subscription: Subscription
-    """Object holding subscription information to changes in `self.ydoc`."""
+    """Object holding subscription information to changes in [`ydoc`][elva.provider.ElvaWebsocketProvider.ydoc]."""
 
     def __init__(
         self,
@@ -448,8 +444,8 @@ class ElvaWebsocketProvider(WebsocketConnection):
             ydoc: instance if the synchronized Y Document.
             identifier: identifier of the synchronized Y Document.
             server: address of the Y Document synchronizing websocket server.
-            *args: positional arguments passed to `elva.provider.WebsocketConnection`.
-            **kwargs: keyword arguments passed to `elva.provider.WebsocketConnection`.
+            *args: positional arguments passed to [`WebsocketConnection`][elva.provider.WebsocketConnection].
+            **kwargs: keyword arguments passed to [`WebsocketConnection`][elva.provider.WebsocketConnection].
         """
         self.ydoc = ydoc
         self.identifier = identifier
@@ -458,22 +454,20 @@ class ElvaWebsocketProvider(WebsocketConnection):
 
     async def run(self):
         """
-        Main loop observing changes and handling connection.
-
-        This method is run by the class itself automatically.
+        Hook observing changes and handling connection.
         """
         self.subscription = self.ydoc.observe(self.callback)
         await super().run()
 
     async def cleanup(self):
         """
-        Hook cancelling the subscription to changes in `self.ydoc`.
+        Hook cancelling the subscription to changes in [`ydoc`][elva.provider.ElvaWebsocketProvider.ydoc].
         """
         self.ydoc.unobserve(self.subscription)
 
     async def send(self, data: bytes):
         """
-        Send `data` with `self.uuid` prepended.
+        Send `data` with [`uuid`][elva.provider.ElvaWebsocketProvider.uuid] prepended.
 
         Arguments:
             data: data to be send over the websocket connection.
@@ -483,7 +477,7 @@ class ElvaWebsocketProvider(WebsocketConnection):
 
     def callback(self, event: TransactionEvent):
         """
-        Hook called on changes in `self.ydoc`.
+        Hook called on changes in [`ydoc`][elva.provider.ElvaWebsocketProvider.ydoc].
 
         When called, the `event` data are encoded as Y update message and sent over the established websocket connection.
 
@@ -514,7 +508,7 @@ class ElvaWebsocketProvider(WebsocketConnection):
         """
         Hook called on received `data` over the websocket connection.
 
-        When called, `data` is assumed to be an `ElvaMessage` and tried to be decoded.
+        When called, `data` is assumed to be an [`ElvaMessage`][elva.protocol.ElvaMessage] and tried to be decoded.
         On successful decoding, the payload is dispatched to the appropriate method.
 
         Arguments:
@@ -584,7 +578,7 @@ class ElvaWebsocketProvider(WebsocketConnection):
         """
         Hook called on received Y awareness message.
 
-        Currently, this is defined as a noop.
+        Currently, this is defined as a no-op.
 
         Arguments:
             state: payload included in the incoming Y awareness message.

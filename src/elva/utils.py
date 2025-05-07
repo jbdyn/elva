@@ -83,7 +83,8 @@ def get_params_from_configs(configs: list[Path]) -> dict:
         configs: list of paths to ELVA configuration files.
 
     Returns:
-        parameter mapping from all configuration files. The value from the highest priority configuration overwrites all other parameter values.
+        parameter mapping from all configuration files.
+        The value from the highest priority configuration overwrites all other parameter values.
     """
     params = dict()
 
@@ -107,7 +108,7 @@ def gather_context_information(
     Update the user-defined parameters with parameters from files.
 
     Arguments:
-        ctx: `click.Context` instance holding the parameter mapping to be updated.
+        ctx: object holding the parameter mapping to be updated.
         file: path to an ELVA SQLite database.
         app: parameters from the same named section in the configuration files.
     """

@@ -1,5 +1,5 @@
 """
-Widgets for building a status bar.
+[`Textual`](https://textual.textualize.io/) widgets for building a status bar.
 """
 
 from typing import Any
@@ -47,8 +47,8 @@ class FeatureStatus(Button):
             params: list of configuration parameters associated with this feature.
             config: mapping of configuration parameters to their values.
             rename: mapping of old parameter names to new parameter names.
-            args: positional arguments passed to `textual.widgets.Button`.
-            kwargs: keyword arguments passed to `textual.widgets.Button`.
+            args: positional arguments passed to [`Button`][textual.widgets.Button].
+            kwargs: keyword arguments passed to [`Button`][textual.widgets.Button].
         """
         super().__init__(*args, **kwargs)
         self.params = params
@@ -98,7 +98,7 @@ class FeatureStatus(Button):
 
         It is supposed to hold the logic for determining the current status of the feature.
 
-        This property is defined as a noop and supposed to be implemented in the inheriting class.
+        This property is defined as a no-op and supposed to be implemented in the inheriting class.
 
         Returns:
             `True` if the feature is ready, else `False`.
@@ -111,7 +111,7 @@ class FeatureStatus(Button):
 
         It is supposed to hold the logic for a change in configuration parameters.
 
-        This method is defined as a noop and supposed to be implemented in the inheriting class.
+        This method is defined as a no-op and supposed to be implemented in the inheriting class.
         """
         ...
 
@@ -119,7 +119,7 @@ class FeatureStatus(Button):
         """
         Hook called on mounting the widget.
 
-        This method calls `self.apply`.
+        This method calls [`apply`][elva.widgets.status.FeatureStatus.apply].
         """
         self.apply()
 
@@ -133,7 +133,7 @@ class ComponentStatus(FeatureStatus):
     """Instance of the component represented by this widget."""
 
     control: Component
-    """Alias for `self.component`"""
+    """Alias for [`component`][elva.widgets.status.ComponentStatus.component]."""
 
     yobject: Doc | Text | Array | Map
     """Instance of the Y object being used by the internal component."""
@@ -149,8 +149,8 @@ class ComponentStatus(FeatureStatus):
         Arguments:
             yobject: instance of the Y object being used by the internal component.
             params: list of configuration parameters associated with this component.
-            args: positional arguments passed to `FeatureStatus`.
-            kwargs: keyword arguments passed to `FeatureStatus`.
+            args: positional arguments passed to [`FeatureStatus`][elva.widgets.status.FeatureStatus].
+            kwargs: keyword arguments passed to [`FeatureStatus`][elva.widgets.status.FeatureStatus].
         """
         self.yobject = yobject
         super().__init__(params, *args, **kwargs)
