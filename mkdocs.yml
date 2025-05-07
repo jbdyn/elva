@@ -40,6 +40,8 @@ nav:
   - Stories: stories/index.md
 extra:
   social:
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/elva/
     - icon: fontawesome/brands/github
       link: https://github.com/innocampus/elva
     - icon: innocampus-icon
