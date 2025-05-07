@@ -123,7 +123,7 @@ Furthermore, for a proper text editor, we have another issue to solve:
 The end-user expects cursor movements on boundaries of (perceived) characters or even bigger blocks like images rather than bytes.
 
 Hence, the editor would need to somewhere keep track of a mapping between the user-used indexing and the indexing used for operation.
-(There is also the mapping between cursor position in the text and on the screen, but that is [another story](./write-a-realtime-editor.md).)
+<!-- (There is also the mapping between cursor position in the text and on the screen, but that is [another story](./write-a-realtime-editor.md).) -->
 
 I have a few ideas to approach this:
 

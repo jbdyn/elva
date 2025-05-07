@@ -53,5 +53,6 @@ Following this, you might wonder how this works for apps used in a purely graphi
 I mean starting the app by clicking on a desktop icon and never seeing the command prompt, even after closing.
 That implies to implement customizability into the app's UI, such that a user would have the possibility to configure the app's to the own needs.
 Unfortunately, this collides with not having too much focusable widgets.
-Having tried to write a configuration panel myself, I know what I am talking about...
-For a solution to this, I recommend checking out [the post about a REPL `Textual` widget](./writing-a-textual-application-repl.md), which units keyboard friendliness with full control and slim UI design.
+Maybe a REPL might solve this issue, as it unites keyboard friendliness with full control and slim UI design.
+Stay tuned for a follow-up article on this!
+<!-- For a solution to this, I recommend checking out [the post about a REPL `Textual` widget](./writing-a-textual-application-repl.md), which units keyboard friendliness with full control and slim UI design. -->
