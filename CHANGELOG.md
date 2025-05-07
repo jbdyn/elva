@@ -9,6 +9,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 
 
+## 0.33 - 2025-05-07
+
+### Added
+
+- Add documentation
+
+### Changed
+
+- Change `README.md` to link to the documentation
+- Switch from `pdm` to `uv` for package management
+- Use tree-sitter-language-pack instead of py-tree-sitter-languages
+
+### Fixed
+
+- Fix statements querying the request path as well as types in the `server` module
+- Fix lost `content` argument in `QRCode` widget
+- Fix `host` and `port` arguments not applied when given via CLI to `server` app
+
+### Removed
+
+- Remove version specifiers in `pyproject.toml`
+
+
+
 ## 0.32 - 2025-02-13
 
 ### Added
