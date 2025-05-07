@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Add `CHANGELOG.md` up to version v0.31
-- Add `git-cliff` along side config
+- Add `git-cliff` alongside config
 
 ### Changed
 
