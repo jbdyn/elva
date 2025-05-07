@@ -1,8 +1,13 @@
+"""
+Module holding store components.
+"""
+
 import sqlite3
 import uuid
 
 import sqlite_anyio as sqlite
 from anyio import Event, Lock, Path, create_memory_object_stream
+from pycrdt import Doc, Subscription, TransactionEvent
 
 from elva.component import Component
 
@@ -10,7 +15,35 @@ from elva.component import Component
 
 
 class SQLiteStore(Component):
-    def __init__(self, ydoc, identifier, path):
+    """
+    Store component saving Y updates in an ELVA SQLite database.
+    """
+
+    ydoc: Doc
+    """Instance of the synchronized Y Document."""
+
+    identifier: str
+    """Identifier of the synchronized Y Document."""
+
+    path: Path
+    """Path where to store the SQLite database."""
+
+    initialized: Event
+    """Event being set when the SQLite database is ready to be read."""
+
+    lock: Lock
+    """Object for restricted resource management."""
+
+    subscription: Subscription
+    """Object holding subscription information to changes in [`ydoc`][elva.store.SQLiteStore.ydoc]."""
+
+    def __init__(self, ydoc: Doc, identifier: str, path: str):
+        """
+        Arguments:
+            ydoc: instance of the synchronized Y Document.
+            identifier: identifier of the synchronized Y Document.
+            path: path where to store the SQLite database.
+        """
         self.ydoc = ydoc
         self.identifier = identifier
         self.path = Path(path)
@@ -18,7 +51,16 @@ class SQLiteStore(Component):
         self.lock = Lock()
 
     @staticmethod
-    def get_metadata(path):
+    def get_metadata(path: str) -> dict:
+        """
+        Retrieve metadata from a given ELVA SQLite database.
+
+        Arguments:
+            path: path to the ELVA SQLite database.
+
+        Returns:
+            mapping of metadata keys to values.
+        """
         db = sqlite3.connect(path)
         cur = db.cursor()
         try:
@@ -33,7 +75,14 @@ class SQLiteStore(Component):
         return res
 
     @staticmethod
-    def set_metadata(path, metadata):
+    def set_metadata(path: str, metadata: dict[str, str]):
+        """
+        Set given metadata in a given ELVA SQLite database.
+
+        Arguments:
+            path: path to the ELVA SQLite database.
+            metadata: mapping of metadata keys to values.
+        """
         db = sqlite3.connect(path)
         cur = db.cursor()
         try:
@@ -54,7 +103,15 @@ class SQLiteStore(Component):
         else:
             db.close()
 
-    def callback(self, event):
+    def callback(self, event: TransactionEvent):
+        """
+        Hook called on changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
+
+        When called, the `event` data are written to the ELVA SQLite database.
+
+        Arguments:
+            event: object holding event information of changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
+        """
         self._task_group.start_soon(self.write, event.update)
 
     async def _provide_update_table(self):
@@ -107,11 +164,20 @@ class SQLiteStore(Component):
         self.log.info("database initialized")
 
     async def before(self):
+        """
+        Hook executed before the component sets its [`started`][elva.component.Component.started] signal.
+
+        The ELVA SQLite database is being initialized and read.
+        Also, the component subscribes to changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
+        """
         await self._init_db()
         await self.read()
         self.subscription = self.ydoc.observe(self.callback)
 
     async def run(self):
+        """
+        Hook writing data to the ELVA SQLite database.
+        """
         self.stream_send, self.stream_recv = create_memory_object_stream(
             max_buffer_size=65543
         )
@@ -120,18 +186,24 @@ class SQLiteStore(Component):
                 await self._write(data)
 
     async def cleanup(self):
+        """
+        Hook cancelling subscription to changes and closing the database.
+        """
         self.ydoc.unobserve(self.subscription)
         if self.initialized.is_set():
             await self.db.close()
             self.log.debug("closed database")
 
-    async def wait_running(self):
+    async def _wait_running(self):
         if self.started is None:
             raise RuntimeError("{self} not started")
         await self.initialized.wait()
 
     async def read(self):
-        await self.wait_running()
+        """
+        Hook to read in metadata and updates from the ELVA SQLite database and apply them.
+        """
+        await self._wait_running()
 
         async with self.lock:
             await self.cursor.execute("SELECT * FROM metadata")
@@ -145,7 +217,7 @@ class SQLiteStore(Component):
             self.log.debug("applied updates to YDoc")
 
     async def _write(self, data):
-        await self.wait_running()
+        await self._wait_running()
 
         async with self.lock:
             await self.cursor.execute(
@@ -155,6 +227,11 @@ class SQLiteStore(Component):
             await self.db.commit()
             self.log.debug(f"wrote {data} to file {self.path}")
 
-    async def write(self, data):
+    async def write(self, data: bytes):
+        """
+        Queue `update` to be written to the ELVA SQLite database.
+
+        Arguments:
+            data: update to queue for writing to disk.
+        """
         await self.stream_send.send(data)
-        # self.stream_send.send_nowait(data)

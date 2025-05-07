@@ -1,55 +1,21 @@
-<img src="./logo/logo.svg" alt="ELVA Logo" width="200"/>
+<h1 align="center">
+  <img src="./logo/logo.svg" alt="ELVA Logo" width="200"/>
+  <p>ELVA</p>
+</h1>
 
-# ELVA
-
-A suite of apps enabling real-time collaboration locally, with CRDTs at its heart ❤️.
-
-ELVA (_Norwegian: the river_, _German abbreviation "Evaluation von Lösungen für verteilte Arbeit"_) is a suite of apps which allow the user to share projects in real-time with other peers in a network.
-
-
-# Installation
-
-In the project's root directory, create a new virtual Python environment (named `env` here) with
-
-```shell
-python -m venv --upgrade-deps env
-```
-
-and call
-
-```shell
-pip install .
-```
-
-to install the `elva` package along with its dependencies.
-
-If you need the developer dependencies as well, use
-
-```shell
-pip install .[dev]
-```
-
-and you will be able to build the documentation and the Python wheel yourself.
+<h6 align="center">
+    <p style="font-style: italic;">Norwegian: "the river", German: "Evaluation von Lösungen für verteilte Arbeit"</p>
+</h6>
 
 
-## Packaging and Publishing
+# Welcome
 
-Currently, `setuptools` is used for building and packaging.
-To be able to build your own Python wheel, run
+This is the source code repository of ELVA, a suite of apps enabling real-time collaboration locally, with CRDTs at its heart ❤️.
 
-```shell
-python -m build
-```
-
-in the project's root directory after installing the development dependencies.
-
-Upload the wheel to PyPI with `twine` like
-
-```shell
-twine upload [-r testpypi] dist/*
-```
-
-by specifing the remote repository with `-r <repository>`, "Test PyPI" in this particular case.
+- If you want to get started using ELVA, head over to our [user guide](https://elva.mintgruen.tu-berlin.de/developer-guide/user-guide.md).
+- You want to run a server? Check out the [server guide](https://elva.mintgruen.tu-berlin.de/developer-guide/server-guide.md).
+- To realize your own app, have a look the our [app guide](https://elva.mintgruen.tu-berlin.de/developer-guide/app-guide.md).
+- Looking for how to contribute? We have some notes for you in our [developer guide](https://elva.mintgruen.tu-berlin.de/developer-guide/developer-guide.md).
 
 ## Licensing
 

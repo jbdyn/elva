@@ -1,0 +1,63 @@
+[data-md-color-scheme] {
+  --doc-symbol-opacity: 0.15;
+
+  --doc-symbol-parameter-fg-color: var(--maroon);
+  --doc-symbol-attribute-fg-color: var(--lavender);
+  --doc-symbol-function-fg-color: var(--blue);
+  --doc-symbol-method-fg-color: var(--blue);
+  --doc-symbol-class-fg-color: var(--yellow);
+  --doc-symbol-module-fg-color: var(--green);
+
+  --doc-symbol-parameter-bg-color:
+    rgb(
+      from var(--doc-symbol-parameter-fg-color)
+      r g b
+      / var(--doc-symbol-opacity)
+    );
+  --doc-symbol-attribute-bg-color:
+    rgb(
+      from var(--doc-symbol-attribute-fg-color)
+      r g b
+      / var(--doc-symbol-opacity)
+    );
+  --doc-symbol-function-bg-color:
+    rgb(
+      from var(--doc-symbol-function-fg-color)
+      r g b
+      / var(--doc-symbol-opacity)
+    );
+  --doc-symbol-method-bg-color:
+    rgb(
+      from var(--doc-symbol-method-fg-color)
+      r g b
+      / var(--doc-symbol-opacity)
+    );
+  --doc-symbol-class-bg-color:
+    rgb(
+      from var(--doc-symbol-class-fg-color)
+      r g b
+      / var(--doc-symbol-opacity)
+    );
+  --doc-symbol-module-bg-color:
+    rgb(
+      from var(--doc-symbol-module-fg-color)
+      r g b
+      / var(--doc-symbol-opacity)
+    );
+}
+
+.doc-object {
+  margin-bottom: 50pt;
+}
+
+.doc-class:not(.first) {
+  margin-top: 75pt;
+}
+
+.doc-contents {
+  padding-left: 10pt;
+}
+
+.doc-children {
+  margin-top: 35pt;
+}

@@ -5,6 +5,9 @@ dist
 _version.py
 __pycache__
 
+# mkdocs
+site
+
 # PDM
 .pdm-python
 

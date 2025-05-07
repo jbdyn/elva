@@ -1,7 +1,124 @@
 site_name: ELVA
+repo_url: "https://github.com/innocampus/elva"
+repo_name: "GitHub"
+edit_uri: "blob/main/docs/"
+nav:
+  - Welcome: index.md
+  - User Guide: user-guide.md
+  - Server Guide: server-guide.md
+  - App Guide: app-guide.md
+  - Developer Guide: developer-guide.md
+  - Reference:
+      - "reference/index.md"
+      - Apps:
+          - "reference/apps/index.md"
+          - Editor: reference/apps/editor.md
+          - Chat: reference/apps/chat.md
+          - Service: reference/apps/service.md
+          - Server: reference/apps/server.md
+          - Drive: reference/apps/drive.md
+      - Widgets:
+          - "reference/widgets/index.md"
+          - TextArea: reference/widgets/textarea.md
+          - Config: reference/widgets/config.md
+          - Status: reference/widgets/status.md
+          - Screens: reference/widgets/screens.md
+      - CLI: reference/cli.md
+      - CLI Utils: reference/utils.md
+      - Click Utilities: reference/click-utils.md
+      - Click Lazy Loading Group: reference/click-lazy-group.md
+      - Component: reference/component.md
+      - Authentication: reference/auth.md
+      - Server: reference/server.md
+      - Provider: reference/provider.md
+      - Store: reference/store.md
+      - Renderer: reference/renderer.md
+      - Protocol: reference/protocol.md
+      - Parser: reference/parser.md
+      - Log: reference/log.md
+  - Changelog: changelog.md
+  - Stories: stories/index.md
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/innocampus/elva
+    - icon: innocampus-icon
+      link: https://www.tu.berlin/innocampus
+extra_css:
+  - css/mkdocs-material.css
+  - css/mkdocstrings.css
+hooks:
+  - mkdocs/hooks/changelog.py
+watch:
+  - src/elva
 theme:
+  features:
+    - navigation.tabs
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - navigation.expand
+    - toc.integrate
+    - content.code.copy
   name: material
+  custom_dir: mkdocs/overrides
+  favicon: img/logo.svg
+  logo: img/logo.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: elva-light 
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: elva-dark
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
 plugins:
-- search
-- autoref
-- mkdocstrings
+  - blog:
+      blog_dir: stories
+      blog_toc: true
+      post_url_format: "{slug}"
+      post_readtime: false
+      archive: false
+  - search
+  - autorefs
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            summary: true
+            merge_init_into_class: true
+            members_order: source
+            docstring_section_style: list
+            # exclude private methods and attributes
+            filters: ["!^_[\\s]+"]
+          inventories:
+            - "https://docs.python.org/3/objects.inv"
+            - "https://textual.textualize.io/objects.inv"
+            - "https://y-crdt.github.io/pycrdt/objects.inv"
+            - "https://click.palletsprojects.com/en/stable/objects.inv"
+            - "https://anyio.readthedocs.io/en/stable/objects.inv"
+            - "https://websockets.readthedocs.io/en/stable/objects.inv"
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      options:
+        custom_icons:
+           - mkdocs/overrides/.icons
