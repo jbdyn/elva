@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Change `README.md` to link to the documentation
 - Switch from `pdm` to `uv` for package management
 - Use tree-sitter-language-pack instead of py-tree-sitter-languages
+- Update `pyproject.toml` according to spec
 
 ### Fixed
 
