@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# Run the `pre-commit` hook on successful automatic merge.
+#
+# In the project root, run
+#
+# $ ln -sf ../../git/hooks/pre-merge-commit .git/hooks/pre-merge-commit
+#
+# to enable the `pre-merge-commit` hook.
+
+GIT_PRE_COMMIT="$GIT_DIR/hooks/pre-commit"
+test -x "$GIT_PRE_COMMIT" && exec "$GIT_PRE_COMMIT"
