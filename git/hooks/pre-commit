@@ -1,5 +1,32 @@
 #!/bin/sh
+
+###
+#
+# In the project root, run
+#
+# $ ln -sf ../../git/hooks/pre-commit ./.git/hooks/pre-commit
+#
+# to enable automatic linting and code formatting.
+# However, when about to commit on branch `main`, just let all tests pass
+# and don't change anything.
+#
+# On successful automatic merge, this hook gets executed by the
+# `pre-merge-commit` hook. When the automatic merge fails, this hook
+# will be directly executed instead.
+# Thereby, this hook then needs to cover both cases: development on a
+# feature branch and merging on the `main` branch.
+
+# exit on first non-zero return code
 set -e
 
-ruff check
-ruff format
+if test "$(git branch --show-current)" == "main"; then
+  # we are likely merging right now;
+  # just check if everything is working as expected
+  ruff check --no-fix
+  ruff format --check
+else
+  # running on a feature branch;
+  # format instantly, but don't run any tests
+  ruff check --fix
+  ruff format
+fi
