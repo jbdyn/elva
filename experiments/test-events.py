@@ -3,17 +3,20 @@ from editor import Store
 import anyio
 import signal
 
+
 def signal_handler(signum, frame):
     print(f"You raised a SigInt! Signal handler called with signal {signum}")
     print("exiting...")
     exit()
 
+
 signal.signal(signal.SIGINT, signal_handler)
+
 
 async def main():
     ydoc = Doc()
     ydoc["text"] = ytext = Text()
-    store = Store('.', "test", ydoc)
+    store = Store(".", "test", ydoc)
 
     def text_callback(event):
         print("__class__", event.__class__)
@@ -21,7 +24,6 @@ async def main():
         print("target", event.target)
         print("delta", event.delta)
         print("path", event.path)
-
 
     ytext.observe(text_callback)
 
@@ -41,9 +43,10 @@ async def main():
             await store.apply_updates()
         except Exception as e:
             print(e)
-            
+
         ytext += "test"
         await anyio.sleep_forever()
         signal.raise_signal(signal.SIGINT)
+
 
 anyio.run(main)

@@ -119,7 +119,7 @@ class MessageList(VerticalScroll):
         Returns:
             a message view to be mounted inside an instance of this class.
         """
-        author = f"{message["author_display"]} ({message["author"]})"
+        author = f"{message['author_display']} ({message['author']})"
         text = message["text"]
         if message_id is None:
             message_id = "id" + message["id"]

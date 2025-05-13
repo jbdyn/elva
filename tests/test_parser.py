@@ -2,13 +2,12 @@ from typing import Union
 
 import anyio
 import pytest
-from pycrdt import Array, ArrayEvent, Doc, Map, MapEvent, Text, TextEvent
-
 from elva.parser import (
     ArrayEventParser,
     MapEventParser,
     TextEventParser,
 )
+from pycrdt import Array, ArrayEvent, Doc, Map, MapEvent, Text, TextEvent
 
 DELAY = 0.01  # seconds
 
@@ -60,7 +59,7 @@ async def test_text_event_parser():
         text += "test"
         assert str(text) == "test"
         event = holder.event
-        assert type(event) == TextEvent
+        assert isinstance(event, TextEvent)
 
         await text_event_parser.parse(event)
         # wait for parsing to finish
@@ -75,7 +74,7 @@ async def test_text_event_parser():
         text += "test"
         assert str(text) == "testtest"
         event = holder.event
-        assert type(event) == TextEvent
+        assert isinstance(event, TextEvent)
 
         await text_event_parser.parse(event)
         # wait for parsing to finish
@@ -91,7 +90,7 @@ async def test_text_event_parser():
         del text[2:]
         assert str(text) == "te"
         event = holder.event
-        assert type(event) == TextEvent
+        assert isinstance(event, TextEvent)
 
         await text_event_parser.parse(event)
         # wait for parsing to finish
@@ -125,7 +124,7 @@ async def test_array_event_parser():
         array.extend([1, 2, 3])
         assert array.to_py() == [1.0, 2.0, 3.0]
         event = holder.event
-        assert type(event) == ArrayEvent
+        assert isinstance(event, ArrayEvent)
 
         await array_event_parser.parse(event)
         # wait for parsing to finish
@@ -140,7 +139,7 @@ async def test_array_event_parser():
         array.insert(2, 10)
         assert array.to_py() == [1.0, 2.0, 10.0, 3.0]
         event = holder.event
-        assert type(event) == ArrayEvent
+        assert isinstance(event, ArrayEvent)
 
         await array_event_parser.parse(event)
         # wait for parsing to finish
@@ -156,7 +155,7 @@ async def test_array_event_parser():
         array.pop(1)
         assert array.to_py() == [1.0, 10.0, 3.0]
         event = holder.event
-        assert type(event) == ArrayEvent
+        assert isinstance(event, ArrayEvent)
 
         await array_event_parser.parse(event)
         # wait for parsing to finish
@@ -188,7 +187,7 @@ async def test_map_event_parser():
         map.update({"foo": "bar", "baz": "faz"})
         assert map.to_py() == {"foo": "bar", "baz": "faz"}
         event = holder.event
-        assert type(event) == MapEvent
+        assert isinstance(event, MapEvent)
 
         await map_event_parser.parse(event)
         # wait for parsing to finish
@@ -207,7 +206,7 @@ async def test_map_event_parser():
         map.pop("foo")
         assert map.to_py() == {"baz": "faz"}
         event = holder.event
-        assert type(event) == MapEvent
+        assert isinstance(event, MapEvent)
 
         await map_event_parser.parse(event)
         # wait for parsing to finish

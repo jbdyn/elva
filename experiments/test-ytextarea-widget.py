@@ -26,6 +26,7 @@ class UI(App):
             yield self.text_area
             yield Markdown("# TEST")
 
+
 if __name__ == "__main__":
     app = UI()
     app.run()

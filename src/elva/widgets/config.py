@@ -845,7 +845,7 @@ class QRCodeView(ConfigView):
         """
         with Grid():
             yield Label(self.name or "")
-            yield Button("C", id=f"copy-{self.name or "qrcode"}")
+            yield Button("C", id=f"copy-{self.name or 'qrcode'}")
             yield self.widget
 
     def on_button_pressed(self, message: Message):

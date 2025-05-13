@@ -1,19 +1,21 @@
 import asyncio
+import sys
+
 import y_py as Y
 from websockets import connect
 from ypy_websocket import WebsocketProvider
-import sys
-from functools import partial
+
 
 def callback(event):
     target = event.target
     print(target.to_json())
 
+
 async def client(name):
     ydoc = Y.YDoc()
     async with (
         connect("ws://localhost:1234/my-roomname") as websocket,
-        WebsocketProvider(ydoc, websocket) as provider,
+        WebsocketProvider(ydoc, websocket),
     ):
         # Changes to remote ydoc are applied to local ydoc.
         # Changes to local ydoc are sent over the WebSocket and
@@ -32,6 +34,7 @@ async def client(name):
             i += 1
 
         await asyncio.Future()  # run forever
+
 
 name = sys.argv[1]
 asyncio.run(client(name))

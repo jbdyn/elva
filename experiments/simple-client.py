@@ -31,7 +31,7 @@ async def main():
             print(type(exc), exc)
             try:
                 print(exc.headers)
-            except:
+            except AttributeError:
                 pass
             print("exiting")
             break

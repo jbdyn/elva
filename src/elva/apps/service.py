@@ -332,7 +332,7 @@ def cli(ctx: click.Context, host: str, port: int):
     pr = urlparse(c["server"])
     if pr.hostname == host and pr.port == port:
         raise click.BadArgumentUsage(
-            f"remote server address '{c["server"]}' is identical to service address 'ws://{host}:{port}'"
+            f"remote server address '{c['server']}' is identical to service address 'ws://{host}:{port}'"
         )
 
     # logging

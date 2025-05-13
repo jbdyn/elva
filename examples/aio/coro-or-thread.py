@@ -3,11 +3,13 @@ import random
 import time
 import queue
 
+
 def connect(connected):
     print("? connecting to server...")
     time.sleep(10)
     print("! connection established")
     anyio.from_thread.run_sync(connected.set)
+
 
 def send(q):
     while True:
@@ -15,7 +17,7 @@ def send(q):
         print("> |  syncing file", file)
         time.sleep(random.randint(2, 5))
         print("> |- finished syncing file", file)
-  
+
 
 async def sync(connected, q):
     await connected.wait()
@@ -30,8 +32,10 @@ async def detect(q):
         await anyio.sleep(random.randint(1, 1))
         i += 1
 
+
 async def aconnect(connected):
     await anyio.to_thread.run_sync(connect, connected)
+
 
 async def main():
     connected = anyio.Event()
@@ -41,4 +45,5 @@ async def main():
         tg.start_soon(detect, q)
         tg.start_soon(sync, connected, q)
 
-anyio.run(main)        
+
+anyio.run(main)
