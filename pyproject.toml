@@ -103,6 +103,7 @@ dev = [
     "mkdocs-material",
     "mkdocstrings-python",
     "pyinstrument",
+    "coverage",
 ]
 
 logo = [
