@@ -75,6 +75,7 @@ class Component:
         return self._start_lock
 
     async def __aenter__(self):
+        self.log.info("starting")
         async with self._get_start_lock():
             if self._task_group is not None:
                 raise RuntimeError(f"{self} already running")
