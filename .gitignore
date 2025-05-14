@@ -17,3 +17,7 @@ site
 
 # ELVA
 elva.toml
+
+# coverage.py
+.coverage*
+!.coveragerc
