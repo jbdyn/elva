@@ -1,11 +1,14 @@
 import asyncio
-from websockets import serve
+
 from pycrdt_websocket import WebsocketServer
+from websockets import serve
+
 
 def callback(event):
     print("server observed doc changes")
     print(event)
     return False
+
 
 async def server():
     async with (
@@ -17,5 +20,6 @@ async def server():
         print(f"Room is ready: {room.ready}")
         room.on_message = callback
         await asyncio.Future()  # run forever
+
 
 asyncio.run(server())

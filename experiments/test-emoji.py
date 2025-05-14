@@ -6,7 +6,7 @@ ydoc = Doc()
 ytext = Text()
 ydoc["text"] = ytext
 
-state = ""            # track state of ytext
+state = ""  # track state of ytext
 
 
 def callback(event):
@@ -33,11 +33,10 @@ assert state == "🌴"
 
 # given index is for Unicode code points
 # but callback returns length of individual bytes in delta
-del ytext[0:len(str(ytext)[:1].encode())]
+del ytext[0 : len(str(ytext)[:1].encode())]
 assert state == ""
 
 print("\nInsert '🌴abcde' sequentially")
 for c, char in enumerate("🌴abcde"):
     ytext.insert(len(str(ytext)[:c].encode()), char)
 assert state == "🌴abcde"
-

@@ -1,4 +1,3 @@
-import click
 from textual.app import App
 from textual.containers import Grid
 from textual.screen import ModalScreen

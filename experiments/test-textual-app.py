@@ -7,8 +7,10 @@ def main():
     # app is active from here on and
     # widgets can be initialized
     widget = TextArea()
+    print(widget)
 
     # no need to initialize a widget after run
     app.run()
+
 
 main()

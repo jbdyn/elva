@@ -23,7 +23,6 @@ if __name__ == "__main__":
     # add handler to module logger
     log = logging.getLogger(__name__)
     log.addHandler(handler)
-
 ```
 """
 

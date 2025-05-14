@@ -1,5 +1,6 @@
-from elva.document import YDocument
 from pycrdt import Doc, Text
+
+from elva.document import YDocument
 
 doc = Doc()
 text = Text()
