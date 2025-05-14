@@ -1,8 +1,9 @@
 import asyncio
-from pycrdt import Doc
+
 from jupyter_ydoc import YBlob
-from websockets import connect
+from pycrdt import Doc
 from pycrdt_websocket import WebsocketProvider
+from websockets import connect
 
 
 async def client():

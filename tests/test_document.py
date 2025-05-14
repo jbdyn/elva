@@ -1,8 +1,8 @@
 import pytest
+from pycrdt import Doc, Text
 
 # from textual.widgets.text_area import Document
 from elva.document import YDocument as Document
-from pycrdt import Doc, Text
 
 TEXT = """I must not fear.
 Fear is the mind-killer."""

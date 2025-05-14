@@ -1,15 +1,14 @@
 import asyncio
+import json
+import os
+import sys
+import time
 from pathlib import Path
 from typing import Optional
-import time
-import sys
-import os
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
-
 from y_py import YDoc
-import json
 
 
 class YTreeHandler:

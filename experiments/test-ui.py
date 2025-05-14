@@ -1,6 +1,6 @@
+from anyio import create_task_group, run
 from textual.app import App
 from textual.widgets import TextArea
-from anyio import run, create_task_group
 
 
 class TestApp(App):

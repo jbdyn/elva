@@ -2,12 +2,13 @@ from typing import Union
 
 import anyio
 import pytest
+from pycrdt import Array, ArrayEvent, Doc, Map, MapEvent, Text, TextEvent
+
 from elva.parser import (
     ArrayEventParser,
     MapEventParser,
     TextEventParser,
 )
-from pycrdt import Array, ArrayEvent, Doc, Map, MapEvent, Text, TextEvent
 
 DELAY = 0.01  # seconds
 

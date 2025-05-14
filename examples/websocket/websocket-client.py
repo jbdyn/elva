@@ -1,8 +1,9 @@
-import anyio
-from anyio.streams.file import FileReadStream
-import websockets
-import sys
 import os
+import sys
+
+import anyio
+import websockets
+from anyio.streams.file import FileReadStream
 
 
 async def send(socket):

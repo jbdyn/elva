@@ -1,7 +1,8 @@
-from pycrdt import Doc, Text
-from editor import Store
-import anyio
 import signal
+
+import anyio
+from editor import Store
+from pycrdt import Doc, Text
 
 
 def signal_handler(signum, frame):

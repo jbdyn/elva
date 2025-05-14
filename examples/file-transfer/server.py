@@ -1,6 +1,7 @@
 import asyncio
-from websockets import serve
+
 from pycrdt_websocket import WebsocketServer
+from websockets import serve
 
 
 def callback(event):

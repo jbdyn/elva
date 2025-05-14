@@ -1,6 +1,7 @@
+import sys
+
 import anyio
 import websockets
-import sys
 
 
 async def send(socket):

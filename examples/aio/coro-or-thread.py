@@ -1,7 +1,8 @@
-import anyio
+import queue
 import random
 import time
-import queue
+
+import anyio
 
 
 def connect(connected):
