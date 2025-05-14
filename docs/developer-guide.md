@@ -5,13 +5,19 @@
 With [`git`](https://git-scm.com/) fork the project on GitHub if you want to contribute and clone this fork locally with 
 
 ```sh
-git clone <url-of-your-forked-elva-project>
+git clone <url-of-your-forked-elva-project> ./elva
 ```
 
 or directly clone the project into your desired location with
 
 ```sh
-git clone https://github.com/innocampus/elva <location>
+git clone https://github.com/innocampus/elva ./elva
+```
+
+Change into the created directory with
+
+```sh
+cd ./elva
 ```
 
 Then run
@@ -28,9 +34,26 @@ If you want to work on the logo, you will need to install the dependencies from 
 uv pip install .[logo]
 ```
 
+Additionally, run the `developer-setup.py` for symlinking the shipped git hooks into your local repository:
+
+```sh
+python developer-setup.py
+```
+
+This ensures that your code adheres to the project style.
+Alternatively, you could of course just create the symlinks yourself:
+
+```sh
+ln -sf ../../git/hooks/pre-commit .git/hooks/pre-commit
+ln -sf ../../git/hooks/pre-merge-commit .git/hooks/pre-merge-commit
+```
+
+
+
 
 ## Orientation
 
+- We use [`ruff`](https://astral.sh/ruff) for linting and code formatting.
 - We use [`git-cliff`](https://git-cliff.org/) in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format for changelog drafting and [`mkdocs`](https://www.mkdocs.org/) for documentation.
 - This project ships both: The end-user facing code in `src/elva/apps` and the developer-facing library in `src/elva`.
 - We follow the [GitHub flow](https://docs.github.com/de/get-started/using-github/github-flow) for collaboration.
