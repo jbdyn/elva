@@ -1,4 +1,4 @@
-from elva.document import (
+from elva.widgets.textarea import (
     get_binary_index_from_location,
     get_index_from_location,
     get_lines,
@@ -13,6 +13,12 @@ BTEXT = TEXT.encode()
 def test_get_lines():
     lines = get_lines("")
     assert lines == [""]
+
+    lines = get_lines("\r\n\r\n")
+    assert lines == ["", "", ""]
+
+    lines = get_lines("\n\r\r\n")
+    assert lines == ["", "", "", ""]
 
     lines = get_lines(TEXT)
     assert lines == ["foo", "bar", "baz", ""]
@@ -34,8 +40,23 @@ def test_get_index_from_location():
     index = get_index_from_location("\r\n\r\n", (2, 0))
     assert index == 4
 
-    index = get_index_from_location("", (0, 0))
+    index = get_index_from_location("\r\n\r\n", (10, 0))
+    assert index == 4
+
+    index = get_index_from_location("\n\r\r\n", (0, 0))
     assert index == 0
+
+    index = get_index_from_location("\n\r\r\n", (1, 0))
+    assert index == 1
+
+    index = get_index_from_location("\n\r\r\n", (2, 0))
+    assert index == 2
+
+    index = get_index_from_location("\n\r\r\n", (3, 0))
+    assert index == 4
+
+    index = get_index_from_location("\n\r\r\n", (10, 0))
+    assert index == 4
 
     index = get_index_from_location(TEXT, (0, 0))
     assert index == 0
@@ -62,6 +83,12 @@ def test_get_location_from_index():
     location = get_location_from_index("", 10)
     assert location == (0, 0)
 
+    location = get_location_from_index("\r\n\r\n", 0)
+    assert location == (0, 0)
+
+    location = get_location_from_index("\r\n\r\n", 1)
+    assert location == (0, 0)
+
     location = get_location_from_index("\r\n\r\n", 2)
     assert location == (1, 0)
 
@@ -70,6 +97,27 @@ def test_get_location_from_index():
 
     location = get_location_from_index("\r\n\r\n", 4)
     assert location == (2, 0)
+
+    location = get_location_from_index("\r\n\r\n", 10)
+    assert location == (2, 0)
+
+    location = get_location_from_index("\n\r\r\n", 0)
+    assert location == (0, 0)
+
+    location = get_location_from_index("\n\r\r\n", 1)
+    assert location == (1, 0)
+
+    location = get_location_from_index("\n\r\r\n", 2)
+    assert location == (2, 0)
+
+    location = get_location_from_index("\n\r\r\n", 3)
+    assert location == (2, 0)
+
+    location = get_location_from_index("\n\r\r\n", 4)
+    assert location == (3, 0)
+
+    location = get_location_from_index("\n\r\r\n", 10)
+    assert location == (3, 0)
 
     location = get_location_from_index(TEXT, 0)
     assert location == (0, 0)
@@ -95,10 +143,14 @@ def test_get_location_from_index():
     location = get_location_from_index(TEXT, len(TEXT))
     assert location == (3, 0)
 
-    location = get_location_from_index(TEXT, 100)
+    location = get_location_from_index(TEXT, len(TEXT) * 2)
     assert location == (3, 0)
 
 
 def test_get_location_from_binary_index():
     location = get_location_from_binary_index(b"", 0)
     assert location == (0, 0)
+
+
+def test_get_text_range():
+    pass

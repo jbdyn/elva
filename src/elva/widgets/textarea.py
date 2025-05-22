@@ -110,25 +110,32 @@ def get_location_from_index(text: str, index: int) -> tuple[int, int]:
     text = text[: index + 1]
 
     out_of_bounds = index + 1 > len(text)
-    ends_with_newline = text.endswith(tuple(VALID_NEWLINES))
+
+    lines = get_lines(text, keepends=True)
+
+    if lines[-1] == "" and len(lines) > 1 and not out_of_bounds:
+        lines.pop(-1)
+
+    last_line = lines[-1]
+
+    ends_with_newline = last_line.endswith(tuple(VALID_NEWLINES))
+
+    # remove trailing newline characters in the last line for counting
+    last_line = last_line.removesuffix("\n").removesuffix("\r")
 
     before_newline = not ends_with_newline
     on_newline = ends_with_newline and not out_of_bounds
     after_newline = ends_with_newline and out_of_bounds
 
+    row_off = 0
     col_off = 0
-    if on_newline:
-        # only remove trailing newline characters in the last line
-        text = text.removesuffix("\n").removesuffix("\r")
+    if on_newline or (before_newline and out_of_bounds):
         col_off = 1
-    elif after_newline or (before_newline and out_of_bounds):
+    elif after_newline:
+        row_off = 1
         col_off = 1
 
-    lines = get_lines(text, keepends=True)
-
-    last_line = lines[-1]
-
-    row = len(lines) - 1
+    row = len(lines) - 1 + row_off
     col = len(last_line) - 1 + col_off
 
     return row, col
@@ -162,15 +169,21 @@ def get_index_from_location(text: str, location: tuple[int, int]) -> int:
     """
     row, col = location
 
-    # be ignorant about the type of newline characters
     lines = get_lines(text, keepends=True)
 
-    # include given row and col indices
+    # include given row
     lines = lines[: row + 1]
 
     last_line = lines[-1].rstrip(NEWLINE_CHARS)
 
     col_off = 0
+
+    # we exceed the number of lines available;
+    # set cursor at the end of the last available line
+    if row >= len(lines):
+        col = len(last_line)
+
+    # the cursor is set after any present characters
     if not last_line or col >= len(last_line):
         col_off = 1
 
@@ -296,7 +309,7 @@ def get_binary_location_from_binary_index(btext: bytes, bindex: int) -> tuple[in
 
 
 class YDocument(DocumentBase):
-    """
+    r"""
     The inner document holding the realtime synchronized content.
 
     It supports indexing and implements the asynchronous iterator protocol.
@@ -307,7 +320,7 @@ class YDocument(DocumentBase):
         Indexing:
 
         ```
-        text = r"Hello,\\nWorld!"
+        text = r"Hello,\nWorld!"
         ytext = Text(text)
         doc = YDocument(ytext, "python")
         assert doc[0] == "Hello,"
@@ -338,7 +351,7 @@ class YDocument(DocumentBase):
     syntax_enabled: bool
     """Flag whether to apply tree-sitter queries."""
 
-    def __init__(self, ytext: Text, language: str):
+    def __init__(self, ytext: Text, language: None | str = None):
         """
         Arguments:
             ytext: Y text data type holding the document content.
@@ -350,12 +363,15 @@ class YDocument(DocumentBase):
         self._newline = _detect_newline_style(str(ytext))
         self.edits = Queue()
 
-        try:
-            self.language = get_language(language)
-            self.parser = get_parser(language)
-            self.tree = self.parser.parse(self.get_btext_slice)
-            self.syntax_enabled = True
-        except LookupError:
+        if language is not None:
+            try:
+                self.language = get_language(language)
+                self.parser = get_parser(language)
+                self.tree = self.parser.parse(self.get_btext_slice)
+                self.syntax_enabled = True
+            except LookupError:
+                self.syntax_enabled = False
+        else:
             self.syntax_enabled = False
 
     ##
