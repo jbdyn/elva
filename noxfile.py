@@ -123,7 +123,8 @@ def tests(session, websockets, textual):
     venv_backend=BACKEND,
 )
 @nox.parametrize(
-    "python", PYTHON[-1],
+    "python",
+    PYTHON[-1],
 )
 def coverage(session):
     NAME = Path(session._runner.envdir).stem
