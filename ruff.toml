@@ -19,4 +19,5 @@ select = [
   "E9",   # pycodestyle, Error
   "F",    # Pyflakes
   "I",    # isort
+  "W291", # trailing whitespace
 ]
