@@ -3,15 +3,100 @@ Module holding store components.
 """
 
 import sqlite3
-import uuid
 
 import sqlite_anyio as sqlite
-from anyio import Event, Lock, Path, create_memory_object_stream
+from anyio import (
+    TASK_STATUS_IGNORED,
+    CancelScope,
+    Event,
+    Lock,
+    Path,
+    create_memory_object_stream,
+)
+from anyio.abc import TaskStatus
+from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from pycrdt import Doc, Subscription, TransactionEvent
+from sqlite_anyio.sqlite import Connection, Cursor
 
 from elva.component import Component
 
 # TODO: check performance
+
+
+def get_metadata(path: str | Path) -> dict:
+    """
+    Retrieve metadata from a given ELVA SQLite database.
+
+    Arguments:
+        path: path to the ELVA SQLite database.
+
+    Raises:
+        sqlite3.OperationalError: if there is no `metadata` table in the database.
+
+    Returns:
+        mapping of metadata keys to values.
+    """
+    db = sqlite3.connect(path)
+    cur = db.cursor()
+
+    try:
+        res = cur.execute("SELECT * FROM metadata")
+    except sqlite3.OperationalError:
+        # no existing `metadata` table, hence no ELVA SQLite database
+        db.close()
+        raise
+    else:
+        res = dict(res.fetchall())
+    finally:
+        db.close()
+
+    return res
+
+
+def set_metadata(path: str | Path, metadata: dict[str, str], replace: bool = False):
+    """
+    Set `metadata` in an ELVA SQLite database at `path`.
+
+    Arguments:
+        path: path to the ELVA SQLite database.
+        metadata: mapping of metadata keys to values.
+        replace: flag whether to just insert or update keys (`False`) or to delete absent keys as well (`True`).
+    """
+    db = sqlite3.connect(path)
+    cur = db.cursor()
+
+    try:
+        if replace:
+            cur.execute("DROP TABLE IF EXISTS metadata")
+
+        # ensure `metadata` table with `key` being primary, i.e. unique
+        cur.execute("CREATE TABLE IF NOT EXISTS metadata(key PRIMARY KEY, value)")
+
+        for key, value in metadata.items():
+            # check for each item separately
+            try:
+                # insert non-existing `key` with `value`
+                cur.execute(
+                    "INSERT INTO metadata VALUES (?, ?)",
+                    (key, value),
+                )
+            except sqlite3.IntegrityError:  # `UNIQUE` constraint failed
+                # update existing `key` with value
+                cur.execute(
+                    "UPDATE metadata SET value = ? WHERE key = ?",
+                    (value, key),
+                )
+
+        # commit the changes
+        db.commit()
+    except sqlite3.OperationalError:
+        # something went wrong, so we need to close the database cleanly
+        db.close()
+
+        # reraise for the application to handle this
+        raise
+    finally:
+        db.close()
 
 
 class SQLiteStore(Component):
@@ -31,11 +116,23 @@ class SQLiteStore(Component):
     initialized: Event
     """Event being set when the SQLite database is ready to be read."""
 
-    lock: Lock
+    _lock: Lock
     """Object for restricted resource management."""
 
-    subscription: Subscription
-    """Object holding subscription information to changes in [`ydoc`][elva.store.SQLiteStore.ydoc]."""
+    _subscription: Subscription
+    """(while running) Object holding subscription information to changes in [`ydoc`][elva.store.SQLiteStore.ydoc]."""
+
+    _stream_send: MemoryObjectSendStream
+    """(while running) Stream to send Y Document updates or flow control objects to."""
+
+    _stream_recv: MemoryObjectReceiveStream
+    """(while running) Stream to receive Y Document updates or flow control objects from."""
+
+    _db: Connection
+    """(while running) SQLite connection to the database file at [`path`][elva.store.SQLiteStore.path]."""
+
+    _cursor: Cursor
+    """(while running) SQLite cursor operating on the [`_db`][elva.store.SQLiteStore._db] connection."""
 
     def __init__(self, ydoc: Doc, identifier: str, path: str):
         """
@@ -47,63 +144,55 @@ class SQLiteStore(Component):
         self.ydoc = ydoc
         self.identifier = identifier
         self.path = Path(path)
-        self.initialized = None
-        self.lock = Lock()
+        self.initialized = Event()
+        self._lock = Lock()
 
-    @staticmethod
-    def get_metadata(path: str) -> dict:
+    async def get_metadata(self) -> dict:
         """
         Retrieve metadata from a given ELVA SQLite database.
-
-        Arguments:
-            path: path to the ELVA SQLite database.
 
         Returns:
             mapping of metadata keys to values.
         """
-        db = sqlite3.connect(path)
-        cur = db.cursor()
-        try:
-            res = cur.execute("SELECT * FROM metadata")
-        except Exception:
-            res = dict()
-        else:
-            res = dict(res.fetchall())
-        finally:
-            db.close()
+        await self._wait_initialized()
 
-        return res
+        async with self._lock:
+            await self._cursor.execute("SELECT * FROM metadata")
+            res = await self._cursor.fetchall()
 
-    @staticmethod
-    def set_metadata(path: str, metadata: dict[str, str]):
+        return dict(res)
+
+    async def set_metadata(self, metadata: dict, replace: bool = False):
         """
         Set given metadata in a given ELVA SQLite database.
 
         Arguments:
-            path: path to the ELVA SQLite database.
             metadata: mapping of metadata keys to values.
+            replace: flag whether to just insert or update keys (`False`) or to delete absent keys as well (`True`).
         """
-        db = sqlite3.connect(path)
-        cur = db.cursor()
-        try:
-            try:
-                cur.executemany(
-                    "INSERT INTO metadata VALUES (?, ?)",
-                    list(metadata.items()),
-                )
-            except Exception:  # IntegrityError, UNIQUE constraint failed
-                cur.executemany(
-                    "UPDATE metadata SET value = ? WHERE key = ?",
-                    list(zip(metadata.values(), metadata.keys())),
-                )
-            db.commit()
-        except Exception:
-            db.close()
-            raise
-        else:
-            db.close()
+        await self._wait_initialized()
 
-    def callback(self, event: TransactionEvent):
+        async with self._lock:
+            if replace:
+                await self._cursor.execute("DELETE FROM metadata")
+
+            for key, value in metadata.items():
+                # check for each item separately
+                try:
+                    await self._cursor.execute(
+                        "INSERT INTO metadata VALUES (?, ?)", (key, value)
+                    )
+                except sqlite3.IntegrityError:
+                    await self._cursor.execute(
+                        "UPDATE metadata SET value = ? WHERE key = ?", (value, key)
+                    )
+
+            await self._db.commit()
+
+        # ensure to update the identifier if given
+        self.identifier = metadata.get("identifier", None) or self.identifier
+
+    def _on_transaction_event(self, event: TransactionEvent):
         """
         Hook called on changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
 
@@ -112,56 +201,165 @@ class SQLiteStore(Component):
         Arguments:
             event: object holding event information of changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
         """
-        self._task_group.start_soon(self.write, event.update)
+        self.log.debug(f"transaction event triggered with update {event.update}")
+        self._stream_send.send_nowait(event.update)
 
-    async def _provide_update_table(self):
-        async with self.lock:
-            await self.cursor.execute(
-                "CREATE TABLE IF NOT EXISTS yupdates(yupdate BLOB)"
-            )
-            await self.db.commit()
-            self.log.debug("ensured update table")
+    async def _wait_initialized(self):
+        """
+        Hook called by `_read` and `_write` hooks to ensure the `initialized` event is set.
+        """
+        if self.started is None:
+            raise RuntimeError(f"{self} not started")
 
-    async def _provide_metadata_table(self):
-        async with self.lock:
-            await self.cursor.execute(
+        await self.initialized.wait()
+
+    async def _ensure_metadata_table(self):
+        """
+        Hook called before the store sets its `started` signal to ensure a table `metadata` exists.
+        """
+        async with self._lock:
+            await self._cursor.execute(
                 "CREATE TABLE IF NOT EXISTS metadata(key PRIMARY KEY, value)"
             )
-            await self.db.commit()
+            await self._db.commit()
             self.log.debug("ensured metadata table")
 
     async def _ensure_identifier(self):
-        async with self.lock:
+        """
+        Hook called before the store sets its `started` signal to ensure the UUID of the YDoc contents is saved.
+        """
+        if self.identifier is None:
+            return
+
+        async with self._lock:
             try:
-                # insert given or generated identifier
-                if self.identifier is None:
-                    self.identifier = str(uuid.uuid4())
-                await self.cursor.execute(
+                # insert non-existing identifier
+                await self._cursor.execute(
                     "INSERT INTO metadata VALUES (?, ?)",
                     ["identifier", self.identifier],
                 )
-            except Exception as exc:
-                self.log.error(exc)
+            except sqlite3.IntegrityError:  # UNIQUE constraint failed
                 # update existing identifier
-                if self.identifier is not None:
-                    await self.cursor.execute(
-                        "UPDATE metadata SET value = ? WHERE key = ?",
-                        [self.identifier, "identifier"],
-                    )
+                await self._cursor.execute(
+                    "UPDATE metadata SET value = ? WHERE key = ?",
+                    [self.identifier, "identifier"],
+                )
             finally:
-                await self.db.commit()
+                await self._db.commit()
 
-    async def _init_db(self):
-        self.log.debug("initializing database")
-        self.initialized = Event()
-        self.db = await sqlite.connect(self.path)
-        self.cursor = await self.db.cursor()
+        self.log.debug("ensured identifier")
+
+    async def _ensure_update_table(self):
+        """
+        Hook called before the store sets its `started` signal to ensure a table `yupdates` exists.
+        """
+        async with self._lock:
+            await self._cursor.execute(
+                "CREATE TABLE IF NOT EXISTS yupdates(yupdate BLOB)"
+            )
+            await self._db.commit()
+            self.log.debug("ensured update table")
+
+    async def _initialize_database(self):
+        """
+        Hook initializing the database, i.e. ensuring the presence of connection and the ELVA SQL database scheme.
+        """
+        # connect
+        self._db = await sqlite.connect(self.path)
+        self._cursor = await self._db.cursor()
         self.log.debug(f"connected to database {self.path}")
-        await self._provide_metadata_table()
+
+        # ensure tables and identifier
+        await self._ensure_metadata_table()
         await self._ensure_identifier()
-        await self._provide_update_table()
+        await self._ensure_update_table()
+
+        # set the initialized event
         self.initialized.set()
         self.log.info("database initialized")
+
+    async def _disconnect_database(self):
+        """
+        Hook closing the database connection if initialized.
+        """
+        if self.initialized.is_set():
+            await self._db.close()
+            self.log.debug("closed database")
+
+            # cleanup closed resources
+            del self._db
+            del self._cursor
+
+    async def _listen(self, task_status: TaskStatus[None] = TASK_STATUS_IGNORED):
+        """
+        Hook listening for updates on [`ydoc`][elva.store.SQLiteStore.ydoc] and
+        calling the [`_write`][elva.store.SQLiteStore._write] hook writing it to the database.
+
+        Arguments:
+            task_status: object signalling whether this task has been started.
+        """
+        # initialize streams
+        self._stream_send, self._stream_recv = create_memory_object_stream(
+            max_buffer_size=65543
+        )
+
+        # writing to file must not be interrupted by cancellation
+        with CancelScope(shield=True):
+            # start streams
+            async with self._stream_send, self._stream_recv:
+                self.log.debug("listening for updates")
+                task_status.started()
+
+                # take actions on updates
+                async for update in self._stream_recv:
+                    self.log.debug(f"received {update}")
+
+                    if update is None:
+                        # the scope of this store's task group has been cancelled
+                        self.log.debug("stop listening for updates")
+                        await self._disconnect_database()
+                        break
+
+                    # write update to file
+                    await self._write(update)
+
+            # cleanup closed resources
+            del self._stream_send
+            del self._stream_recv
+
+    async def _write(self, update: bytes):
+        """
+        Hook writing `update` to the `yupdates` ELVA SQLite database table.
+
+        Arguments:
+            update: the update to write to the ELVA SQLite database file.
+        """
+        await self._wait_initialized()
+
+        async with self._lock:
+            await self._cursor.execute(
+                "INSERT INTO yupdates VALUES (?)",
+                [update],
+            )
+            await self._db.commit()
+            self.log.debug(f"wrote {update} to file {self.path}")
+
+    async def _read(self):
+        """
+        Hook to read in metadata and updates from the ELVA SQLite database and apply them.
+        """
+        await self._wait_initialized()
+
+        async with self._lock:
+            # read updates
+            await self._cursor.execute("SELECT yupdate FROM yupdates")
+            updates = await self._cursor.fetchall()
+            self.log.debug("read updates from file")
+
+            # apply updates
+            for update, *rest in updates:
+                self.ydoc.apply_update(update)
+            self.log.debug("applied updates to YDoc")
 
     async def before(self):
         """
@@ -170,68 +368,26 @@ class SQLiteStore(Component):
         The ELVA SQLite database is being initialized and read.
         Also, the component subscribes to changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
         """
-        await self._init_db()
-        await self.read()
-        self.subscription = self.ydoc.observe(self.callback)
+        # init tables and table content
+        await self._initialize_database()
 
-    async def run(self):
-        """
-        Hook writing data to the ELVA SQLite database.
-        """
-        self.stream_send, self.stream_recv = create_memory_object_stream(
-            max_buffer_size=65543
-        )
-        async with self.stream_send, self.stream_recv:
-            async for data in self.stream_recv:
-                await self._write(data)
+        # read data from file if present
+        await self._read()
+
+        # start watching for updates on the YDoc
+        self._subscription = self.ydoc.observe(self._on_transaction_event)
+
+        # start listening on the update stream
+        await self._task_group.start(self._listen)
 
     async def cleanup(self):
         """
         Hook cancelling subscription to changes and closing the database.
         """
-        self.ydoc.unobserve(self.subscription)
-        if self.initialized.is_set():
-            await self.db.close()
-            self.log.debug("closed database")
+        # unsubscribe from YDoc updates, otherwise transactions will fail
+        self.ydoc.unobserve(self._subscription)
+        del self._subscription
 
-    async def _wait_running(self):
-        if self.started is None:
-            raise RuntimeError("{self} not started")
-        await self.initialized.wait()
-
-    async def read(self):
-        """
-        Hook to read in metadata and updates from the ELVA SQLite database and apply them.
-        """
-        await self._wait_running()
-
-        async with self.lock:
-            await self.cursor.execute("SELECT * FROM metadata")
-            self.metadata = dict(await self.cursor.fetchall())
-            self.log.debug("read metadata from file")
-
-            await self.cursor.execute("SELECT yupdate FROM yupdates")
-            self.log.debug("read updates from file")
-            for update, *rest in await self.cursor.fetchall():
-                self.ydoc.apply_update(update)
-            self.log.debug("applied updates to YDoc")
-
-    async def _write(self, data):
-        await self._wait_running()
-
-        async with self.lock:
-            await self.cursor.execute(
-                "INSERT INTO yupdates VALUES (?)",
-                [data],
-            )
-            await self.db.commit()
-            self.log.debug(f"wrote {data} to file {self.path}")
-
-    async def write(self, data: bytes):
-        """
-        Queue `update` to be written to the ELVA SQLite database.
-
-        Arguments:
-            data: update to queue for writing to disk.
-        """
-        await self.stream_send.send(data)
+        # send signal to stop listening on the update stream and
+        # closing the database connection
+        await self._stream_send.send(None)

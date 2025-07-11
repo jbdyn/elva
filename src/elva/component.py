@@ -4,6 +4,7 @@ Module for generic asynchronous app component.
 
 import logging
 from contextlib import AsyncExitStack
+from typing import Self
 
 from anyio import (
     TASK_STATUS_IGNORED,
@@ -39,7 +40,7 @@ class Component:
     log: logging.Logger
     """Logger instance to write logging messages to."""
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: tuple, **kwargs: dict) -> Self:
         self = super().__new__(cls)
         name = LOGGER_NAME.get(self.__module__)
         self.log = logging.getLogger(f"{name}.{self.__class__.__name__}")
@@ -94,7 +95,7 @@ class Component:
         await self.stop()
         return await self._exit_stack.__aexit__(exc_type, exc_value, exc_tb)
 
-    async def _run(self, task_status):
+    async def _run(self, task_status: TaskStatus[None] = TASK_STATUS_IGNORED):
         # Handle `run` method gracefully
 
         # start runner and do a shielded cleanup on cancellation
