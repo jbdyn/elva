@@ -2,9 +2,10 @@
 Websocket server classes.
 """
 
+import re
 from http import HTTPStatus
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 import anyio
 from pycrdt import Doc
@@ -15,11 +16,14 @@ from websockets import (
 )
 from websockets.asyncio.client import ClientConnection
 from websockets.asyncio.server import ServerConnection
-from websockets.http11 import Request
+from websockets.datastructures import Headers
+from websockets.http11 import Request, Response
 
 from elva.component import Component
 from elva.protocol import ElvaMessage, YMessage
 from elva.store import SQLiteStore
+
+RE_IDENTIFIER = re.compile(r"^[A-Za-z0-9\-_]{10,250}$")
 
 
 class RequestProcessor:
@@ -27,7 +31,7 @@ class RequestProcessor:
     Collector class of HTTP request processing functions.
     """
 
-    def __init__(self, *funcs: tuple[Callable]):
+    def __init__(self, *funcs: Iterable[Callable]):
         """
         Arguments:
             funcs: HTTP request processing functions.
@@ -36,7 +40,7 @@ class RequestProcessor:
 
     def process_request(
         self, websocket: ServerConnection, request: Request
-    ) -> None | tuple[HTTPStatus, dict[str, str], None | bytes]:
+    ) -> None | Response:
         """
         Process a HTTP request for given functions.
 
@@ -102,7 +106,7 @@ class Room(Component):
         self.persistent = persistent
 
         if path is not None:
-            self.path = path / identifier
+            self.path = path / f"{identifier}.y"
         else:
             self.path = None
 
@@ -440,7 +444,9 @@ class WebsocketServer(Component):
             # keep the server active indefinitely
             await anyio.sleep_forever()
 
-    def check_path(self, websocket: ServerConnection, request: Request):
+    def check_path(
+        self, websocket: ServerConnection, request: Request
+    ) -> None | Response:
         """
         Check if a request path is valid.
 
@@ -449,9 +455,19 @@ class WebsocketServer(Component):
         Arguments:
             websocket: connection object.
             request: HTTP request header object.
+
+        Returns:
+            `None` if an identifier was given, else a [`Response`][websockets.datastructures.Response] with HTTP status 403 (forbidden).
         """
-        if request.path[1:] == "":
-            return HTTPStatus.FORBIDDEN, {}, b""
+        # the request path always includes a `/` as first character
+        path = request.path[1:]
+
+        if not RE_IDENTIFIER.match(path):
+            return Response(
+                status_code=HTTPStatus.FORBIDDEN,
+                headers=Headers(),
+                reason_phrase="Invalid identifier",
+            )
 
     async def get_room(self, identifier: str) -> Room:
         """
