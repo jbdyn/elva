@@ -19,14 +19,31 @@
 # exit on first non-zero return code
 set -e
 
-if test "$(git branch --show-current)" == "main"; then
+if test "$(git branch --show-current)" = "main"; then
   # we are likely merging right now;
   # just check if everything is working as expected
   ruff check --no-fix
   ruff format --check
 else
-  # running on a feature branch;
-  # format instantly, but don't run any tests
-  ruff check --fix
-  ruff format
+  # running on a feature branch
+  #
+  # use NULL-byte-separated filenames to be on the safe side;
+  # store NULL-byte-separated filenames in a temp file, 
+  # as NULL bytes are illegal in bash variables and command substitutions
+  files="$(mktemp)"
+  git diff --staged --name-only --diff-filter=ACMR -z \
+    | grep -z '.*\.py$' \
+    > "$files" \
+    || true  # continue even if `grep` does not find anything
+
+  if test -s "$files"; then
+    # the `$files` temp file is not empty
+
+    # format the changed files instantly, but don't run any tests
+    xargs --null ruff check --fix < "$files"
+    xargs --null ruff format < "$files"
+
+    # add changes to the current commit
+    xargs --null git add --verbose < "$files"
+  fi
 fi
