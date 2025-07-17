@@ -6,11 +6,12 @@ import queue
 import random
 import signal
 import time
+from enum import Flag
 
 import anyio
 import pytest
 
-from elva.component import Component
+from elva.component import Component, ComponentState, create_component_state
 from elva.log import LOGGER_NAME, DefaultFormatter
 
 pytestmark = pytest.mark.anyio
@@ -192,10 +193,200 @@ async def test_component_logging():
     LOGGER_NAME.reset(reset_token)
 
 
+async def test_state():
+    """The default Component class has a state of `RUNNING` when a task group is running and `NONE` otherwise."""
+    comp = Component()
+
+    # a state of just `NONE` signals that the component is not running
+    assert comp.state == ComponentState.NONE
+
+    async with comp:
+        # now the component is `RUNNING`
+        assert comp.state == ComponentState.RUNNING
+
+    # the component's state is back to only `NONE`, so not running anymore
+    assert comp.state == ComponentState.NONE
+
+
+async def test_subscription():
+    """A subscriber receives differences in state while the component manages subscriptions."""
+    comp = Component()
+    assert len(comp._subscribers) == 0
+
+    # we get an async queue by subscribing
+    sub = comp.subscribe()
+    assert len(comp._subscribers) == 1
+
+    # the queue is also registered by the component
+    assert sub in comp._subscribers
+    assert len(comp._subscribers) == 1
+
+    # no diffs have been sent yet
+    assert sub.statistics().current_buffer_used == 0
+
+    # we get a state change
+    async with comp:
+        diff = await sub.receive()
+        assert diff == (ComponentState.NONE, ComponentState.RUNNING)
+
+    # queue has not been shut down
+    diff = await sub.receive()
+    assert diff == (ComponentState.RUNNING, ComponentState.NONE)
+
+    # we retrieved all state changes
+    assert sub.statistics().current_buffer_used == 0
+
+    # by unsubscribing, the component discards the queue
+    comp.unsubscribe(sub)
+    assert sub not in comp._subscribers
+    assert len(comp._subscribers) == 0
+
+    # the sending stream is closed now and cannot be used anymore,
+    # any attempts to use it will fail
+    with pytest.raises(anyio.EndOfStream):
+        await sub.receive()
+
+
+async def test_cleanup_shut_down_subscription():
+    """The subscription management holds also for not unsubscribed streams."""
+    comp = Component()
+
+    # close the receiving stream from the subscriber's side,
+    # the sending stream is still active
+    sub = comp.subscribe()
+    sub.close()
+
+    # the component does not know about the closed receive stream
+    assert sub in comp._subscribers
+
+    # the component tries to put the state diff into the stream,
+    # which fails, but no exception is raised
+    async with comp:
+        pass
+
+    # the component detected the closed receive stream and cleaned it up
+    assert sub not in comp._subscribers
+
+
+async def test_custom_component_state():
+    """States for custom components can easily defined and state changes work in patches."""
+    # check if state enum creation succeeds
+    CustomState = create_component_state("CustomState", ("FOO",))
+
+    # we get the default states plus the additional `FOO` state as `Flag`s
+    for attr in ("NONE", "RUNNING", "FOO"):
+        assert hasattr(CustomState, attr)
+        assert isinstance(getattr(CustomState, attr), Flag)
+
+    class CustomComponent(Component):
+        @property
+        def states(self):
+            return CustomState
+
+        # add switches to turn `FOO` on and off
+        def foo_on(self):
+            self._change_state(self.states.NONE, self.states.FOO)
+
+        def foo_off(self):
+            self._change_state(self.states.FOO, self.states.NONE)
+
+        # try some noop state changes
+        def noop(self):
+            for state in (self.states.NONE, self.states.RUNNING, self.states.FOO):
+                self._change_state(state, state)
+
+        # simulate a state change while running
+        async def run(self):
+            self.foo_on()
+
+    # init comp and subscription
+    comp = CustomComponent()
+    sub = comp.subscribe()
+
+    async with comp:
+        # default switch from `NONE` to `RUNNING`
+        diff = await sub.receive()
+        assert diff == (CustomState.NONE, CustomState.RUNNING)
+
+        # next entry is from `comp.run` coroutine,
+        # the `NONE` state is used to add `FOO`
+        diff = await sub.receive()
+        assert diff == (CustomState.NONE, CustomState.FOO)
+
+        # as opposed to the corresponding diff, `comp`'s state is
+        # the union of the `RUNNING` and `FOO` states
+        assert comp.state == CustomState.RUNNING | CustomState.FOO
+
+        # there are no state changes emitted when the state does not effectively change
+        assert sub.statistics().current_buffer_used == 0
+        comp.noop()
+        assert sub.statistics().current_buffer_used == 0
+
+        # turn off `FOO` state,
+        # the `NONE` flag is used to remove `FOO`
+        comp.foo_off()
+        diff = await sub.receive()
+        assert diff == (CustomState.FOO, CustomState.NONE)
+
+        # only `FOO` has been removed, as the diff suggests
+        assert comp.state == CustomState.RUNNING
+
+        # turn `FOO` back on, to test the cleanup state change
+        comp.foo_on()
+        diff = await sub.receive()
+        assert diff == (CustomState.NONE, CustomState.FOO)
+
+        # we are back to a combined state with `RUNNING` and `FOO`
+        assert comp.state == CustomState.RUNNING | CustomState.FOO
+
+    # cleanup happend, both states `RUNNING` and `FOO` were removed
+    diff = await sub.receive()
+    assert diff == (CustomState.RUNNING | CustomState.FOO, CustomState.NONE)
+
+    # the component's state is back to just `NONE`
+    assert comp.state == CustomState.NONE
+
+
+async def test_close_component():
+    """All subscriptions to a component can be closed with one call."""
+    NUM_SUBS = 5
+
+    for close_via_api in (True, False):
+        # simulate multiple subscribers
+        comp = Component()
+        subs = tuple(comp.subscribe() for _ in range(NUM_SUBS))
+        assert len(comp._subscribers) == NUM_SUBS
+
+        # close all subscriptions
+        if close_via_api:
+            comp.close()
+            assert len(comp._subscribers) == 0
+        else:
+            del comp
+
+        # all subscriptions have really been closed and are not usable anymore
+        for sub in subs:
+            with pytest.raises(anyio.EndOfStream):
+                await sub.receive()
+
+
+def test_component_side_effects():
+    """Dont declare class attributes with objects prone to side effects."""
+    comp1 = Component()
+    comp1.subscribe()
+    assert len(comp1._subscribers) == 1
+
+    comp2 = Component()
+    assert len(comp2._subscribers) == 0
+
+    del comp1, comp2
+
+
 async def test_unhandled_component_already_running():
     """A component raises an exception group when started twice via the async context manager."""
     with pytest.raises(ExceptionGroup):
         async with Component() as comp:
+            assert len(comp._subscribers) == 0
             async with comp:
                 # will never be reached
                 pass  # pragma: no cover

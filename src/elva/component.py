@@ -4,20 +4,50 @@ Module for generic asynchronous app component.
 
 import logging
 from contextlib import AsyncExitStack
-from typing import Self
+from enum import Flag
+from typing import Iterable, Self
 
 from anyio import (
     TASK_STATUS_IGNORED,
+    BrokenResourceError,
     CancelScope,
     Event,
     Lock,
+    WouldBlock,
+    create_memory_object_stream,
     create_task_group,
     get_cancelled_exc_class,
     sleep_forever,
 )
 from anyio.abc import TaskGroup, TaskStatus
+from anyio.streams.memory import MemoryObjectReceiveStream
 
 from elva.log import LOGGER_NAME
+
+
+def create_component_state(
+    name: str, additional_states: None | Iterable[str] = None
+) -> Flag:
+    """
+    Create a [`Flag`][enum.Flag] enumeration with the default flags `NONE` and `RUNNING` for [`Component`s][elva.component.Component].
+
+    Arguments:
+        name: the states class name.
+        additional_states: states to include next to the default ones.
+
+    Returns:
+        component states as flag enumeration.
+    """
+    states = ("NONE", "RUNNING")
+
+    if additional_states is not None:
+        states += tuple(additional_states)
+
+    return Flag(name, states, start=0)
+
+
+ComponentState = create_component_state("ComponentState")
+"""The default component states."""
 
 
 class Component:
@@ -40,6 +70,9 @@ class Component:
     log: logging.Logger
     """Logger instance to write logging messages to."""
 
+    _subscribers: dict
+    """Mapping of receiving streams to their respective sending stream over which to publish state changes."""
+
     def __new__(cls, *args: tuple, **kwargs: dict) -> Self:
         self = super().__new__(cls)
         name = LOGGER_NAME.get(self.__module__)
@@ -47,10 +80,110 @@ class Component:
 
         # level is inherited from parent logger
         self.log.setLevel(logging.NOTSET)
+
+        # setup empty subscriber mapping
+        self._subscribers = dict()
+
+        # set default state of every component
+        self.state = self.states.NONE
+
         return self
 
     def __str__(self):
         return f"{self.__class__.__name__}"
+
+    @property
+    def states(self):
+        """
+        Enumeration class holding all states the component can have.
+        """
+        return ComponentState
+
+    @property
+    def state(self):
+        """
+        The current state of the component.
+        """
+        return self._state
+
+    @state.setter
+    def state(self, new: Flag):
+        new = self.states(new)
+        self._state = new
+
+    def subscribe(self) -> MemoryObjectReceiveStream:
+        """
+        Get an object to listen on for differences in component state.
+
+        Returns:
+            the receiving end of an asynchronous memory object stream emitting
+            tuple of deleted and added states.
+        """
+        # create a stream with a defined maximum buffer size,
+        # otherwise - with default of max_buffer_size=0 - sending would block
+        send, recv = create_memory_object_stream[tuple[Flag, Flag]](
+            max_buffer_size=8192
+        )
+
+        # set the receiving end as key so that it can easily be unsubscribed
+        self._subscribers[recv] = send
+
+        return recv
+
+    def unsubscribe(self, recv: MemoryObjectReceiveStream):
+        """
+        Close and remove the memory object stream from the mapping of subscribers.
+
+        Arguments:
+            recv: the receiving end of the memory object stream as returned by [`subscribe`][elva.component.Component.subscribe].
+        """
+        send = self._subscribers.pop(recv)
+        send.close()
+
+    def _change_state(self, from_state: Flag, to_state: Flag):
+        """
+        Replace a state with another state within the current component [`state`][elva.component.Component.state].
+
+        The special state `NONE` can be used as an identity, i.e. no-op, flag.
+
+        Arguments:
+            from_state: the state to remove.
+            to_state: the state to insert.
+        """
+        # no change in state
+        if from_state == to_state:
+            return
+
+        # remove `from_state`, add `to_state`
+        state = self.state & ~from_state | to_state
+
+        # set the state from the component's states
+        self.state = state
+
+        # copy to avoid exceptions due to set changes during iteration
+        subs = self._subscribers.copy()
+
+        # send the state diff to the subscribers
+        for recv, send in subs.items():
+            try:
+                send.send_nowait((from_state, to_state))
+            except (BrokenResourceError, WouldBlock):
+                # either the send stream has a respective closed receive stream
+                # or the stream buffer is full, so it is not in use either way
+                # and we unsubscribe ourselves
+                self.unsubscribe(recv)
+
+    def close(self):
+        """
+        Run [`unsubscribe`][elva.component.Component.unsubscribe] from all subscriptions.
+        """
+        subs = self._subscribers.copy()
+        for recv in subs:
+            self.unsubscribe(recv)
+
+    def __del__(self):
+        # close subscriptions before deletion
+        self.close()
 
     @property
     def started(self) -> Event:
@@ -101,8 +234,10 @@ class Component:
         # start runner and do a shielded cleanup on cancellation
         try:
             await self.before()
-            self.started.set()
             task_status.started()
+
+            self.started.set()
+            self._change_state(self.state, self.states.RUNNING)
             self.log.info("started")
 
             await self.run()
@@ -114,6 +249,9 @@ class Component:
             self.log.info("stopping")
             with CancelScope(shield=True):
                 await self.cleanup()
+
+            # change from current state to NONE
+            self._change_state(self.state, self.states.NONE)
 
             self.stopped.set()
             self._task_group = None
