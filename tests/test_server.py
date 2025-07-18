@@ -284,12 +284,12 @@ async def test_websocket_server_permanent_persistence(free_tcp_port, tmpdir):
 
         # we have a storage component running
         room = websocket_server.rooms[identifier]
-        store = room.store
+        sub = room.subscribe()
+        new = None
+        while room.states.RUNNING not in room.state or new != room.states.RUNNING:
+            _, new = await sub.receive()
         assert hasattr(room, "store")
-        await store.started.wait()
-        assert store.started.is_set()
-        assert store.initialized.is_set()
-        await room.started.wait()
+        store = room.store
 
         # get current state
         state_local = doc.get_state()
@@ -382,11 +382,14 @@ async def test_websocket_server_permanent_persistence(free_tcp_port, tmpdir):
         # room created, wait for it to be ready
         assert identifier in websocket_server.rooms
         room = websocket_server.rooms[identifier]
-        await room.store.started.wait()
+        sub = room.subscribe()
+        new = None
+        while room.states.RUNNING not in room.state or room.states.RUNNING not in new:
+            _, new = await sub.receive()
 
         # make sure the store has started
         store = room.store
-        assert store.started.is_set()
+        assert store.states.RUNNING in store.state
 
         state_server_after_reboot = room.ydoc.get_state()
         assert state_server_after_reboot == state_server_before_reboot

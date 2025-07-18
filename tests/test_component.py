@@ -441,17 +441,14 @@ async def test_start_stop_context_manager():
 
     # test Logger component
     async with Logger() as component:
-        await component.started.wait()
         assert component.buffer == ["before", "run"]
 
-    assert component.stopped.is_set()
     assert component.buffer == ["before", "run", "cleanup"]
 
     # test QueueLogger component
     q = queue.Queue()
     actions = list()
     async with QueueLogger(q) as component:
-        await component.started.wait()
         i = 0
         while True:
             actions.append(q.get())
@@ -460,17 +457,14 @@ async def test_start_stop_context_manager():
                 break
         assert actions == ["before", "run"]
 
-    assert component.stopped.is_set()
     actions.append(q.get())
     assert actions == ["before", "run", "cleanup"]
 
     # test WaitingLogger component
     async with WaitingLogger() as component:
-        await component.started.wait()
         await anyio.sleep(component.seconds + 0.1)
         assert component.buffer == ["run"]
 
-    assert component.stopped.is_set()
     assert component.buffer == ["run", "cleanup"]
 
 
@@ -496,15 +490,22 @@ async def test_start_stop_context_manager_nested():
 async def test_start_stop_methods():
     """Components start and stop via methods."""
 
-    component = Logger()
+    comp = Logger()
+    sub = comp.subscribe()
+    states = comp.states
+    diff = None
 
     async with anyio.create_task_group() as tg:
-        await tg.start(component.start)
-        await component.started.wait()
-        assert component.buffer == ["before", "run"]
-        await component.stop()
-        await component.stopped.wait()
-        assert component.buffer == ["before", "run", "cleanup"]
+        await tg.start(comp.start)
+        while diff != (states.NONE, states.RUNNING):
+            diff = await sub.receive()
+        assert comp.buffer == ["before", "run"]
+
+        await comp.stop()
+        while diff != (states.RUNNING, states.NONE):
+            diff = await sub.receive()
+        assert comp.state == states.NONE
+        assert comp.buffer == ["before", "run", "cleanup"]
 
 
 async def test_start_stop_methods_concurrent():
@@ -512,20 +513,27 @@ async def test_start_stop_methods_concurrent():
 
     buffer = list()
     num_comps = 5
-    comps = [(i, NamedLogger(i, buffer=buffer)) for i in range(1, num_comps + 1)]
+
+    objects = list()
+    for i in range(1, num_comps + 1):
+        comp = NamedLogger(i, buffer=buffer)
+        sub = comp.subscribe()
+        objects.append((i, comp, sub))
 
     events = list()
-
     async with anyio.create_task_group() as tg:
-        random.shuffle(comps)
-        for i, comp in comps:
+        random.shuffle(objects)
+        for i, comp, _ in objects:
             await tg.start(comp.start)
             events.append((i, "run"))
 
-        random.shuffle(comps)
-        for i, comp in comps:
+        random.shuffle(objects)
+        for i, comp, sub in objects:
+            states = comp.states
+            diff = None
             await comp.stop()
-            await comp.stopped.wait()
+            while diff != (states.RUNNING, states.NONE):
+                diff = await sub.receive()
             events.append((i, "cleanup"))
 
     assert buffer == events
@@ -543,7 +551,6 @@ async def test_start_stop_nested_concurrent_mixed():
             for cc in ccs:
                 await tg.start(cc.start)
                 await cc.stop()
-                await cc.stopped.wait()
 
     assert buffer == [
         ("cm", "run"),
@@ -559,12 +566,10 @@ async def test_interrupt_with_method():
     """Components get interrupted with stop method."""
 
     async with WaitingLogger() as comp:
-        await comp.started.wait()
         assert comp.buffer == []
         await comp.stop()
         assert comp.buffer == []
 
-    assert comp.stopped.is_set()
     assert comp.buffer == ["cleanup"]
 
 
@@ -578,9 +583,6 @@ async def run(comp):
 
 def test_interrupt_by_signal():
     """Components get cancelled on SIGINT signal."""
-
-    actions = list()
-
     # avoid DeprecationWarning using `os.fork()` internally
     # see https://docs.python.org/3/library/multiprocessing.html#multiprocessing.set_start_method
     #
@@ -600,6 +602,8 @@ def test_interrupt_by_signal():
     time.sleep(0.5)
 
     # component should be running by now
+    actions = list()
+
     while True:
         try:
             actions.append(q.get(block=False))

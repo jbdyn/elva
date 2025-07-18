@@ -11,7 +11,6 @@ from anyio import (
     TASK_STATUS_IGNORED,
     BrokenResourceError,
     CancelScope,
-    Event,
     Lock,
     WouldBlock,
     create_memory_object_stream,
@@ -62,8 +61,6 @@ class Component:
     context manager protocol.
     """
 
-    _started: Event | None = None
-    _stopped: Event | None = None
     _task_group: TaskGroup | None = None
     _start_lock: Lock | None = None
 
@@ -185,24 +182,6 @@ class Component:
         # close subscriptions before deletion
         self.close()
 
-    @property
-    def started(self) -> Event:
-        """
-        Event signaling that the component has been started, i.e. is initialized and running.
-        """
-        if self._started is None:
-            self._started = Event()
-        return self._started
-
-    @property
-    def stopped(self) -> Event:
-        """
-        Event signaling that the component has been stopped, i.e. deinitialized and not running.
-        """
-        if self._stopped is None:
-            self._stopped = Event()
-        return self._stopped
-
     def _get_start_lock(self):
         if self._start_lock is None:
             self._start_lock = Lock()
@@ -236,7 +215,6 @@ class Component:
             await self.before()
             task_status.started()
 
-            self.started.set()
             self._change_state(self.state, self.states.RUNNING)
             self.log.info("started")
 
@@ -253,7 +231,6 @@ class Component:
             # change from current state to NONE
             self._change_state(self.state, self.states.NONE)
 
-            self.stopped.set()
             self._task_group = None
             self.log.info("stopped")
 
