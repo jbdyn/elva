@@ -124,18 +124,13 @@ async def test_component_logging():
             self.log.info("cleanup")
 
     # __module__ is the default base name for component logger
-    async with Component() as comp:
-        assert comp.__module__ == "elva.component"
-        assert comp.log.name == f"{comp.__module__}.Component"
+    comp = Component()
+    assert comp.__module__ == "elva.component"
+    assert comp.log.name == f"{comp.__module__}.Component"
 
-    async with TestLogger() as test_logger:
-        assert test_logger.__module__ == __name__ == "tests.test_component"
-        assert test_logger.log.name == f"{test_logger.__module__}.TestLogger"
-
-    # reset stream
-    file.flush()
-    file.truncate(0)
-    file.seek(0)
+    test_logger = TestLogger()
+    assert test_logger.__module__ == __name__ == "tests.test_component"
+    assert test_logger.log.name == f"{test_logger.__module__}.TestLogger"
 
     # set component logger name
     reset_token = LOGGER_NAME.set(__name__)
@@ -143,36 +138,50 @@ async def test_component_logging():
     # prepare expected contents
     test_logger_name = f"{__name__}.TestLogger"
 
-    expected_info = (
+    expected_info = [
         "starting",
         "before",
         "started",
+        "set state to ComponentState.RUNNING",
+        "added state ComponentState.RUNNING",
         "run",
         "stopping",
         "cleanup",
         "stopped",
-    )
+        "set state to ComponentState.NONE",
+        "removed state ComponentState.RUNNING",
+    ]
 
-    expected_debug = (
+    expected_debug = [
         "starting",
         "before",
         "started",
+        "set state to ComponentState.RUNNING",
+        "added state ComponentState.RUNNING",
         "run",
         "cancelled",
         "stopping",
         "cleanup",
         "stopped",
-    )
+        "set state to ComponentState.NONE",
+        "removed state ComponentState.RUNNING",
+    ]
 
     for level, expected in zip(
         (logging.INFO, logging.DEBUG), (expected_info, expected_debug)
     ):
+        # reset stream
+        file = io.StringIO()
+        handler = logging.StreamHandler(file)
+        handler.setFormatter(DefaultFormatter())
+        logger.addHandler(handler)
+
         # set the logging level
         # needs to be set to log something at all
         logger.setLevel(level)
 
         # go through one lifecycle of TestLogger component
-        async with TestLogger() as test_logger:
+        async with test_logger:
             assert test_logger.log.name == test_logger_name
 
         # compare logs
@@ -183,11 +192,6 @@ async def test_component_logging():
         for expected, line in zip(expected, lines):
             assert expected in line
             assert test_logger_name in line
-
-        # reset stream
-        file.flush()
-        file.truncate(0)
-        file.seek(0)
 
     # reset LOGGER_NAME; just in case
     LOGGER_NAME.reset(reset_token)

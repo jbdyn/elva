@@ -82,7 +82,7 @@ class Component:
         self._subscribers = dict()
 
         # set default state of every component
-        self.state = self.states.NONE
+        self._state = self.states.NONE
 
         return self
 
@@ -107,6 +107,7 @@ class Component:
     def state(self, new: Flag):
         new = self.states(new)
         self._state = new
+        self.log.info(f"set state to {new}")
 
     def subscribe(self) -> MemoryObjectReceiveStream:
         """
@@ -124,6 +125,7 @@ class Component:
 
         # set the receiving end as key so that it can easily be unsubscribed
         self._subscribers[recv] = send
+        self.log.info(f"added subscriber {id(recv)}")
 
         return recv
 
@@ -136,6 +138,7 @@ class Component:
         """
         send = self._subscribers.pop(recv)
         send.close()
+        self.log.info(f"removed subscriber {id(recv)}")
 
     def _change_state(self, from_state: Flag, to_state: Flag):
         """
@@ -157,6 +160,12 @@ class Component:
         # set the state from the component's states
         self.state = state
 
+        if from_state != self.states.NONE:
+            self.log.info(f"removed state {from_state}")
+
+        if to_state != self.states.NONE:
+            self.log.info(f"added state {to_state}")
+
         # copy to avoid exceptions due to set changes during iteration
         subs = self._subscribers.copy()
 
@@ -164,6 +173,7 @@ class Component:
         for recv, send in subs.items():
             try:
                 send.send_nowait((from_state, to_state))
+                self.log.debug(f"sent state change to subscriber {id(recv)}")
             except (BrokenResourceError, WouldBlock):
                 # either the send stream has a respective closed receive stream
                 # or the stream buffer is full, so it is not in use either way
@@ -213,10 +223,10 @@ class Component:
         # start runner and do a shielded cleanup on cancellation
         try:
             await self.before()
-            task_status.started()
 
-            self._change_state(self.state, self.states.RUNNING)
+            task_status.started()
             self.log.info("started")
+            self._change_state(self.state, self.states.RUNNING)
 
             await self.run()
 
@@ -228,11 +238,11 @@ class Component:
             with CancelScope(shield=True):
                 await self.cleanup()
 
-            # change from current state to NONE
-            self._change_state(self.state, self.states.NONE)
-
             self._task_group = None
             self.log.info("stopped")
+
+            # change from current state to NONE
+            self._change_state(self.state, self.states.NONE)
 
             # always re-raise a captured cancellation exception,
             # otherwise the behavior is undefined
@@ -245,12 +255,12 @@ class Component:
         Arguments:
             task_status: The status to set when the task has started.
         """
-        self.log.info("starting")
-        async with self._get_start_lock():
-            if self._task_group is not None:
-                raise RuntimeError(f"{self} already running")
+        if self._task_group is not None:
+            raise RuntimeError(f"{self} already running")
 
+        async with self._get_start_lock():
             async with create_task_group() as self._task_group:
+                self.log.info("starting")
                 await self._task_group.start(self._run)
                 task_status.started()
 
