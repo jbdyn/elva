@@ -19,7 +19,7 @@ from websockets.asyncio.server import ServerConnection
 from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
 
-from elva.component import Component
+from elva.component import Component, create_component_state
 from elva.protocol import ElvaMessage, YMessage
 from elva.store import SQLiteStore
 
@@ -59,6 +59,9 @@ class RequestProcessor:
                 return out
 
 
+RoomState = create_component_state("RoomState")
+
+
 class Room(Component):
     """
     Connection handler for one Y Document following the Yjs protocol.
@@ -80,7 +83,7 @@ class Room(Component):
     """Y Document instance holding received updates."""
 
     store: SQLiteStore
-    """component responsible for writing received Y updates to disk."""
+    """Component responsible for writing received Y updates to disk."""
 
     def __init__(
         self,
@@ -116,6 +119,10 @@ class Room(Component):
             self.ydoc = Doc()
             if path is not None:
                 self.store = SQLiteStore(self.ydoc, identifier, self.path)
+
+    @property
+    def states(self):
+        return RoomState
 
     async def before(self):
         """
@@ -367,6 +374,9 @@ class ElvaRoom(Room):
             self.broadcast(message, client)
 
 
+WebsocketServerState = create_component_state("WebsocketServerState")
+
+
 class WebsocketServer(Component):
     """
     Serving component using [`Room`][elva.server.Room] as internal connection handler.
@@ -419,6 +429,10 @@ class WebsocketServer(Component):
             ).process_request
 
         self.rooms = dict()
+
+    @property
+    def states(self):
+        return WebsocketServerState
 
     async def run(self):
         """

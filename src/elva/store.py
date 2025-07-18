@@ -8,7 +8,6 @@ import sqlite_anyio as sqlite
 from anyio import (
     TASK_STATUS_IGNORED,
     CancelScope,
-    Event,
     Lock,
     Path,
     create_memory_object_stream,
@@ -18,7 +17,7 @@ from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStre
 from pycrdt import Doc, Subscription, TransactionEvent
 from sqlite_anyio.sqlite import Connection, Cursor
 
-from elva.component import Component
+from elva.component import Component, create_component_state
 
 # TODO: check performance
 
@@ -99,6 +98,9 @@ def set_metadata(path: str | Path, metadata: dict[str, str], replace: bool = Fal
         db.close()
 
 
+SQLiteStoreState = create_component_state("SQLiteStoreState")
+
+
 class SQLiteStore(Component):
     """
     Store component saving Y updates in an ELVA SQLite database.
@@ -112,9 +114,6 @@ class SQLiteStore(Component):
 
     path: Path
     """Path where to store the SQLite database."""
-
-    initialized: Event
-    """Event being set when the SQLite database is ready to be read."""
 
     _lock: Lock
     """Object for restricted resource management."""
@@ -144,8 +143,11 @@ class SQLiteStore(Component):
         self.ydoc = ydoc
         self.identifier = identifier
         self.path = Path(path)
-        self.initialized = Event()
         self._lock = Lock()
+
+    @property
+    def states(self):
+        return SQLiteStoreState
 
     async def get_metadata(self) -> dict:
         """
@@ -154,8 +156,6 @@ class SQLiteStore(Component):
         Returns:
             mapping of metadata keys to values.
         """
-        await self._wait_initialized()
-
         async with self._lock:
             await self._cursor.execute("SELECT * FROM metadata")
             res = await self._cursor.fetchall()
@@ -170,8 +170,6 @@ class SQLiteStore(Component):
             metadata: mapping of metadata keys to values.
             replace: flag whether to just insert or update keys (`False`) or to delete absent keys as well (`True`).
         """
-        await self._wait_initialized()
-
         async with self._lock:
             if replace:
                 await self._cursor.execute("DELETE FROM metadata")
@@ -203,15 +201,6 @@ class SQLiteStore(Component):
         """
         self.log.debug(f"transaction event triggered with update {event.update}")
         self._stream_send.send_nowait(event.update)
-
-    async def _wait_initialized(self):
-        """
-        Hook called by `_read` and `_write` hooks to ensure the `initialized` event is set.
-        """
-        if self.started is None:
-            raise RuntimeError(f"{self} not started")
-
-        await self.initialized.wait()
 
     async def _ensure_metadata_table(self):
         """
@@ -275,20 +264,21 @@ class SQLiteStore(Component):
         await self._ensure_update_table()
 
         # set the initialized event
-        self.initialized.set()
         self.log.info("database initialized")
 
     async def _disconnect_database(self):
         """
         Hook closing the database connection if initialized.
         """
-        if self.initialized.is_set():
+        try:
             await self._db.close()
             self.log.debug("closed database")
 
             # cleanup closed resources
             del self._db
             del self._cursor
+        except AttributeError:
+            pass
 
     async def _listen(self, task_status: TaskStatus[None] = TASK_STATUS_IGNORED):
         """
@@ -334,8 +324,6 @@ class SQLiteStore(Component):
         Arguments:
             update: the update to write to the ELVA SQLite database file.
         """
-        await self._wait_initialized()
-
         async with self._lock:
             await self._cursor.execute(
                 "INSERT INTO yupdates VALUES (?)",
@@ -346,10 +334,8 @@ class SQLiteStore(Component):
 
     async def _read(self):
         """
-        Hook to read in metadata and updates from the ELVA SQLite database and apply them.
+        Hook to read in updates from the ELVA SQLite database and apply them.
         """
-        await self._wait_initialized()
-
         async with self._lock:
             # read updates
             await self._cursor.execute("SELECT yupdate FROM yupdates")
