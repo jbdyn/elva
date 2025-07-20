@@ -6,13 +6,12 @@ import sqlite3
 
 import sqlite_anyio as sqlite
 from anyio import (
-    TASK_STATUS_IGNORED,
     CancelScope,
     Lock,
     Path,
+    WouldBlock,
     create_memory_object_stream,
 )
-from anyio.abc import TaskStatus
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from pycrdt import Doc, Subscription, TransactionEvent
 from sqlite_anyio.sqlite import Connection, Cursor
@@ -249,7 +248,22 @@ class SQLiteStore(Component):
             await self._db.commit()
             self.log.debug("ensured update table")
 
-    async def _initialize_database(self):
+    async def _read(self):
+        """
+        Hook to read in updates from the ELVA SQLite database and apply them.
+        """
+        async with self._lock:
+            # read updates
+            await self._cursor.execute("SELECT yupdate FROM yupdates")
+            updates = await self._cursor.fetchall()
+            self.log.debug("read updates from file")
+
+            # apply updates
+            for update, *rest in updates:
+                self.ydoc.apply_update(update)
+            self.log.debug("applied updates from file")
+
+    async def _initialize(self):
         """
         Hook initializing the database, i.e. ensuring the presence of connection and the ELVA SQL database scheme.
         """
@@ -263,59 +277,26 @@ class SQLiteStore(Component):
         await self._ensure_identifier()
         await self._ensure_update_table()
 
+        # read updates from file
+        await self._read()
+
         # set the initialized event
-        self.log.info("database initialized")
+        self.log.info("initialized database")
 
     async def _disconnect_database(self):
         """
         Hook closing the database connection if initialized.
         """
-        try:
+        if hasattr(self, "_db"):
             await self._db.close()
             self.log.debug("closed database")
 
             # cleanup closed resources
             del self._db
-            del self._cursor
-        except AttributeError:
-            pass
 
-    async def _listen(self, task_status: TaskStatus[None] = TASK_STATUS_IGNORED):
-        """
-        Hook listening for updates on [`ydoc`][elva.store.SQLiteStore.ydoc] and
-        calling the [`_write`][elva.store.SQLiteStore._write] hook writing it to the database.
-
-        Arguments:
-            task_status: object signalling whether this task has been started.
-        """
-        # initialize streams
-        self._stream_send, self._stream_recv = create_memory_object_stream(
-            max_buffer_size=65543
-        )
-
-        # writing to file must not be interrupted by cancellation
-        with CancelScope(shield=True):
-            # start streams
-            async with self._stream_send, self._stream_recv:
-                self.log.debug("listening for updates")
-                task_status.started()
-
-                # take actions on updates
-                async for update in self._stream_recv:
-                    self.log.debug(f"received {update}")
-
-                    if update is None:
-                        # the scope of this store's task group has been cancelled
-                        self.log.debug("stop listening for updates")
-                        await self._disconnect_database()
-                        break
-
-                    # write update to file
-                    await self._write(update)
-
+        if hasattr(self, "_cursor"):
             # cleanup closed resources
-            del self._stream_send
-            del self._stream_recv
+            del self._cursor
 
     async def _write(self, update: bytes):
         """
@@ -330,22 +311,7 @@ class SQLiteStore(Component):
                 [update],
             )
             await self._db.commit()
-            self.log.debug(f"wrote {update} to file {self.path}")
-
-    async def _read(self):
-        """
-        Hook to read in updates from the ELVA SQLite database and apply them.
-        """
-        async with self._lock:
-            # read updates
-            await self._cursor.execute("SELECT yupdate FROM yupdates")
-            updates = await self._cursor.fetchall()
-            self.log.debug("read updates from file")
-
-            # apply updates
-            for update, *rest in updates:
-                self.ydoc.apply_update(update)
-            self.log.debug("applied updates to YDoc")
+            self.log.debug(f"wrote update {update} to file {self.path}")
 
     async def before(self):
         """
@@ -354,26 +320,57 @@ class SQLiteStore(Component):
         The ELVA SQLite database is being initialized and read.
         Also, the component subscribes to changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
         """
-        # init tables and table content
-        await self._initialize_database()
+        # initialize tables and table content
+        await self._initialize()
 
-        # read data from file if present
-        await self._read()
+        # initialize streams
+        self._stream_send, self._stream_recv = create_memory_object_stream(
+            max_buffer_size=65543
+        )
+        self.log.debug("instantiated buffer")
 
         # start watching for updates on the YDoc
         self._subscription = self.ydoc.observe(self._on_transaction_event)
+        self.log.debug("subscribed to YDoc updates")
 
-        # start listening on the update stream
-        await self._task_group.start(self._listen)
+    async def run(self):
+        """
+        Hook writing updates from the internal buffer to file.
+        """
+        self.log.debug("listening for updates")
+
+        async for update in self._stream_recv:
+            self.log.debug(f"received update {update}")
+
+            with CancelScope(shield=True):
+                # writing needs to be shielded from cancellation,
+                # but is required to return quickly
+                await self._write(update)
 
     async def cleanup(self):
         """
         Hook cancelling subscription to changes and closing the database.
         """
-        # unsubscribe from YDoc updates, otherwise transactions will fail
-        self.ydoc.unobserve(self._subscription)
-        del self._subscription
+        if hasattr(self, "_subscription"):
+            # unsubscribe from YDoc updates, otherwise transactions will fail
+            self.ydoc.unobserve(self._subscription)
+            del self._subscription
+            self.log.debug("unsubscribed from YDoc updates")
 
-        # send signal to stop listening on the update stream and
-        # closing the database connection
-        await self._stream_send.send(None)
+        if hasattr(self, "_stream_recv"):
+            # drain the buffer and write the remaining updates to file
+            while True:
+                try:
+                    update = self._stream_recv.receive_nowait()
+                    await self._write(update)
+                except WouldBlock:
+                    break
+
+            self.log.debug("drained buffer")
+
+            # remove buffer
+            del self._stream_send, self._stream_recv
+            self.log.debug("deleted buffer")
+
+        # now we can close the file
+        await self._disconnect_database()
