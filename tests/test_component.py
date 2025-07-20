@@ -140,23 +140,27 @@ async def test_component_logging():
 
     expected_info = [
         "starting",
+        "set state to ComponentState.ACTIVE",
+        "added state ComponentState.ACTIVE",
         "before",
         "started",
-        "set state to ComponentState.RUNNING",
+        "set state to ComponentState.ACTIVE|RUNNING",
         "added state ComponentState.RUNNING",
         "run",
         "stopping",
         "cleanup",
         "stopped",
         "set state to ComponentState.NONE",
-        "removed state ComponentState.RUNNING",
+        "removed state ComponentState.ACTIVE|RUNNING",
     ]
 
     expected_debug = [
         "starting",
+        "set state to ComponentState.ACTIVE",
+        "added state ComponentState.ACTIVE",
         "before",
         "started",
-        "set state to ComponentState.RUNNING",
+        "set state to ComponentState.ACTIVE|RUNNING",
         "added state ComponentState.RUNNING",
         "run",
         "cancelled",
@@ -164,10 +168,10 @@ async def test_component_logging():
         "cleanup",
         "stopped",
         "set state to ComponentState.NONE",
-        "removed state ComponentState.RUNNING",
+        "removed state ComponentState.ACTIVE|RUNNING",
     ]
 
-    for level, expected in zip(
+    for level, expected_lines in zip(
         (logging.INFO, logging.DEBUG), (expected_info, expected_debug)
     ):
         # reset stream
@@ -188,9 +192,9 @@ async def test_component_logging():
         logs = file.getvalue()
         lines = logs.splitlines()
 
-        assert len(lines) == len(expected)
-        for expected, line in zip(expected, lines):
-            assert expected in line
+        assert len(lines) == len(expected_lines)
+        for expected_line, line in zip(expected_lines, lines):
+            assert expected_line in line
             assert test_logger_name in line
 
     # reset LOGGER_NAME; just in case
@@ -201,14 +205,22 @@ async def test_state():
     """The default Component class has a state of `RUNNING` when a task group is running and `NONE` otherwise."""
     comp = Component()
 
-    # a state of just `NONE` signals that the component is not running
+    # a state of just `NONE` signals that the component is neither `ACTIVE` nor `RUNNING`
     assert comp.state == ComponentState.NONE
 
-    async with comp:
-        # now the component is `RUNNING`
-        assert comp.state == ComponentState.RUNNING
+    sub = comp.subscribe()
 
-    # the component's state is back to only `NONE`, so not running anymore
+    async with comp:
+        # the component was first set to `ACTIVE`
+        diff = await sub.receive()
+        assert diff == (ComponentState.NONE, ComponentState.ACTIVE)
+
+        # now the component is also `RUNNING`
+        diff = await sub.receive()
+        assert diff == (ComponentState.NONE, ComponentState.RUNNING)
+        assert comp.state == ComponentState.ACTIVE | ComponentState.RUNNING
+
+    # the component's state is back to only `NONE`, so neither `RUNNING` nor `ACTIVE` anymore
     assert comp.state == ComponentState.NONE
 
 
@@ -231,11 +243,14 @@ async def test_subscription():
     # we get a state change
     async with comp:
         diff = await sub.receive()
+        assert diff == (ComponentState.NONE, ComponentState.ACTIVE)
+
+        diff = await sub.receive()
         assert diff == (ComponentState.NONE, ComponentState.RUNNING)
 
     # queue has not been shut down
     diff = await sub.receive()
-    assert diff == (ComponentState.RUNNING, ComponentState.NONE)
+    assert diff == (ComponentState.ACTIVE | ComponentState.RUNNING, ComponentState.NONE)
 
     # we retrieved all state changes
     assert sub.statistics().current_buffer_used == 0
@@ -278,7 +293,7 @@ async def test_custom_component_state():
     CustomState = create_component_state("CustomState", ("FOO",))
 
     # we get the default states plus the additional `FOO` state as `Flag`s
-    for attr in ("NONE", "RUNNING", "FOO"):
+    for attr in ("NONE", "ACTIVE", "RUNNING", "FOO"):
         assert hasattr(CustomState, attr)
         assert isinstance(getattr(CustomState, attr), Flag)
 
@@ -310,6 +325,9 @@ async def test_custom_component_state():
     async with comp:
         # default switch from `NONE` to `RUNNING`
         diff = await sub.receive()
+        assert diff == (CustomState.NONE, CustomState.ACTIVE)
+
+        diff = await sub.receive()
         assert diff == (CustomState.NONE, CustomState.RUNNING)
 
         # next entry is from `comp.run` coroutine,
@@ -319,7 +337,7 @@ async def test_custom_component_state():
 
         # as opposed to the corresponding diff, `comp`'s state is
         # the union of the `RUNNING` and `FOO` states
-        assert comp.state == CustomState.RUNNING | CustomState.FOO
+        assert comp.state == CustomState.ACTIVE | CustomState.RUNNING | CustomState.FOO
 
         # there are no state changes emitted when the state does not effectively change
         assert sub.statistics().current_buffer_used == 0
@@ -333,7 +351,7 @@ async def test_custom_component_state():
         assert diff == (CustomState.FOO, CustomState.NONE)
 
         # only `FOO` has been removed, as the diff suggests
-        assert comp.state == CustomState.RUNNING
+        assert comp.state == CustomState.ACTIVE | CustomState.RUNNING
 
         # turn `FOO` back on, to test the cleanup state change
         comp.foo_on()
@@ -341,11 +359,14 @@ async def test_custom_component_state():
         assert diff == (CustomState.NONE, CustomState.FOO)
 
         # we are back to a combined state with `RUNNING` and `FOO`
-        assert comp.state == CustomState.RUNNING | CustomState.FOO
+        assert comp.state == CustomState.ACTIVE | CustomState.RUNNING | CustomState.FOO
 
     # cleanup happend, both states `RUNNING` and `FOO` were removed
     diff = await sub.receive()
-    assert diff == (CustomState.RUNNING | CustomState.FOO, CustomState.NONE)
+    assert diff == (
+        CustomState.ACTIVE | CustomState.RUNNING | CustomState.FOO,
+        CustomState.NONE,
+    )
 
     # the component's state is back to just `NONE`
     assert comp.state == CustomState.NONE
@@ -409,7 +430,7 @@ async def test_handled_component_already_running_context_manager():
                 raise exc
 
     # RuntimeError has no attribute `message`
-    assert "already running" in repr(excinfo.value)
+    assert "already active" in repr(excinfo.value)
 
 
 async def test_handled_component_already_running_method():
@@ -423,7 +444,7 @@ async def test_handled_component_already_running_method():
                 raise exc
 
     # RuntimeError has no attribute `message`
-    assert "already running" in repr(excinfo.value)
+    assert "already active" in repr(excinfo.value)
 
 
 async def test_handled_component_not_running_method():
@@ -437,7 +458,7 @@ async def test_handled_component_not_running_method():
                 raise exc
 
     # RuntimeError has no attribute `message`
-    assert "not running" in repr(excinfo.value)
+    assert "not active" in repr(excinfo.value)
 
 
 async def test_start_stop_context_manager():
@@ -497,17 +518,16 @@ async def test_start_stop_methods():
     comp = Logger()
     sub = comp.subscribe()
     states = comp.states
-    diff = None
 
     async with anyio.create_task_group() as tg:
         await tg.start(comp.start)
-        while diff != (states.NONE, states.RUNNING):
-            diff = await sub.receive()
+        while states.RUNNING not in comp.state:
+            await sub.receive()
         assert comp.buffer == ["before", "run"]
 
         await comp.stop()
-        while diff != (states.RUNNING, states.NONE):
-            diff = await sub.receive()
+        while states.ACTIVE in comp.state:
+            await sub.receive()
         assert comp.state == states.NONE
         assert comp.buffer == ["before", "run", "cleanup"]
 
@@ -534,10 +554,9 @@ async def test_start_stop_methods_concurrent():
         random.shuffle(objects)
         for i, comp, sub in objects:
             states = comp.states
-            diff = None
             await comp.stop()
-            while diff != (states.RUNNING, states.NONE):
-                diff = await sub.receive()
+            while states.ACTIVE in comp.state:
+                await sub.receive()
             events.append((i, "cleanup"))
 
     assert buffer == events

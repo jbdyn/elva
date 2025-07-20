@@ -37,7 +37,7 @@ def create_component_state(
     Returns:
         component states as flag enumeration.
     """
-    states = ("NONE", "RUNNING")
+    states = ("NONE", "ACTIVE", "RUNNING")
 
     if additional_states is not None:
         states += tuple(additional_states)
@@ -198,17 +198,23 @@ class Component:
         return self._start_lock
 
     async def __aenter__(self):
-        self.log.info("starting")
-        async with self._get_start_lock():
-            if self._task_group is not None:
-                raise RuntimeError(f"{self} already running")
+        if self._task_group is not None:
+            raise RuntimeError(f"{self} already active")
 
+        async with self._get_start_lock():
             # enter the asynchronous context and start the runner in it
             self._exit_stack = AsyncExitStack()
             await self._exit_stack.__aenter__()
             self._task_group = await self._exit_stack.enter_async_context(
                 create_task_group()
             )
+
+            self.log.info("starting")
+
+            # add `ACTIVE` state
+            self._change_state(self.states.NONE, self.states.ACTIVE)
+
+            # start the main coroutine
             await self._task_group.start(self._run)
 
         return self
@@ -224,9 +230,12 @@ class Component:
         try:
             await self.before()
 
+            # signal that the setup has finished
             task_status.started()
             self.log.info("started")
-            self._change_state(self.state, self.states.RUNNING)
+
+            # add `RUNNING` state
+            self._change_state(self.states.NONE, self.states.RUNNING)
 
             await self.run()
 
@@ -241,7 +250,7 @@ class Component:
             self._task_group = None
             self.log.info("stopped")
 
-            # change from current state to NONE
+            # change from current state to `NONE`
             self._change_state(self.state, self.states.NONE)
 
             # always re-raise a captured cancellation exception,
@@ -256,12 +265,19 @@ class Component:
             task_status: The status to set when the task has started.
         """
         if self._task_group is not None:
-            raise RuntimeError(f"{self} already running")
+            raise RuntimeError(f"{self} already active")
 
         async with self._get_start_lock():
             async with create_task_group() as self._task_group:
                 self.log.info("starting")
+
+                # add `ACTIVE` state
+                self._change_state(self.states.NONE, self.states.ACTIVE)
+
+                # start the main coroutine
                 await self._task_group.start(self._run)
+
+                # signal that the coroutine has started
                 task_status.started()
 
     async def stop(self):
@@ -269,7 +285,7 @@ class Component:
         Stop the component by cancelling all inner task groups.
         """
         if self._task_group is None:
-            raise RuntimeError(f"{self} not running")
+            raise RuntimeError(f"{self} not active")
 
         self._task_group.cancel_scope.cancel()
         self.log.debug("cancelled")

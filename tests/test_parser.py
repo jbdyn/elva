@@ -58,7 +58,8 @@ async def test_text_event_parser():
 
     async with text_event_parser:
         # is it running?
-        assert await sub.receive() == (states.NONE, states.RUNNING)
+        while states.RUNNING not in text_event_parser.state:
+            await sub.receive()
 
         # insert
         text += "test"
@@ -127,7 +128,8 @@ async def test_array_event_parser():
 
     async with array_event_parser:
         # is it running?
-        assert await sub.receive() == (states.NONE, states.RUNNING)
+        while states.RUNNING not in array_event_parser.state:
+            await sub.receive()
 
         # extend
         array.extend([1, 2, 3])
@@ -193,7 +195,8 @@ async def test_map_event_parser():
 
     async with map_event_parser:
         # is it running?
-        assert await sub.receive() == (states.NONE, states.RUNNING)
+        while states.RUNNING not in map_event_parser.state:
+            await sub.receive()
 
         # add
         # order does not matter
