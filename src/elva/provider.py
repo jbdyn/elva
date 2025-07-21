@@ -14,91 +14,20 @@ from elva.auth import basic_authorization_header
 from elva.component import Component, create_component_state
 from elva.protocol import YMessage
 
-ConnectionState = create_component_state("ConnectionState", ("CONNECTED",))
-
-
-class Connection(Component):
-    """
-    Abstract base class for connection objects.
-    """
-
-    _outgoing = None
-    _incoming = None
-
-    @property
-    def states(self):
-        return ConnectionState
-
-    @property
-    def outgoing(self) -> Any:
-        """
-        Outgoing stream.
-        """
-        if self._outgoing is None:
-            raise RuntimeError("no outgoing stream set")
-        return self._outgoing
-
-    @outgoing.setter
-    def outgoing(self, stream):
-        self._outgoing = stream
-
-    @property
-    def incoming(self) -> Any:
-        """
-        Incoming stream.
-        """
-        if self._incoming is None:
-            raise RuntimeError("no incoming stream set")
-        return self._incoming
-
-    @incoming.setter
-    def incoming(self, stream):
-        self._incoming = stream
-
-    async def send(self, data: Any):
-        """
-        Wrapper around the [`outgoing.send`][elva.provider.Connection.outgoing] method.
-
-        Arguments:
-            data: data to be send via the [`outgoing`][elva.provider.Connection.outgoing] stream.
-        """
-        if self.states.CONNECTED in self.state:
-            self.log.debug(f"sending data {data}")
-            await self.outgoing.send(data)
-
-    async def recv(self):
-        """
-        Wrapper around the [`incoming`][elva.provider.Connection.incoming] stream.
-        """
-        self.log.info("listening for incoming data")
-        async for data in self.incoming:
-            self.log.debug(f"received data {data}")
-            await self.on_recv(data)
-
-    async def on_recv(self, data: Any):
-        """
-        Hook executed on received `data` from [`incoming`][elva.provider.Connection.incoming].
-
-        This is defined as a no-op and intended to be defined in the inheriting subclass.
-
-        Arguments:
-            data: data received from [`incoming`][elva.provider.Connection.incoming].
-        """
-        ...
-
-
-WebsocketConnectionState = create_component_state(
-    "WebsocketConnectionState", ("CONNECTED",)
+WebsocketProviderState = create_component_state(
+    "WebsocketProviderState", ("CONNECTED",)
 )
 
 
-class WebsocketConnection(Connection):
+class WebsocketProvider(Component):
     """
-    Websocket connection handling component.
+    Handler for Y messages sent and received over a websocket connection.
+
+    This component follows the [Yjs protocol spec](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md).
     """
 
-    signature: Signature
-    """Object holding the positional and keyword arguments for [`connect`][websockets.asyncio.client.connect]."""
+    ydoc: Doc
+    """Instance of the synchronized Y Document."""
 
     options: dict
     """Mapping of arguments to the signature of [`connect`][websockets.asyncio.client.connect]."""
@@ -109,9 +38,17 @@ class WebsocketConnection(Connection):
     tried_credentials: bool
     """Flag whether given credentials have already been tried."""
 
+    _subscription: Subscription
+    """Object holding subscription information to changes in [`ydoc`][elva.provider.WebsocketProvider.ydoc]."""
+
+    _signature: Signature
+    """Object holding the positional and keyword arguments for [`connect`][websockets.asyncio.client.connect]."""
+
     def __init__(
         self,
-        uri: str,
+        ydoc: Doc,
+        identifier: str,
+        server: str,
         user: None | str = None,
         password: None | str = None,
         *args: tuple[Any],
@@ -119,18 +56,21 @@ class WebsocketConnection(Connection):
     ):
         """
         Arguments:
-            uri: websocket address to connect to.
+            ydoc: instance if the synchronized Y Document.
+            identifier: identifier of the synchronized Y Document.
+            server: address of the Y Document synchronizing websocket server.
             user: username to be sent in the `Basic Authentication` HTTP request header.
             password: password to be sent in the `Basic Authentication` HTTP request header.
             *args: positional arguments passed to [`connect`][websockets.asyncio.client.connect].
             **kwargs: keyword arguments passed to [`connect`][websockets.asyncio.client.connect].
         """
+        self.ydoc = ydoc
+        uri = urljoin(server, identifier)
         self.uri = uri
-        self._websocket = None
 
         # construct a dictionary of args and kwargs
-        self.signature = signature(connect).bind(uri, *args, **kwargs)
-        self.options = self.signature.arguments
+        self._signature = signature(connect).bind(uri, *args, **kwargs)
+        self.options = self._signature.arguments
         self.options["logger"] = self.log
 
         # keep credentials separate to only send them if necessary
@@ -144,8 +84,17 @@ class WebsocketConnection(Connection):
         self.tried_credentials = False
 
     @property
-    def states(self):
-        return WebsocketConnectionState
+    def states(self) -> WebsocketProviderState:
+        """
+        The states the websocket provider can have.
+        """
+        return WebsocketProviderState
+
+    async def before(self):
+        """
+        Hook subscribing to changes in the Y Document.
+        """
+        self._subscription = self.ydoc.observe(self.on_transaction_event)
 
     async def run(self):
         """
@@ -162,16 +111,11 @@ class WebsocketConnection(Connection):
             try:
                 # accepts only 101 and 3xx HTTP status codes,
                 # retries only on 5xx by default
-                async for self._websocket in connect(
-                    *self.signature.args, **self.signature.kwargs
+                async for self._connection in connect(
+                    *self._signature.args, **self._signature.kwargs
                 ):
                     try:
                         self.log.info(f"opened connection to {self.uri}")
-
-                        self.incoming = self._websocket
-                        self.outgoing = self._websocket
-                        self.log.debug("set incoming and outgoing streams")
-
                         self._change_state(self.states.NONE, self.states.CONNECTED)
 
                         self._task_group.start_soon(self.on_connect)
@@ -184,11 +128,6 @@ class WebsocketConnection(Connection):
 
                     # remove `CONNECTED` state
                     self._change_state(self.states.CONNECTED, self.states.NONE)
-
-                    # reset incoming and outgoing streams
-                    self._outgoing = None
-                    self._incoming = None
-                    self.log.debug("unset incoming and outgoing streams")
             # expect only errors occur due to malformed URI or HTTP status code
             # considered invalid
             except (InvalidStatus, InvalidURI) as exc:
@@ -210,85 +149,36 @@ class WebsocketConnection(Connection):
 
     async def cleanup(self):
         """
-        Hook closing the websocket connection gracefully if cancelled.
+        Hook cancelling the subscription to changes in [`ydoc`][elva.provider.WebsocketProvider.ydoc] and
+        closing the websocket connection gracefully if cancelled.
         """
-        if self._websocket is not None:
+        if hasattr(self, "_subscription"):
+            self.ydoc.unobserve(self._subscription)
+
+        if hasattr(self, "_connection"):
             self.log.debug("closing connection")
-            await self._websocket.close()
+            await self._connection.close()
+            del self._connection
 
-    async def on_connect(self):
+    async def send(self, data: Any):
         """
-        Hook method run on connection.
-
-        This is defined as a no-op and supposed to be implemented in the inheriting subclass.
-        """
-        ...
-
-    async def on_exception(self, exc: InvalidURI | InvalidStatus):
-        """
-        Hook method run on otherwise unhandled invalid URI or invalid HTTP response status.
-
-        This method defaults to re-raise `exc`, is supposed to be implemented in the inheriting subclass and intended to be integrated in a user interface.
+        Wrapper around the [`outgoing.send`][elva.provider.Connection.outgoing] method.
 
         Arguments:
-            exc: exception raised by [`connect`][websockets.asyncio.client.connect].
+            data: data to be send via the [`outgoing`][elva.provider.Connection.outgoing] stream.
         """
-        raise exc
+        if self.states.CONNECTED in self.state:
+            await self._connection.send(data)
+            self.log.debug(f"sent data {data}")
 
-
-WebsocketProviderState = create_component_state(
-    "WebsocketProviderState", ("CONNECTED",)
-)
-
-
-class WebsocketProvider(WebsocketConnection):
-    """
-    Handler for Y messages sent and received over a websocket connection.
-
-    This component follows the [Yjs protocol spec](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md).
-    """
-
-    ydoc: Doc
-    """Instance of the synchronized Y Document."""
-
-    subscription: Subscription
-    """Object holding subscription information to changes in [`ydoc`][elva.provider.WebsocketProvider.ydoc]."""
-
-    def __init__(
-        self,
-        ydoc: Doc,
-        identifier: str,
-        server: str,
-        *args: tuple[Any],
-        **kwargs: dict[Any],
-    ):
+    async def recv(self):
         """
-        Arguments:
-            ydoc: instance if the synchronized Y Document.
-            identifier: identifier of the synchronized Y Document.
-            server: address of the Y Document synchronizing websocket server.
-            *args: positional arguments passed to [`WebsocketConnection`][elva.provider.WebsocketConnection].
-            **kwargs: keyword arguments passed to [`WebsocketConnection`][elva.provider.WebsocketConnection].
+        Wrapper around the [`incoming`][elva.provider.Connection.incoming] stream.
         """
-        self.ydoc = ydoc
-        uri = urljoin(server, identifier)
-        super().__init__(uri, *args, **kwargs)
-
-    @property
-    def states(self):
-        return WebsocketProviderState
-
-    async def before(self):
-        """
-        Hook subscribing to changes in the Y Document.
-        """
-        self.subscription = self.ydoc.observe(self.on_transaction_event)
-
-    async def cleanup(self):
-        """
-        Hook cancelling the subscription to changes in [`ydoc`][elva.provider.WebsocketProvider.ydoc].
-        """
-        self.ydoc.unobserve(self.subscription)
+        self.log.info("listening for incoming data")
+        async for data in self._connection:
+            self.log.debug(f"received data {data}")
+            await self.on_recv(data)
 
     def on_transaction_event(self, event: TransactionEvent):
         """
@@ -383,3 +273,17 @@ class WebsocketProvider(WebsocketConnection):
             state: payload included in the incoming Y awareness message.
         """
         ...
+
+    async def on_exception(self, exc: InvalidURI | InvalidStatus) -> None | dict:
+        """
+        Hook method run on otherwise unhandled invalid URI or invalid HTTP response status.
+
+        This method defaults to re-raise `exc`, is supposed to be implemented in the inheriting subclass and intended to be integrated in a user interface.
+
+        Arguments:
+            exc: exception raised by [`connect`][websockets.asyncio.client.connect].
+
+        Returns:
+            `None` or a dictionary with additional options for the next connection try.
+        """
+        raise exc

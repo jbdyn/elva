@@ -119,7 +119,7 @@ async def test_multiple_connect_no_history(free_tcp_port):
 
             # wait for the YDocs to be in sync again
             while ydoc_a.get_state() != ydoc_b.get_state():
-                await anyio.sleep(1e-6)
+                await anyio.sleep(1e-2)
 
             # both YDocs hold the same content now
             assert ydoc_a.get_state() == ydoc_b.get_state()
@@ -170,7 +170,7 @@ async def test_multiple_connect_divergent_history(free_tcp_port):
 
             # wait for the YDocs to sync
             while ydoc_a.get_state() != ydoc_b.get_state():
-                await anyio.sleep(1e-6)
+                await anyio.sleep(1e-2)
 
             # we now have both YDocs synced with each other
             assert ydoc_a.get_state() == ydoc_b.get_state()
@@ -217,7 +217,7 @@ async def test_manual_reconnect(free_tcp_port):
 
                 # wait for the ydoc states to get synced
                 while ydoc.get_state() != room.ydoc.get_state():
-                    await anyio.sleep(1e-6)
+                    await anyio.sleep(1e-2)
 
                 # stop the provider
                 await provider.stop()
@@ -322,7 +322,7 @@ async def test_synchronization_from_provider_to_server(free_tcp_port):
 
         # wait for the YDocs to get synced
         while ydoc.get_state() != room.ydoc.get_state():
-            await anyio.sleep(1e-6)
+            await anyio.sleep(1e-2)
 
         # now both local and remote YDoc are in the same state
         assert ydoc.get_state() == room.ydoc.get_state()
@@ -363,7 +363,7 @@ async def test_synchronization_from_server_to_provider(free_tcp_port):
 
             # wait for the YDocs to sync state
             while ydoc.get_state() != room.ydoc.get_state():
-                await anyio.sleep(1e-6)
+                await anyio.sleep(1e-2)
 
             # both local and remote YDocs are in the same state
             assert ydoc.get_state() == room.ydoc.get_state()
@@ -405,7 +405,7 @@ async def test_bidirectional_synchronization(free_tcp_port):
 
             # wait for the YDoc states to get synced
             while ydoc.get_state() != room.ydoc.get_state():
-                await anyio.sleep(1e-6)
+                await anyio.sleep(1e-2)
 
             # both local and remote YDocs are in the same state
             assert ydoc.get_state() == room.ydoc.get_state()
