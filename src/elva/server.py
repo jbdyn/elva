@@ -14,7 +14,6 @@ from websockets import (
     broadcast,
     serve,
 )
-from websockets.asyncio.client import ClientConnection
 from websockets.asyncio.server import ServerConnection
 from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
@@ -76,7 +75,7 @@ class Room(Component):
     path: None | Path
     """Path where to save a Y Document on disk."""
 
-    clients: set[ClientConnection]
+    clients: set[ServerConnection]
     """Set of active connections."""
 
     ydoc: Doc
@@ -130,7 +129,7 @@ class Room(Component):
 
         Used to start the Y Document store.
         """
-        if self.persistent and self.path is not None:
+        if hasattr(self, "store"):
             await self._task_group.start(self.store.start)
 
     async def cleanup(self):
@@ -140,14 +139,14 @@ class Room(Component):
         Used to close all client connections gracefully.
         The store is closed automatically and calls its cleanup method separately.
         """
+        clients = self.clients.copy()
         async with anyio.create_task_group() as tg:
-            # close all clients
-            for client in self.clients:
+            for client in clients:
                 tg.start_soon(client.close)
 
-        self.log.debug("all clients closed")
+        self.log.info("closed all connections")
 
-    def add(self, client: ClientConnection):
+    def add(self, client: ServerConnection):
         """
         Add a client connection.
 
@@ -157,9 +156,9 @@ class Room(Component):
         nclients = len(self.clients)
         self.clients.add(client)
         if nclients < len(self.clients):
-            self.log.debug(f"added {client} to room '{self.identifier}'")
+            self.log.info(f"added connection {id(client)}")
 
-    def remove(self, client: ClientConnection):
+    def remove(self, client: ServerConnection):
         """
         Remove a client connection.
 
@@ -167,9 +166,9 @@ class Room(Component):
             client: connection to remove from the list of connections.
         """
         self.clients.remove(client)
-        self.log.debug(f"removed {client} from room '{self.identifier}'")
+        self.log.info(f"removed connection {id(client)}")
 
-    def broadcast(self, data: bytes, client: ClientConnection):
+    def broadcast(self, data: bytes, client: ServerConnection):
         """
         Broadcast `data` to all clients except `client`.
 
@@ -185,9 +184,10 @@ class Room(Component):
             # broadcast to all other clients
             # TODO: set raise_exceptions=True and catch with ExceptionGroup
             broadcast(clients, data)
-            self.log.debug(f"broadcasted {data} from {client} to {clients}")
+            client_ids = set(id(client) for client in clients)
+            self.log.debug(f"broadcasted {data} from {id(client)} to {client_ids}")
 
-    async def process(self, data: bytes, client: ClientConnection):
+    async def process(self, data: bytes, client: ServerConnection):
         """
         Process incoming messages from `client`.
 
@@ -218,7 +218,7 @@ class Room(Component):
             # simply forward incoming messages to all other clients
             self.broadcast(data, client)
 
-    async def process_sync_step1(self, state: bytes, client: ClientConnection):
+    async def process_sync_step1(self, state: bytes, client: ServerConnection):
         """
         Process a sync step 1 payload `state` from `client`.
 
@@ -239,7 +239,7 @@ class Room(Component):
         message, _ = YMessage.SYNC_STEP1.encode(state)
         await client.send(message)
 
-    async def process_sync_update(self, update: bytes, client: ClientConnection):
+    async def process_sync_update(self, update: bytes, client: ServerConnection):
         """
         Process a sync update message payload `update` from `client`.
 
@@ -257,13 +257,13 @@ class Room(Component):
             message, _ = YMessage.SYNC_UPDATE.encode(update)
             self.broadcast(message, client)
 
-    async def process_awareness(self, state: bytes, client: ClientConnection):
+    async def process_awareness(self, state: bytes, client: ServerConnection):
         """
         Process an awareness message payload `state` from `client`.
 
         Currently, this is implemented as a no-op.
         """
-        self.log.debug(f"got AWARENESS message {state} from {client}, do nothing")
+        self.log.debug(f"got AWARENESS message {state} from {id(client)}, do nothing")
 
 
 class ElvaRoom(Room):
@@ -293,7 +293,7 @@ class ElvaRoom(Room):
         super().__init__(identifier, persistent=persistent, path=path)
         self.uuid, _ = ElvaMessage.ID.encode(self.identifier.encode())
 
-    def broadcast(self, data: bytes, client: ClientConnection):
+    def broadcast(self, data: bytes, client: ServerConnection):
         """
         Broadcast `data` to all clients except `client`.
 
@@ -303,7 +303,7 @@ class ElvaRoom(Room):
         """
         super().broadcast(self.uuid + data, client)
 
-    async def process(self, data: bytes, client: ClientConnection):
+    async def process(self, data: bytes, client: ServerConnection):
         """
         Process incoming messages from `client`.
 
@@ -334,7 +334,7 @@ class ElvaRoom(Room):
             # simply forward incoming messages to all other clients
             self.broadcast(data, client)
 
-    async def process_sync_step1(self, state: bytes, client: ClientConnection):
+    async def process_sync_step1(self, state: bytes, client: ServerConnection):
         """
         Process a sync step 1 payload `state` from `client`.
 
@@ -355,7 +355,7 @@ class ElvaRoom(Room):
         message, _ = ElvaMessage.SYNC_STEP1.encode(state)
         await client.send(self.uuid + message)
 
-    async def process_sync_update(self, update: bytes, client: ClientConnection):
+    async def process_sync_update(self, update: bytes, client: ServerConnection):
         """
         Process a sync update message payload `update` from `client`.
 
@@ -446,12 +446,11 @@ class WebsocketServer(Component):
             logger=self.log,
         ):
             if self.persistent:
-                message_template = "storing content in {}"
                 if self.path is None:
                     location = "volatile memory"
                 else:
                     location = self.path
-                self.log.info(message_template.format(location))
+                self.log.info(f"storing content in {location}")
             else:
                 self.log.info("broadcast only and no content will be stored")
 
@@ -493,16 +492,24 @@ class WebsocketServer(Component):
         Returns:
             room to the given `identifier`.
         """
+        # try to get the room for `identifier`, else create a new one
         try:
             room = self.rooms[identifier]
         except KeyError:
-            room = Room(identifier, persistent=self.persistent, path=self.path)
+            room = Room(
+                identifier,
+                persistent=self.persistent,
+                path=self.path,
+            )
             self.rooms[identifier] = room
+
+        # make sure the room is `ACTIVE`
+        if room.states.ACTIVE not in room.state:
             await self._task_group.start(room.start)
 
         return room
 
-    async def handle(self, websocket: ClientConnection):
+    async def handle(self, websocket: ServerConnection):
         """
         Handle a `websocket` connection.
 
@@ -523,14 +530,10 @@ class WebsocketServer(Component):
             async for data in websocket:
                 await room.process(data, websocket)
         except ConnectionClosed:
-            self.log.info("connection closed")
-        except Exception as exc:
-            self.log.error(f"unexpected exception: {exc}")
-            await websocket.close()
-            self.log.error(f"closed {websocket}")
+            self.log.info(f"closed connection {id(websocket)}")
         finally:
             room.remove(websocket)
-            self.log.debug(f" [{identifier}] removed {websocket}")
+            self.log.debug(f"removed connection {id(websocket)}")
 
 
 class ElvaWebsocketServer(WebsocketServer):
@@ -570,7 +573,7 @@ class ElvaWebsocketServer(WebsocketServer):
 
         return room
 
-    async def handle(self, websocket: ClientConnection):
+    async def handle(self, websocket: ServerConnection):
         """
         Handle a `websocket` connection.
 

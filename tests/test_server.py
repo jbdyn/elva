@@ -122,6 +122,38 @@ async def test_websocket_server_request_processor(free_tcp_port):
         assert identifier in websocket_server.rooms
 
 
+async def test_websocket_server_restart(free_tcp_port):
+    server = WebsocketServer(LOCALHOST, free_tcp_port, persistent=True)
+
+    identifier = "foo-bar-baz"
+    uri = websocket_client_uri(server.host, server.port, identifier)
+
+    async with server:
+        # room does not exist
+        assert identifier not in server.rooms
+
+        # connect
+        await connect_websocket_client(uri)
+
+        # room did not exist before, but was created and started upon connect
+        assert identifier in server.rooms
+        room = server.rooms[identifier]
+        assert room.state.ACTIVE in room.states
+
+    # room has stopped
+    assert room.states.ACTIVE not in room.state
+
+    async with server:
+        # room is still stopped, although the server is running
+        assert room.states.ACTIVE not in room.state
+
+        # now connect again
+        await connect_websocket_client(uri)
+
+        # room already exists, but is also started
+        assert room.states.ACTIVE in room.state
+
+
 async def test_websocket_server_no_persistence(free_tcp_port):
     async with WebsocketServer(
         host=LOCALHOST,
@@ -285,9 +317,9 @@ async def test_websocket_server_permanent_persistence(free_tcp_port, tmpdir):
         # we have a storage component running
         room = websocket_server.rooms[identifier]
         sub = room.subscribe()
-        new = None
-        while room.states.RUNNING not in room.state or new != room.states.RUNNING:
-            _, new = await sub.receive()
+        while room.states.RUNNING not in room.state:
+            await sub.receive()
+
         assert hasattr(room, "store")
         store = room.store
 
@@ -383,9 +415,8 @@ async def test_websocket_server_permanent_persistence(free_tcp_port, tmpdir):
         assert identifier in websocket_server.rooms
         room = websocket_server.rooms[identifier]
         sub = room.subscribe()
-        new = None
-        while room.states.RUNNING not in room.state or room.states.RUNNING not in new:
-            _, new = await sub.receive()
+        while room.states.RUNNING not in room.state:
+            await sub.receive()
 
         # make sure the store has started
         store = room.store

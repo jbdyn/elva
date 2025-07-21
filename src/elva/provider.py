@@ -6,18 +6,15 @@ from inspect import Signature, signature
 from typing import Any
 from urllib.parse import urljoin
 
-import anyio
 from pycrdt import Doc, Subscription, TransactionEvent
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus, InvalidURI
 
 from elva.auth import basic_authorization_header
-from elva.component import Component
+from elva.component import Component, create_component_state
 from elva.protocol import ElvaMessage, YMessage
 
-# TODO: rewrite Yjs provider with single YDoc
-# TODO: rewrite ELVA provider with single YDoc
-# TODO: write multi-YDoc ELVA provider as metaprovider, i.e. service
+ConnectionState = create_component_state("ConnectionState", ("CONNECTED",))
 
 
 class Connection(Component):
@@ -25,28 +22,12 @@ class Connection(Component):
     Abstract base class for connection objects.
     """
 
-    _connected = None
-    _disconnected = None
     _outgoing = None
     _incoming = None
 
     @property
-    def connected(self) -> anyio.Event:
-        """
-        Event signaling being connected.
-        """
-        if self._connected is None:
-            self._connected = anyio.Event()
-        return self._connected
-
-    @property
-    def disconnected(self) -> anyio.Event:
-        """
-        Event signaling being disconnected.
-        """
-        if self._disconnected is None:
-            self._disconnected = anyio.Event()
-        return self._disconnected
+    def states(self):
+        return ConnectionState
 
     @property
     def outgoing(self) -> Any:
@@ -81,28 +62,18 @@ class Connection(Component):
         Arguments:
             data: data to be send via the [`outgoing`][elva.provider.Connection.outgoing] stream.
         """
-        if self.connected.is_set():
-            try:
-                self.log.debug(f"sending {data}")
-                await self.outgoing.send(data)
-            except Exception as exc:
-                self.log.info(f"cancelled sending {data}")
-                self.log.debug(f"cancelled due to exception: {exc}")
+        if self.states.CONNECTED in self.state:
+            self.log.debug(f"sending data {data}")
+            await self.outgoing.send(data)
 
     async def recv(self):
         """
         Wrapper around the [`incoming`][elva.provider.Connection.incoming] stream.
         """
-        self.log.debug("waiting for connection")
-        await self.connected.wait()
-        try:
-            self.log.info("listening")
-            async for data in self.incoming:
-                self.log.debug(f"received message {data}")
-                await self.on_recv(data)
-        except Exception as exc:
-            self.log.info("cancelled listening for incoming data")
-            self.log.debug(f"cancelled due to exception: {exc}")
+        self.log.info("listening for incoming data")
+        async for data in self.incoming:
+            self.log.debug(f"received data {data}")
+            await self.on_recv(data)
 
     async def on_recv(self, data: Any):
         """
@@ -114,6 +85,11 @@ class Connection(Component):
             data: data received from [`incoming`][elva.provider.Connection.incoming].
         """
         ...
+
+
+WebsocketConnectionState = create_component_state(
+    "WebsocketConnectionState", ("CONNECTED",)
+)
 
 
 class WebsocketConnection(Connection):
@@ -167,6 +143,10 @@ class WebsocketConnection(Connection):
 
         self.tried_credentials = False
 
+    @property
+    def states(self):
+        return WebsocketConnectionState
+
     async def run(self):
         """
         Hook connecting and listening for incoming data.
@@ -186,35 +166,29 @@ class WebsocketConnection(Connection):
                     *self.signature.args, **self.signature.kwargs
                 ):
                     try:
-                        self.log.info(f"connection to {self.uri} opened")
+                        self.log.info(f"opened connection to {self.uri}")
 
                         self.incoming = self._websocket
                         self.outgoing = self._websocket
-                        self.connected.set()
-                        if self.disconnected.is_set():
-                            self._disconnected = None
-                            self.log.debug("unset 'disconnected' event flag")
-                        self.log.debug("set 'connected' event flag and streams")
+                        self.log.debug("set incoming and outgoing streams")
+
+                        self._change_state(self.states.NONE, self.states.CONNECTED)
 
                         self._task_group.start_soon(self.on_connect)
                         await self.recv()
                     # we only expect a normal or abnormal connection closing
                     except ConnectionClosed:
                         pass
-                    # catch everything else and log it
-                    # TODO: remove it? helpful for devs only?
-                    except Exception as exc:
-                        self.log.exception(
-                            f"unexpected websocket client exception: {exc}"
-                        )
 
-                    self.log.info(f"connection to {self.uri} closed")
-                    self._connected = None
-                    self.disconnected.set()
-                    self.log.debug("set 'disconnected' event flag")
+                    self.log.info(f"closed connection to {self.uri}")
+
+                    # remove `CONNECTED` state
+                    self._change_state(self.states.CONNECTED, self.states.NONE)
+
+                    # reset incoming and outgoing streams
                     self._outgoing = None
                     self._incoming = None
-                    self.log.debug("unset 'connected' event flag and streams")
+                    self.log.debug("unset incoming and outgoing streams")
             # expect only errors occur due to malformed URI or HTTP status code
             # considered invalid
             except (InvalidStatus, InvalidURI) as exc:
@@ -228,19 +202,11 @@ class WebsocketConnection(Connection):
                     self.options.update(headers)
                     self.tried_credentials = True
                 else:
-                    try:
-                        options = await self.on_exception(exc)
-                        if options:
-                            if options.get("additional_headers") is not None:
-                                self.tried_credentials = False
-                            self.options.update(options)
-                    except Exception as exc:
-                        self.log.error(f"abort due to raised exception {exc}")
-                        break
-
-        # when reached this point, something clearly went wrong,
-        # so we need to stop the connection
-        await self.stop()
+                    options = await self.on_exception(exc)
+                    if options:
+                        if options.get("additional_headers") is not None:
+                            self.tried_credentials = False
+                        self.options.update(options)
 
     async def cleanup(self):
         """
@@ -268,6 +234,11 @@ class WebsocketConnection(Connection):
             exc: exception raised by [`connect`][websockets.asyncio.client.connect].
         """
         raise exc
+
+
+WebsocketProviderState = create_component_state(
+    "WebsocketProviderState", ("CONNECTED",)
+)
 
 
 class WebsocketProvider(WebsocketConnection):
@@ -303,12 +274,15 @@ class WebsocketProvider(WebsocketConnection):
         uri = urljoin(server, identifier)
         super().__init__(uri, *args, **kwargs)
 
-    async def run(self):
+    @property
+    def states(self):
+        return WebsocketProviderState
+
+    async def before(self):
         """
-        Hook observing changes and handling connection.
+        Hook subscribing to changes in the Y Document.
         """
-        self.subscription = self.ydoc.observe(self.callback)
-        await super().run()
+        self.subscription = self.ydoc.observe(self.on_transaction_event)
 
     async def cleanup(self):
         """
@@ -316,7 +290,7 @@ class WebsocketProvider(WebsocketConnection):
         """
         self.ydoc.unobserve(self.subscription)
 
-    def callback(self, event: TransactionEvent):
+    def on_transaction_event(self, event: TransactionEvent):
         """
         Hook called on changes in [`ydoc`][elva.provider.WebsocketProvider.ydoc].
 
@@ -327,7 +301,6 @@ class WebsocketProvider(WebsocketConnection):
         """
         if event.update != b"\x00\x00":
             message, _ = YMessage.SYNC_UPDATE.encode(event.update)
-            self.log.debug("callback with non-empty update triggered")
             self._task_group.start_soon(self.send, message)
 
     async def on_connect(self):
