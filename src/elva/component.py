@@ -90,7 +90,7 @@ class Component:
         return f"{self.__class__.__name__}"
 
     @property
-    def states(self):
+    def states(self) -> ComponentState:
         """
         Enumeration class holding all states the component can have.
         """
