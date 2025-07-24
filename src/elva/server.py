@@ -144,6 +144,12 @@ class Room(Component):
             for client in clients:
                 tg.start_soon(client.close)
 
+        for client in clients:
+            try:
+                self.remove(client)
+            except KeyError:
+                pass
+
         self.log.info("closed all connections")
 
     def add(self, client: ServerConnection):
@@ -260,10 +266,9 @@ class Room(Component):
     async def process_awareness(self, state: bytes, client: ServerConnection):
         """
         Process an awareness message payload `state` from `client`.
-
-        Currently, this is implemented as a no-op.
         """
-        self.log.debug(f"got AWARENESS message {state} from {id(client)}, do nothing")
+        message, _ = YMessage.AWARENESS.encode(state)
+        self.broadcast(message, client)
 
 
 class ElvaRoom(Room):
@@ -374,7 +379,7 @@ class ElvaRoom(Room):
             self.broadcast(message, client)
 
 
-WebsocketServerState = create_component_state("WebsocketServerState")
+WebsocketServerState = create_component_state("WebsocketServerState", ("SERVING",))
 
 
 class WebsocketServer(Component):
@@ -445,6 +450,8 @@ class WebsocketServer(Component):
             process_request=self.process_request,
             logger=self.log,
         ):
+            self._change_state(self.states.NONE, self.states.SERVING)
+
             if self.persistent:
                 if self.path is None:
                     location = "volatile memory"
@@ -456,6 +463,20 @@ class WebsocketServer(Component):
 
             # keep the server active indefinitely
             await anyio.sleep_forever()
+
+    async def cleanup(self):
+        self._change_state(self.states.SERVING, self.states.NONE)
+
+        async with anyio.create_task_group() as tg:
+            for identifier in self.rooms:
+                tg.start_soon(self.wait_for_room_closed, identifier)
+
+    async def wait_for_room_closed(self, identifier):
+        room = self.rooms[identifier]
+        sub = room.subscribe()
+        while room.states.ACTIVE in room.state:
+            await sub.receive()
+        room.unsubscribe(sub)
 
     def check_path(
         self, websocket: ServerConnection, request: Request
@@ -533,7 +554,6 @@ class WebsocketServer(Component):
             self.log.info(f"closed connection {id(websocket)}")
         finally:
             room.remove(websocket)
-            self.log.debug(f"removed connection {id(websocket)}")
 
 
 class ElvaWebsocketServer(WebsocketServer):
