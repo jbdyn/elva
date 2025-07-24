@@ -5,6 +5,7 @@ import anyio
 import pytest
 from pycrdt import Doc, Text, TransactionEvent
 
+from elva.component import create_component_state
 from elva.store import SQLiteStore, get_metadata, set_metadata
 
 pytestmark = pytest.mark.anyio
@@ -76,6 +77,18 @@ async def test_metadata_with_identifier(tmp_elva_file):
 
 
 async def test_read_write(tmp_elva_file):
+    SlowSQLiteStoreState = create_component_state("SlowSQLiteStoreState")
+
+    class SlowSQLiteStore(SQLiteStore):
+        @property
+        def states(self) -> SlowSQLiteStoreState:
+            return SlowSQLiteStoreState
+
+        async def run(self):
+            self.log.info("simulating slow run")
+            await anyio.sleep(1)
+            await super().run()
+
     # CRDT setup
     doc_before = Doc()
     doc_before["text"] = text = Text()
@@ -91,17 +104,25 @@ async def test_read_write(tmp_elva_file):
     doc_before.observe(on_transaction_event)
 
     # store initialization and CRDT manipulation
-    store = SQLiteStore(doc_before, identifier, tmp_elva_file)
+    store = SlowSQLiteStore(doc_before, identifier, tmp_elva_file)
 
     # cancel *while* handling an incoming update
     async with anyio.create_task_group() as tg:
         await tg.start(store.start)
         text += "my-update"
+
+        # waiting for `update` to be recognized
+        while update is None:
+            await anyio.sleep(1e-6)
+
+        # the update is now in the store's buffer
+        assert store._stream_recv.statistics().current_buffer_used > 0
+
+        # cancel the task scope, triggering the cleanup
         tg.cancel_scope.cancel()
 
-    # waiting for `update` to be recognized
-    while update is None:
-        await anyio.sleep(1e-6)
+        # the update is still in the buffer, but should be written to file nonetheless
+        assert store._stream_recv.statistics().current_buffer_used > 0
 
     # check if update has really been written to `tmp_elva_file`
     db = sqlite3.connect(tmp_elva_file)

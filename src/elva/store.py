@@ -145,7 +145,7 @@ class SQLiteStore(Component):
         self._lock = Lock()
 
     @property
-    def states(self):
+    def states(self) -> SQLiteStoreState:
         return SQLiteStoreState
 
     async def get_metadata(self) -> dict:
@@ -210,7 +210,8 @@ class SQLiteStore(Component):
                 "CREATE TABLE IF NOT EXISTS metadata(key PRIMARY KEY, value)"
             )
             await self._db.commit()
-            self.log.debug("ensured metadata table")
+
+        self.log.debug("ensured metadata table")
 
     async def _ensure_identifier(self):
         """
@@ -246,7 +247,8 @@ class SQLiteStore(Component):
                 "CREATE TABLE IF NOT EXISTS yupdates(yupdate BLOB)"
             )
             await self._db.commit()
-            self.log.debug("ensured update table")
+
+        self.log.debug("ensured update table")
 
     async def _read(self):
         """
@@ -261,7 +263,8 @@ class SQLiteStore(Component):
             # apply updates
             for update, *rest in updates:
                 self.ydoc.apply_update(update)
-            self.log.debug("applied updates from file")
+
+        self.log.debug("applied updates from file")
 
     async def _initialize(self):
         """
@@ -311,7 +314,8 @@ class SQLiteStore(Component):
                 [update],
             )
             await self._db.commit()
-            self.log.debug(f"wrote update {update} to file {self.path}")
+
+        self.log.debug(f"wrote update {update} to file {self.path}")
 
     async def before(self):
         """
@@ -325,7 +329,7 @@ class SQLiteStore(Component):
 
         # initialize streams
         self._stream_send, self._stream_recv = create_memory_object_stream(
-            max_buffer_size=65543
+            max_buffer_size=65536
         )
         self.log.debug("instantiated buffer")
 
