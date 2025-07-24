@@ -32,6 +32,16 @@ def get_websocket_uri(port):
     return f"ws://{LOCALHOST}:{port}"
 
 
+def ydoc_updates_are_empty(ydoc_a, ydoc_b):
+    update_a = ydoc_a.get_update(ydoc_b.get_state())
+    update_b = ydoc_b.get_update(ydoc_a.get_state())
+
+    is_equal = update_a == update_b
+    is_empty = update_a == b"\x00\x00" and update_b == b"\x00\x00"
+
+    return is_equal and is_empty
+
+
 async def test_connect(free_tcp_port, tmpdir):
     """A provider connects to a server and the server spawns a room."""
     # setup local YDoc
@@ -114,22 +124,19 @@ async def test_multiple_connect_no_history(free_tcp_port):
             text_a += "this is going from `provider_a` to `provider_b`"
 
             # both YDocs have different contents
-            assert ydoc_a.get_state() != ydoc_b.get_state()
             assert ydoc_a.get_state() != b"\x00"
 
             # wait for the YDocs to be in sync again
-            while ydoc_a.get_state() != ydoc_b.get_state():
-                await anyio.sleep(1e-2)
+            while not ydoc_updates_are_empty(ydoc_a, ydoc_b):
+                await anyio.sleep(1e-6)
 
             # both YDocs hold the same content now
-            assert ydoc_a.get_state() == ydoc_b.get_state()
             assert ydoc_b.get_state() != b"\x00"
             assert str(ydoc_a["text"]) == str(ydoc_b["text"])
 
 
 async def test_multiple_connect_divergent_history(free_tcp_port):
     """Two providers sync their divergent histories with each other on connect."""
-
     # setup local YDocs
     content_a = r"a few words by `a`\n"
     ydoc_a = Doc()
@@ -151,7 +158,6 @@ async def test_multiple_connect_divergent_history(free_tcp_port):
             WebsocketProvider(ydoc_b, identifier, uri) as provider_b,
         ):
             # the YDocs hold some differing content
-            assert ydoc_a.get_state() != ydoc_b.get_state()
             assert ydoc_a.get_state() != b"\x00"
             assert ydoc_b.get_state() != b"\x00"
 
@@ -169,11 +175,8 @@ async def test_multiple_connect_divergent_history(free_tcp_port):
             assert len(room.clients) == 2
 
             # wait for the YDocs to sync
-            while ydoc_a.get_state() != ydoc_b.get_state():
-                await anyio.sleep(1e-2)
-
-            # we now have both YDocs synced with each other
-            assert ydoc_a.get_state() == ydoc_b.get_state()
+            while not ydoc_updates_are_empty(ydoc_a, ydoc_b):
+                await anyio.sleep(1e-6)
 
             # we have identical content as the union of our divergent histories
             assert str(ydoc_a["text"]) == str(ydoc_b["text"])
@@ -216,8 +219,8 @@ async def test_manual_reconnect(free_tcp_port):
                 room = server.rooms[identifier]
 
                 # wait for the ydoc states to get synced
-                while ydoc.get_state() != room.ydoc.get_state():
-                    await anyio.sleep(1e-2)
+                while not ydoc_updates_are_empty(ydoc, room.ydoc):
+                    await anyio.sleep(1e-6)
 
                 # stop the provider
                 await provider.stop()
@@ -320,12 +323,11 @@ async def test_synchronization_from_provider_to_server(free_tcp_port):
         # the remote YDoc is not synced yet
         assert room.ydoc.get_state() == b"\x00"
 
-        # wait for the YDocs to get synced
-        while ydoc.get_state() != room.ydoc.get_state():
-            await anyio.sleep(1e-2)
+        # wait for the YDocs to get synced, i.e. produced updates are empty
+        while not ydoc_updates_are_empty(ydoc, room.ydoc):
+            await anyio.sleep(1e-6)
 
         # now both local and remote YDoc are in the same state
-        assert ydoc.get_state() == room.ydoc.get_state()
         assert room.ydoc != b"\x00"
 
 
@@ -362,11 +364,8 @@ async def test_synchronization_from_server_to_provider(free_tcp_port):
             assert provider.states.CONNECTED in provider.state
 
             # wait for the YDocs to sync state
-            while ydoc.get_state() != room.ydoc.get_state():
-                await anyio.sleep(1e-2)
-
-            # both local and remote YDocs are in the same state
-            assert ydoc.get_state() == room.ydoc.get_state()
+            while not ydoc_updates_are_empty(ydoc, room.ydoc):
+                await anyio.sleep(1e-6)
 
 
 async def test_bidirectional_synchronization(free_tcp_port):
@@ -404,11 +403,8 @@ async def test_bidirectional_synchronization(free_tcp_port):
             assert provider.states.CONNECTED in provider.state
 
             # wait for the YDoc states to get synced
-            while ydoc.get_state() != room.ydoc.get_state():
-                await anyio.sleep(1e-2)
-
-            # both local and remote YDocs are in the same state
-            assert ydoc.get_state() == room.ydoc.get_state()
+            while not ydoc_updates_are_empty(ydoc, room.ydoc):
+                await anyio.sleep(1e-6)
 
             # both local and remote YTexts show identical content
             assert str(ydoc["text"]) == str(room.ydoc["text"])

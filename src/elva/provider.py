@@ -75,6 +75,7 @@ class WebsocketProvider(Component):
         """
         self.ydoc = ydoc
         self.awareness = Awareness(ydoc)
+        self.awareness.log = logging.getLogger(f"{self.log.name}.Awareness")
 
         uri = urljoin(server, identifier)
         self.uri = uri
