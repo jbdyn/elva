@@ -3,100 +3,77 @@ Module providing authentication utilities for [`server`][elva.apps.server] app m
 """
 
 import logging
-from base64 import b64decode, b64encode
-from http import HTTPStatus
+from base64 import b64encode
+from enum import IntEnum
 
 import ldap3
 from ldap3.core.exceptions import LDAPException
+from ldap3.utils.log import (
+    BASIC,
+    ERROR,
+    EXTENDED,
+    NETWORK,
+    OFF,
+    PROTOCOL,
+    set_library_log_detail_level,
+)
 
 from elva.log import LOGGER_NAME
 
-AUTH_SCHEME = [
-    "Basic",
-    "Digest",
-    "Negotiate",
-]
-"""
-Valid autentication schemes in `Authorization` HTTP request header.
-"""
 
-
-def basic_authorization_header(username: str, password: str) -> dict[str, str]:
+class LDAP3LogLevel(IntEnum):
     """
-    Compose the Base64 encoded `Authorization` header for `Basic` authentication.
+    The logging level specified by the LDAP3 Python library as enumeration.
+    """
+
+    OFF = OFF
+    ERROR = ERROR
+    BASIC = BASIC
+    PROTOCOL = PROTOCOL
+    NETWORK = NETWORK
+    EXTENDED = EXTENDED
+
+
+def basic_authorization_header(
+    username: str, password: str, charset="utf-8"
+) -> dict[str, str]:
+    """
+    Compose the Base64 encoded `Authorization` header for `Basic` authentication
+    according to [*The 'Basic' Authentication Scheme*](https://datatracker.ietf.org/doc/html/rfc7617.html#section-2) in [**RFC 7617**](https://datatracker.ietf.org/doc/html/rfc7617.html).
 
     Arguments:
         username: user name used for authentication.
         password: password used for authentication.
+        charset: the character encoding the server expects the basic credentials to be encoded in.
 
     Returns:
-        dictionary holding the Base64 encoded `Authorization` header contents as value.
+        dictionary holding the Base64 encoded `Authorization` header contents.
     """
-    bvalue = f"{username}:{password}".encode()
-    b64bvalue = b64encode(bvalue).decode()
+    # in RFC 7617, user IDs containing a colon ':' are invalid
+    if ":" in username:
+        raise ValueError(f"given username '{username}' must not contain a colon ':'")
 
-    return {"Authorization": f"Basic {b64bvalue}"}
+    # scheme given by RFC 7617
+    user_pass = f"{username}:{password}"
+
+    # we need an octet sequence for Base64 encoding;
+    # the charset is either set to UTF-8 due to its global adoption or
+    # given by the server in the WWW-Authenticate header
+    octet_sequence = user_pass.encode(charset)
+
+    # encode the octet sequence in Base64 and decode it for converting
+    # the result from bytes to string;
+    # the `ascii` encoding is just informational here as Base64 encoding
+    # only produces a sequence of ASCII characters
+    basic_credentials = b64encode(octet_sequence).decode("ascii")
+
+    # scheme given by RFC 7617
+    return {"Authorization": f"Basic {basic_credentials}"}
 
 
-def process_authorization_header(request_headers: dict) -> tuple[str, str]:
+class Auth:
     """
-    Decompose Base64 encoded `Authorization` header into scheme and credentials.
-
-    Arguments:
-        request_headers: dictionary of HTTP request headers.
-
-    Returns:
-        tuple holding the scheme and the (still Base64 encoded) credentials.
-    """
-    auth_header = request_headers["Authorization"]
-    scheme, credentials = auth_header.split(" ", maxsplit=1)
-    if scheme not in AUTH_SCHEME:
-        raise ValueError("invalid scheme in Authorization header")
-    return scheme, credentials
-
-
-def process_basic_auth_credentials(credentials: str) -> tuple[str, str]:
-    """
-    Decode Base64 encoded `Basic` authorization header payload.
-
-    Arguments:
-        credentials: Base64 encoded credentials from the `Authorization` HTTP request header.
-
-    Returns:
-        tuple holding decoded user name and password.
-    """
-    bb64cred = credentials.encode()
-    bcred = b64decode(bb64cred)
-    cred = bcred.decode()
-    username, password = cred.split(":", maxsplit=1)
-    return username, password
-
-
-def abort_basic_auth(
-    realm: str,
-    body: None | str = None,
-    status: HTTPStatus = HTTPStatus.UNAUTHORIZED,
-) -> tuple[HTTPStatus, dict[str, str], None | bytes]:
-    """
-    Compose `Basic Authentication` abort information.
-
-    Arguments:
-        realm: `Basic Authentication` realm.
-        body: message body to send.
-        status: HTTP status for this abort.
-
-    Returns:
-        tuple holding the HTTP status, the dictionary with the `WWW-Authenticate` header information for `Basic Authentication` and the UTF-8 encoded message body if given.
-    """
-    headers = {"WWW-Authenticate": f"Basic realm={realm}"}
-    if body:
-        body = body.encode()
-    return status, headers, body
-
-
-class BasicAuth:
-    """
-    Base class for `Basic Authentication`.
+    Base class for authentications.
 
     This class is intended to be used in the [`server`][elva.apps.server] app module.
     """
@@ -108,66 +85,23 @@ class BasicAuth:
         )
         return self
 
-    def __init__(self, realm: str):
-        """
-        Arguments:
-            realm: realm of the `Basic Authentication`.
-        """
-        self.realm = realm
-
-    def authenticate(
-        self, path: str, request_headers: dict
-    ) -> None | tuple[HTTPStatus, dict[str, str], None | bytes]:
-        """
-        Wrapper around [`verify`][elva.auth.BasicAuth.verify] with processing and logging.
-
-        Arguments:
-            path: the path used in the HTTP request.
-            request_headers: the HTTP request headers.
-
-        Returns:
-            `None` if [`verify`][elva.auth.BasicAuth.verify] returns `True`, else it returns the request abort information as specified in [`abort_basic_auth`][elva.auth.abort_basic_auth].
-        """
-        try:
-            scheme, credentials = process_authorization_header(request_headers)
-        except KeyError:
-            return self._log_and_abort("missing Authorization header")
-        except ValueError:
-            return self._log_and_abort("malformed Authorization header")
-
-        match scheme:
-            case "Basic":
-                username, password = process_basic_auth_credentials(credentials)
-            case _:
-                return self._log_and_abort("unsupported Authorization scheme")
-
-        if not self.verify(username, password):
-            return self._log_and_abort("invalid credentials")
-
-    def _abort(self, body=None, status=HTTPStatus.UNAUTHORIZED):
-        return abort_basic_auth(self.realm, body=body, status=status)
-
-    def _log_and_abort(self, msg):
-        self.log.debug(msg)
-        return self._abort(msg)
-
-    def verify(self, username: str, password: str) -> bool:
+    def check(self, username: str, password: str) -> bool:
         """
         Decides whether the given credentials are valid or not.
 
-        This is defined as a no-op and is intended to implemented in inheriting subclasses.
+        This is required to be implemented in inheriting subclasses.
 
         Arguments:
-            username: user name provided in the HTTP request headers.
-            password: password provided in the HTTP request headers.
+            username: user name to be checked.
+            password: password to be checked.
 
         Returns:
             `True` if credentials are valid, `False` if they are not.
         """
-        ...
+        raise NotImplementedError("credential checking logic is required to be defined")
 
 
-class DummyAuth(BasicAuth):
+class DummyAuth(Auth):
     """
     Dummy `Basic Authentication` class where password equals user name.
 
@@ -175,28 +109,52 @@ class DummyAuth(BasicAuth):
         This class is intended for testing only. DO NOT USE IN PRODUCTION!
     """
 
-    def verify(self, username, password):
+    def __init__(self):
+        self.log.warning("DUMMY AUTHENTICATION. DO NOT USE IN PRODUCTION!")
+
+    def check(self, username, password):
+        """
+        Checks whether username and password are identical.
+
+        Arguments:
+            username: user name to compare.
+            password: password to compare.
+
+        Returns:
+            `True` if username and password are identical, `False` if they are not.
+        """
         return username == password
 
 
-class LDAPBasicAuth(BasicAuth):
+class LDAPAuth(Auth):
     """
     `Basic Authentication` using LDAP self-bind.
     """
 
-    def __init__(self, realm: str, server: str, base: str):
+    def __init__(
+        self,
+        server: str,
+        base: str,
+        use_ssl: bool = True,
+        log_level: None | LDAP3LogLevel = None,
+    ):
         """
         Arguments:
-            realm: realm of the `Basic Authentication`.
             server: address of the LDAP server.
             base: base for lookup on the LDAP server.
+            use_ssl: flag whether to use SSL verification (`True`) or not (`False`).
+            log_level: the logging level of the underlying LDAP3 library.
         """
-        super().__init__(realm)
-        self.server = ldap3.Server(server, use_ssl=True)
+        self.server = ldap3.Server(server, use_ssl=use_ssl)
         self.base = base
-        self.log.info(f"server: {self.server.name}, base: {base}")
 
-    def verify(self, username: str, password: str) -> bool:
+        self.log.info(f"using server {self.server.name}")
+        self.log.info(f"using base {base}")
+
+        if log_level is not None:
+            set_library_log_detail_level(log_level)
+
+    def check(self, username: str, password: str) -> bool:
         """
         Perform a self-bind connection to the given LDAP server.
 
@@ -205,23 +163,24 @@ class LDAPBasicAuth(BasicAuth):
             password: password to use for the LDAP self-bind connection.
 
         Returns:
-            `True` if the LDAP self-bind connection could be established, i.e. was successful, `False` if no successful connection could be established.
+            `True` if the LDAP self-bind connection could be established, i.e. was successful, `False` otherwise.
         """
         user = f"uid={username},{self.base}"
+
         try:
-            self.log.debug("try LDAP connection")
+            self.log.debug(f"trying connection with username {username}")
             with ldap3.Connection(
                 self.server,
                 user=user,
                 password=password,
             ) as conn:
                 if conn.result["description"] == "success":
-                    self.log.debug(f"successful self-bind with {user}")
+                    self.log.debug(f"succeeded self-bind with username {username}")
                     return True
                 else:
-                    self.log.debug(f"self-bind with {user} not successful")
+                    self.log.debug(f"failed self-bind with username {username}")
                     return False
 
-        except LDAPException:
-            self.log.debug(f"unable to connect with {user}")
+        except LDAPException as exc:
+            self.log.warning(f"failed connection with username {username}: {exc}")
             return False

@@ -6,11 +6,13 @@ import anyio
 import pytest
 from pycrdt import Doc, Text, TransactionEvent
 from websockets.asyncio.client import ClientConnection, connect
-from websockets.asyncio.server import ServerConnection
+from websockets.asyncio.server import ServerConnection, basic_auth
 from websockets.datastructures import Headers
 from websockets.exceptions import InvalidStatus
 from websockets.http11 import Request, Response
+from websockets.protocol import State as ConnectionState
 
+from elva.auth import Auth, DummyAuth, basic_authorization_header
 from elva.protocol import YMessage
 from elva.server import RequestProcessor, WebsocketServer
 
@@ -28,10 +30,10 @@ def anyio_backend():
 LOCALHOST = "127.0.0.1"
 
 
-async def connect_websocket_client(uri: str) -> ClientConnection:
+async def connect_websocket_client(*args, **kwargs) -> ClientConnection:
     while True:
         try:
-            client = await connect(uri)
+            client = await connect(*args, **kwargs)
         except ConnectionRefusedError:
             continue
         else:
@@ -424,3 +426,46 @@ async def test_websocket_server_permanent_persistence(free_tcp_port, tmpdir):
 
         state_server_after_reboot = room.ydoc.get_state()
         assert state_server_after_reboot == state_server_before_reboot
+
+
+async def test_auth(free_tcp_port):
+    PASSWORD = "1234"
+
+    class TestAuth(Auth):
+        async def check(self, username, password):
+            await anyio.sleep(0)
+            return password == PASSWORD
+
+    identifier = "some-identifier"
+    uri = websocket_client_uri(LOCALHOST, free_tcp_port, identifier)
+
+    for auth, invalid, valid in (
+        (DummyAuth(), ("foo", "bar"), ("foo", "foo")),
+        (TestAuth(), ("foo", "abcd"), ("foo", PASSWORD)),
+    ):
+        async with WebsocketServer(
+            LOCALHOST,
+            free_tcp_port,
+            process_request=basic_auth(
+                realm="test server", check_credentials=auth.check
+            ),
+        ):
+            # wrong credentials for DummyAuth
+            username, password = invalid
+            headers = basic_authorization_header(username, password)
+
+            with pytest.raises(InvalidStatus) as excinfo:
+                await connect_websocket_client(uri, additional_headers=headers)
+
+            exc = excinfo.value
+            response = exc.response
+            assert response.status_code == 401  # UNAUTHORIZED
+
+            # correct credentials for DummyAuth
+            username, password = valid
+            headers = basic_authorization_header(username, password)
+
+            client = await connect_websocket_client(uri, additional_headers=headers)
+            assert client.state == ConnectionState.OPEN
+            await client.close()
+            assert client.state == ConnectionState.CLOSED
