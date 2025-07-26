@@ -449,7 +449,7 @@ async def test_auth(free_tcp_port):
             process_request=basic_auth(
                 realm="test server", check_credentials=auth.check
             ),
-        ):
+        ) as server:
             # wrong credentials for DummyAuth
             username, password = invalid
             headers = basic_authorization_header(username, password)
@@ -461,11 +461,18 @@ async def test_auth(free_tcp_port):
             response = exc.response
             assert response.status_code == 401  # UNAUTHORIZED
 
+            # no rooms has been created
+            assert identifier not in server.rooms
+
             # correct credentials for DummyAuth
             username, password = valid
             headers = basic_authorization_header(username, password)
 
             client = await connect_websocket_client(uri, additional_headers=headers)
             assert client.state == ConnectionState.OPEN
+
+            # now there is a room present
+            assert identifier in server.rooms
+
             await client.close()
             assert client.state == ConnectionState.CLOSED
