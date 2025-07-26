@@ -141,13 +141,13 @@ class TextRenderer(Component):
         # update the copied hash
         hash.update(content.encode())
 
-        # the new content differs from the one on the last write;
-        # remove the `SAVED` state
         if hash.digest() != self.hash.digest():
+            # the new content differs from the one on the last write;
+            # remove the `SAVED` state
             self._change_state(self.states.SAVED, self.states.NONE)
-        # both contents are the same;
-        # ensure the `SAVED` state is set
         else:
+            # both contents are the same;
+            # ensure the `SAVED` state is set
             self._change_state(self.states.NONE, self.states.SAVED)
 
     async def before(self):
