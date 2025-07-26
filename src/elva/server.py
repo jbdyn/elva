@@ -2,6 +2,7 @@
 Websocket server classes.
 """
 
+import logging
 import re
 from http import HTTPStatus
 from pathlib import Path
@@ -340,7 +341,7 @@ class WebsocketServer(Component):
             self.host,
             self.port,
             process_request=self.process_request,
-            logger=self.log,
+            logger=logging.getLogger(f"{self.log.name}.ServerConnection"),
         ):
             self._change_state(self.states.NONE, self.states.SERVING)
 
