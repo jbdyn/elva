@@ -3,16 +3,15 @@ Module holding provider components.
 """
 
 import logging
-from inspect import Signature, signature
-from typing import Any, Literal
-from urllib.parse import urljoin
+from inspect import Signature, isawaitable, signature
+from typing import Any, Awaitable, Callable, Literal
+from urllib.parse import urlunparse
 
 from anyio import CancelScope, WouldBlock, create_memory_object_stream
 from pycrdt import Doc, Subscription, TransactionEvent
 from websockets.asyncio.client import connect
-from websockets.exceptions import ConnectionClosed, InvalidStatus, InvalidURI
+from websockets.exceptions import ConnectionClosed, WebSocketException
 
-from elva.auth import basic_authorization_header
 from elva.awareness import Awareness
 from elva.component import Component, create_component_state
 from elva.protocol import YMessage
@@ -44,6 +43,9 @@ class WebsocketProvider(Component):
     tried_credentials: bool
     """Flag whether given credentials have already been tried."""
 
+    on_exception: Callable | Awaitable | None
+    """Callback to which the current connection exception and a reference to the connection option mapping is given."""
+
     _signature: Signature
     """Object holding the positional and keyword arguments for [`connect`][websockets.asyncio.client.connect]."""
 
@@ -57,10 +59,11 @@ class WebsocketProvider(Component):
         self,
         ydoc: Doc,
         identifier: str,
-        server: str,
-        user: None | str = None,
-        password: None | str = None,
+        host: str,
         *args: tuple[Any],
+        port: int = None,
+        safe: bool = True,
+        on_exception: Awaitable | None = None,
         **kwargs: dict[Any],
     ):
         """
@@ -68,8 +71,7 @@ class WebsocketProvider(Component):
             ydoc: instance if the synchronized Y Document.
             identifier: identifier of the synchronized Y Document.
             server: address of the Y Document synchronizing websocket server.
-            user: username to be sent in the `Basic Authentication` HTTP request header.
-            password: password to be sent in the `Basic Authentication` HTTP request header.
+            on_exception: callback to which the current connection exception and a reference to the connection option mapping is given.
             *args: positional arguments passed to [`connect`][websockets.asyncio.client.connect].
             **kwargs: keyword arguments passed to [`connect`][websockets.asyncio.client.connect].
         """
@@ -77,7 +79,12 @@ class WebsocketProvider(Component):
         self.awareness = Awareness(ydoc)
         self.awareness.log = logging.getLogger(f"{self.log.name}.Awareness")
 
-        uri = urljoin(server, identifier)
+        # construct URI
+        scheme = "wss" if safe else "ws"
+        netloc = f"{host}:{port}" if port is not None else host
+
+        # scheme, netloc, url, params, query, fragment
+        uri = urlunparse((scheme, netloc, identifier, None, None, None))
         self.uri = uri
 
         # construct a dictionary of args and kwargs
@@ -87,16 +94,10 @@ class WebsocketProvider(Component):
         self._signature = signature(connect).bind(uri, *args, **kwargs)
         self.options = self._signature.arguments
 
-        # keep credentials separate to only send them if necessary
-        if user:
-            self.basic_authorization_header = basic_authorization_header(
-                user, password or ""
-            )
-        else:
-            self.basic_authorization_header = None
+        # callable attribute
+        self.on_exception = on_exception
 
-        self.tried_credentials = False
-
+        # buffer for messages to send
         self._buffer_in, self._buffer_out = create_memory_object_stream(
             max_buffer_size=65536
         )
@@ -165,38 +166,42 @@ class WebsocketProvider(Component):
         """
         Hook connecting and listening for incoming data.
 
-        - It retries on HTTP response status other than `101` automatically.
-        - It sends given credentials only after a failed connection attempt.
-        - It gives the opportunity to update the connection arguments with credentials via the
-          [`on_exception`][elva.provider.WebsocketProvider.on_exception] hook, if previously
-          given information result in a failed connection.
+        It retries on HTTP response status codes `3xx` and `5xx` automatically
+        or gives the opportunity to update the connection options with
+        credentials via the [`on_exception`][elva.provider.WebsocketProvider.on_exception] hook.
         """
         # catch exceptions due to HTTP status codes other than 101, 3xx, 5xx
         with CancelScope(shield=True) as self._connection_scope:
             self.log.debug("handling connection")
+
+            # a new connection loop needs to be started for every change
+            # in connection options
             while True:
                 try:
                     await self._connect()
-                # expect only errors occur due to malformed URI or HTTP status code
-                # considered invalid
-                except (InvalidStatus, InvalidURI) as exc:
-                    if (
-                        self.basic_authorization_header is not None
-                        and not self.tried_credentials
-                        and isinstance(exc, InvalidStatus)
-                        and exc.response.status_code == 401  # Unauthorized
-                    ):
-                        headers = dict(
-                            additional_headers=self.basic_authorization_header
-                        )
-                        self.options.update(headers)
-                        self.tried_credentials = True
-                    else:
-                        options = await self.on_exception(exc)
-                        if options:
-                            if options.get("additional_headers") is not None:
-                                self.tried_credentials = False
-                            self.options.update(options)
+                # give every possible exception not catched by `connect`s
+                # `process_exception` another chance
+                except WebSocketException as exc:
+                    await self._on_exception(exc)
+
+    async def _on_exception(self, exc: WebSocketException):
+        """
+        Wrapper method around the [`on_exception`][elva.provider.WebsocketProvider.on_exception] attribute.
+
+        If `on_exception` was not given, it defaults to re-raising `exc`.
+
+        Arguments:
+            exc: exception raised by [`connect`][websockets.asyncio.client.connect].
+        """
+        if self.on_exception is not None:
+            # res is either `None` or an awaitable yielding `None`
+            res = self.on_exception(exc, self.options)
+
+            if isawaitable(res):
+                await res
+        else:
+            # unhandled connection exceptions should be fatal
+            raise exc
 
     async def before(self):
         """
@@ -431,17 +436,3 @@ class WebsocketProvider(Component):
         # mark these updates coming from `remote` origin
         self.awareness.apply_awareness_update(state, origin="remote")
         self.log.debug("applied awareness update")
-
-    async def on_exception(self, exc: InvalidURI | InvalidStatus) -> None | dict:
-        """
-        Hook method run on otherwise unhandled invalid URI or invalid HTTP response status.
-
-        This method defaults to re-raise `exc`, is supposed to be implemented in the inheriting subclass and intended to be integrated in a user interface.
-
-        Arguments:
-            exc: exception raised by [`connect`][websockets.asyncio.client.connect].
-
-        Returns:
-            `None` or a dictionary with additional options for the next connection try.
-        """
-        raise exc

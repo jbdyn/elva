@@ -4,7 +4,10 @@ import uuid
 import anyio
 import pytest
 from pycrdt import Doc, Text
+from websockets.asyncio.server import basic_auth
+from websockets.exceptions import InvalidStatus
 
+from elva.auth import DummyAuth, basic_authorization_header
 from elva.log import LOGGER_NAME
 from elva.provider import WebsocketProvider
 from elva.server import WebsocketServer
@@ -28,10 +31,6 @@ def get_identifier():
     return str(uuid.uuid4())
 
 
-def get_websocket_uri(port):
-    return f"ws://{LOCALHOST}:{port}"
-
-
 def ydoc_updates_are_empty(ydoc_a, ydoc_b):
     update_a = ydoc_a.get_update(ydoc_b.get_state())
     update_b = ydoc_b.get_update(ydoc_a.get_state())
@@ -49,14 +48,15 @@ async def test_connect(free_tcp_port, tmpdir):
 
     # setup connection details
     identifier = get_identifier()
-    uri = get_websocket_uri(free_tcp_port)
 
     # run the server
     async with WebsocketServer(
         LOCALHOST, free_tcp_port, persistent=True, path=tmpdir
     ) as server:
         # run the provider
-        async with WebsocketProvider(ydoc, identifier, uri) as provider:
+        async with WebsocketProvider(
+            ydoc, identifier, LOCALHOST, port=free_tcp_port, safe=False
+        ) as provider:
             # wait for the provider to be connected
             sub_provider = provider.subscribe()
             while provider.states.CONNECTED not in provider.state:
@@ -92,14 +92,17 @@ async def test_multiple_connect_no_history(free_tcp_port):
 
     # setup connection details
     identifier = get_identifier()
-    uri = get_websocket_uri(free_tcp_port)
 
     # run the server
     async with WebsocketServer(LOCALHOST, free_tcp_port, persistent=False) as server:
         # run the providers
         async with (
-            WebsocketProvider(ydoc_a, identifier, uri) as provider_a,
-            WebsocketProvider(ydoc_b, identifier, uri) as provider_b,
+            WebsocketProvider(
+                ydoc_a, identifier, LOCALHOST, port=free_tcp_port, safe=False
+            ) as provider_a,
+            WebsocketProvider(
+                ydoc_b, identifier, LOCALHOST, port=free_tcp_port, safe=False
+            ) as provider_b,
         ):
             # the YDocs contain both nothing
             assert ydoc_a.get_state() == ydoc_b.get_state() == b"\x00"
@@ -148,14 +151,17 @@ async def test_multiple_connect_divergent_history(free_tcp_port):
 
     # setup connection details
     identifier = get_identifier()
-    uri = get_websocket_uri(free_tcp_port)
 
     # run the server
     async with WebsocketServer(LOCALHOST, free_tcp_port, persistent=False) as server:
         # run the providers
         async with (
-            WebsocketProvider(ydoc_a, identifier, uri) as provider_a,
-            WebsocketProvider(ydoc_b, identifier, uri) as provider_b,
+            WebsocketProvider(
+                ydoc_a, identifier, LOCALHOST, port=free_tcp_port, safe=False
+            ) as provider_a,
+            WebsocketProvider(
+                ydoc_b, identifier, LOCALHOST, port=free_tcp_port, safe=False
+            ) as provider_b,
         ):
             # the YDocs hold some differing content
             assert ydoc_a.get_state() != b"\x00"
@@ -194,10 +200,11 @@ async def test_manual_reconnect(free_tcp_port):
 
     # setup connection details
     identifier = get_identifier()
-    uri = get_websocket_uri(free_tcp_port)
 
     async with WebsocketServer(LOCALHOST, free_tcp_port, persistent=True) as server:
-        provider = WebsocketProvider(ydoc, identifier, uri)
+        provider = WebsocketProvider(
+            ydoc, identifier, LOCALHOST, port=free_tcp_port, safe=False
+        )
         sub = provider.subscribe()
         async with anyio.create_task_group() as tg:
             # connect a couple of times
@@ -238,10 +245,11 @@ async def test_auto_reconnect(free_tcp_port):
     # setup local YDoc
     ydoc = Doc()
     identifier = get_identifier()
-    uri = get_websocket_uri(free_tcp_port)
 
     # subscribe to both provider and server state changes
-    provider = WebsocketProvider(ydoc, identifier, uri)
+    provider = WebsocketProvider(
+        ydoc, identifier, LOCALHOST, port=free_tcp_port, safe=False
+    )
     sub_provider = provider.subscribe()
 
     server = WebsocketServer(LOCALHOST, free_tcp_port, persistent=True)
@@ -300,12 +308,13 @@ async def test_synchronization_from_provider_to_server(free_tcp_port):
 
     # setup connection details
     identifier = get_identifier()
-    uri = get_websocket_uri(free_tcp_port)
 
     # run both the server and the provider
     async with (
         WebsocketServer(LOCALHOST, free_tcp_port, persistent=True) as server,
-        WebsocketProvider(ydoc, identifier, uri) as provider,
+        WebsocketProvider(
+            ydoc, identifier, LOCALHOST, port=free_tcp_port, safe=False
+        ) as provider,
     ):
         # wait for the provider to be connected
         sub = provider.subscribe()
@@ -339,7 +348,6 @@ async def test_synchronization_from_server_to_provider(free_tcp_port):
 
     # setup connection details
     identifier = get_identifier()
-    uri = get_websocket_uri(free_tcp_port)
 
     # run the server
     async with WebsocketServer(LOCALHOST, free_tcp_port, persistent=True) as server:
@@ -354,7 +362,9 @@ async def test_synchronization_from_server_to_provider(free_tcp_port):
         assert room.ydoc.get_state() != b"\x00"
 
         # run the provider
-        async with WebsocketProvider(ydoc, identifier, uri) as provider:
+        async with WebsocketProvider(
+            ydoc, identifier, LOCALHOST, port=free_tcp_port, safe=False
+        ) as provider:
             # wait for the provider to be connected
             sub = provider.subscribe()
             while provider.states.CONNECTED not in provider.state:
@@ -377,7 +387,6 @@ async def test_bidirectional_synchronization(free_tcp_port):
 
     # setup connection details
     identifier = get_identifier()
-    uri = get_websocket_uri(free_tcp_port)
 
     # run the server
     async with WebsocketServer(LOCALHOST, free_tcp_port, persistent=True) as server:
@@ -393,7 +402,9 @@ async def test_bidirectional_synchronization(free_tcp_port):
         assert room.ydoc.get_state() != b"\x00"
 
         # run the provider
-        async with WebsocketProvider(ydoc, identifier, uri) as provider:
+        async with WebsocketProvider(
+            ydoc, identifier, LOCALHOST, port=free_tcp_port, safe=False
+        ) as provider:
             # wait for the provider to be connected
             sub = provider.subscribe()
             while provider.states.CONNECTED not in provider.state:
@@ -414,3 +425,78 @@ async def test_bidirectional_synchronization(free_tcp_port):
             assert content_local in str(room.ydoc["text"])
             assert content_remote in str(ydoc["text"])
             assert content_remote in str(room.ydoc["text"])
+
+
+def on_invalid_status(exc, options: dict):
+    """Callback altering the connection options on InvalidStatus exceptions."""
+    assert isinstance(exc, InvalidStatus)
+    assert exc.response.status_code == 401  # UNAUTHORIZED
+
+    username = "for-dummy-auth"
+    password = "for-dummy-auth"
+    headers = basic_authorization_header(username, password)
+
+    options["additional_headers"] = headers
+
+
+async def test_auth(free_tcp_port):
+    """Connection exceptions can be handled with the `on_exception` callback."""
+    # required YDoc
+    ydoc = Doc()
+
+    # use dummy auth for testing
+    auth = DummyAuth()
+
+    # setup connection details
+    identifier = get_identifier()
+
+    # run a server with a dummy basic auth check
+    async with WebsocketServer(
+        LOCALHOST,
+        free_tcp_port,
+        process_request=basic_auth(
+            realm="test server",
+            check_credentials=auth.check,
+        ),
+    ) as server:
+        # no authorization header raises InvalidStatus exception
+        with pytest.raises(ExceptionGroup) as excinfo:
+            async with WebsocketProvider(
+                ydoc, identifier, LOCALHOST, port=free_tcp_port, safe=False
+            ):
+                await anyio.sleep_forever()
+
+        # we got indeed a 401 InvalidStatus
+        exc_group = excinfo.value
+        excs = exc_group.exceptions
+        assert isinstance(excs, tuple)
+        assert len(excs) == 1
+        exc = excs[0]
+        assert isinstance(exc, InvalidStatus)
+        assert exc.response.status_code == 401  # UNAUTHORIZED
+
+        # no room was created
+        assert identifier not in server.rooms
+
+        # the `on_exception` callback alters the connection options
+        # by adding the `Authorization` Basic Auth header
+        async with WebsocketProvider(
+            ydoc,
+            identifier,
+            LOCALHOST,
+            port=free_tcp_port,
+            safe=False,
+            on_exception=on_invalid_status,
+        ) as provider:
+            assert provider.states.RUNNING in provider.state
+
+            assert "additional_headers" not in provider.options
+
+            sub = provider.subscribe()
+            while provider.states.CONNECTED not in provider.state:
+                await sub.receive()
+            provider.unsubscribe(sub)
+
+            assert "additional_headers" in provider.options
+            headers = provider.options["additional_headers"]
+            assert "Authorization" in headers
