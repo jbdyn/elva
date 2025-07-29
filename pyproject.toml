@@ -73,7 +73,7 @@ dependencies = [
     "emoji",
     "python-json-logger",
     "watchdog",
-    "ldap3",
+    "ldap3~=2.10.2rc2",
     "textual[syntax]",
     "tree-sitter-language-pack",
     "pyperclip",

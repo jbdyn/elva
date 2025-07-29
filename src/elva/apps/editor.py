@@ -11,28 +11,15 @@ from pycrdt import Doc, Text
 from textual.app import App
 from textual.binding import Binding
 from textual.message import Message
-from textual.widgets import Button
 from textual.worker import WorkerState
-from websockets.exceptions import InvalidStatus
 
 from elva.log import LOGGER_NAME, DefaultFormatter
-from elva.provider import ElvaWebsocketProvider, WebsocketProvider
+from elva.provider import WebsocketProvider
 from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
 from elva.utils import FILE_SUFFIX, gather_context_information
-from elva.widgets.config import (
-    ConfigPanel,
-    PathInputView,
-    PathSuggester,
-    QRCodeView,
-    RadioSelectView,
-    SwitchView,
-    TextInputView,
-    URLInputView,
-    WebsocketsURLValidator,
-)
-from elva.widgets.status import ComponentStatus, FeatureStatus, StatusBar
-from elva.widgets.textarea import YTextArea
+from elva.widgets.status import ComponentStatus, FeatureStatus
+from elva.widgets.ytextarea import YTextArea
 
 log = logging.getLogger(__name__)
 
@@ -56,9 +43,7 @@ LANGUAGES = {
 """Supported languages."""
 
 
-def get_provider(
-    self, ydoc: Doc, **config: dict
-) -> WebsocketProvider | ElvaWebsocketProvider:
+def get_provider(self, ydoc: Doc, **config: dict) -> WebsocketProvider:
     """
     Get the provider from the message parameter in the merged configuration.
 
@@ -77,8 +62,6 @@ def get_provider(
     match msg:
         case "yjs" | None:
             provider = WebsocketProvider(ydoc, **config)
-        case "elva":
-            provider = ElvaWebsocketProvider(ydoc, **config)
 
     return provider
 
@@ -252,7 +235,7 @@ class ProviderStatus(ComponentStatus):
     Widget reflecting the state of a provider.
     """
 
-    component = get_provider
+    component = WebsocketProvider
     """Instance of the controlled provider component."""
 
     @property
@@ -264,7 +247,7 @@ class ProviderStatus(ComponentStatus):
             `True` if all conditions are fulfilled, else `False`.
         """
         c = self.config
-        return c.get("identifier") and c.get("server")
+        return c.get("identifier") and c.get("host")
 
     def on_worker_state_changed(self, message: Message):
         """
@@ -293,21 +276,27 @@ class ProviderStatus(ComponentStatus):
 
         This method listens for connection or disconnection events and update the status accordingly.
         """
-        while True:
-            await self.control.connected.wait()
-            self.variant = "success"
 
-            await self.control.disconnected.wait()
-            self.variant = "warning"
+        comp = self.control
+        sub = comp.subscribe()
+
+        while True:
+            state = comp.state
+            if comp.states.CONNECTED in state:
+                self.variant = "success"
+            elif comp.states.RUNNING in state:
+                self.variant = "warning"
+            elif comp.states.ACTIVE in state:
+                self.variant = "primary"
+            elif state == comp.states.NONE:
+                self.variant = "default"
+            await sub.receive()
 
 
 class UI(App):
     """
     User interface.
     """
-
-    CSS_PATH = "editor.tcss"
-    """Path to the used textual CSS file."""
 
     BINDINGS = [Binding("ctrl+s", "save"), Binding("ctrl+r", "render")]
     """Key bindings for actions of the app."""
@@ -322,72 +311,31 @@ class UI(App):
         ansi_color = c.get("ansi_color")
         super().__init__(ansi_color=ansi_color if ansi_color is not None else False)
 
-        identifier = c.get("identifier")
-        server = c.get("server")
-        messages = c.get("messages")
-
-        qr = (
-            encode_content(
-                dict(identifier=identifier, server=server, messages=messages)
-            )
-            if all(map(lambda x: x is not None, [identifier, server, messages]))
-            else None
-        )
-
-        c["qr"] = qr
-
         # document structure
         self.ydoc = Doc()
         self.ytext = Text()
         self.ydoc["ytext"] = self.ytext
 
+        self.provider = WebsocketProvider(
+            self.ydoc,
+            c["identifier"],
+            "127.0.0.1",
+            port=8000,
+            safe=False,
+        )
+
         self._language = c.get("language")
-
-    async def on_config_panel_applied(self, message: Message):
-        """
-        Hook called on an applied event from the config panel.
-
-        This method transfers the new configuration to the status widgets.
-
-        Arguments:
-            message: an object holding information about the applied event.
-        """
-        for status_id in ["#provider", "#store", "#renderer", "#logger"]:
-            self.query_one(status_id).update(message.config)
-
-    async def on_exception(self, exc: Exception) -> Exception:
-        """
-        Hook called on an exception raised in the provider component.
-
-        This method opens the config panel and updates the provider status widget to signal the issue to the user.
-
-        Arguments:
-            exc: the exception that the provide component raised.
-
-        Raises:
-            exc: the exception that was raised by the provider component.
-        """
-        if isinstance(exc, InvalidStatus) and exc.response.status_code == 401:
-            self.query_one(ConfigPanel).remove_class("hidden")
-            self.query_one("#provider").variant = "error"
-
-        # reraise to break connection loop
-        raise exc
 
     async def on_mount(self):
         """
         Hook called on mounting the app.
         """
-        self.query_one(ConfigPanel).add_class("hidden")
-        self.query_one(StoreStatus).disabled = True
-        self.query_one(RendererStatus).disabled = True
+        self.run_worker(self.provider.start)
 
     def compose(self):
         """
         Hook arranging child widgets.
         """
-        c = self.config
-
         yield YTextArea(
             self.ytext,
             tab_behavior="indent",
@@ -395,202 +343,6 @@ class UI(App):
             id="editor",
             language=self.language,
         )
-
-        yield ConfigPanel(
-            [
-                QRCodeView(
-                    c.get("qr"),
-                    name="share",
-                    id="view-share",
-                ),
-                TextInputView(
-                    value=c.get("identifier"),
-                    name="identifier",
-                    id="view-identifier",
-                ),
-                URLInputView(
-                    value=c.get("server"),
-                    name="server",
-                    id="view-server",
-                    validators=WebsocketsURLValidator(),
-                    validate_on=["changed"],
-                ),
-                RadioSelectView(
-                    list(zip(["yjs", "elva"], ["yjs", "elva"])),
-                    value=c.get("messages") or "yjs",
-                    name="messages",
-                    id="view-messages",
-                ),
-                TextInputView(
-                    value=c.get("name"),
-                    name="name",
-                ),
-                TextInputView(
-                    value=c.get("user"),
-                    name="user",
-                    id="view-user",
-                ),
-                TextInputView(
-                    value=c.get("password"),
-                    name="password",
-                    password=True,
-                    id="view-password",
-                ),
-                PathInputView(
-                    value=c.get("file"),
-                    suggester=PathSuggester(),
-                    name="file_path",
-                ),
-                PathInputView(
-                    value=c.get("render"),
-                    suggester=PathSuggester(),
-                    name="render_path",
-                ),
-                SwitchView(
-                    value=c.get("auto_render"),
-                    name="auto_render",
-                    animate=False,
-                ),
-                PathInputView(
-                    value=c.get("log"),
-                    suggester=PathSuggester(),
-                    name="log",
-                ),
-                RadioSelectView(
-                    list(LOG_LEVEL_MAP.items()),
-                    value=c.get("level") or LOG_LEVEL_MAP["INFO"],
-                    name="level",
-                ),
-            ],
-            label="X - Cut, C - Copy, S - Save",
-        )
-
-        with StatusBar():
-            yield Button("=", id="config")
-            yield ProviderStatus(
-                self.ydoc,
-                [
-                    "identifier",
-                    "server",
-                    "messages",
-                    "user",
-                    "password",
-                ],
-                "P",
-                config=self.config,
-                id="provider",
-            )
-            yield StoreStatus(
-                self.ydoc,
-                [
-                    "identifier",
-                    "file",
-                ],
-                "S",
-                config=self.config,
-                rename={"file": "path"},
-                id="store",
-            )
-            yield RendererStatus(
-                self.ytext,
-                [
-                    "render",
-                    "auto_render",
-                ],
-                "R",
-                config=self.config,
-                rename={"render": "path"},
-                id="renderer",
-            )
-            yield LogStatus(
-                [
-                    "log",
-                    "level",
-                ],
-                "L",
-                config=self.config,
-                rename={"log": "path"},
-                id="logger",
-            )
-
-    def on_button_pressed(self, message: Message):
-        """
-        Hook called on a pressed button event.
-
-        This methods toggles the visibility of the config panel.
-
-        Arguments:
-            message: an object holding information about the button pressed event.
-        """
-        button = message.button
-        match button.id:
-            case "config":
-                self.query_one(ConfigPanel).toggle_class("hidden")
-
-    def on_config_view_saved(self, message: Message):
-        """
-        Hook called on a Saved event from a config view.
-
-        This methods saves the config view's key-value-pair as metadata entry to the ELVA SQLite database file.
-
-        Arguments:
-            message: an object holding information about the button pressed event.
-        """
-        c = self.query_one(ConfigPanel).state
-        file_path = c.get("file")
-        if file_path is not None and file_path.suffix and not file_path.is_dir():
-            SQLiteStore.set_metadata(file_path, {message.name: message.value})
-
-    def on_config_view_changed(self, message: Message):
-        """
-        Hook called on a [`Changed`][elva.widgets.config.ConfigView.Changed] event from a config view.
-
-        This methods keeps the QR Code updated.
-
-        Arguments:
-            message: an object holding information about the button pressed event.
-        """
-        if message.name in ["identifier", "server", "messages"]:
-            self.update_qrcode()
-
-    def update_qrcode(self):
-        """
-        Update the QR code for sharing.
-
-        This method queries the current values from the identifier, server and message views, encodes them and updates the QR Code with that.
-        """
-        identifier = self.query_one("#view-identifier").value
-        server = self.query_one("#view-server").value
-        messages = self.query_one("#view-messages").value
-
-        content = encode_content(
-            dict(identifier=identifier, server=server, messages=messages)
-        )
-        self.query_one("#view-share").value = content
-
-    def action_render(self):
-        """
-        Hook called on an invoked render action.
-
-        If a renderer component is running, its `write` method is called.
-        Otherwise, the config panel opens to let the user fill in missing information.
-        """
-        renderer = self.query_one("#renderer").control
-        if renderer is not None:
-            self.run_worker(renderer.write())
-        else:
-            self.query_one(ConfigPanel).remove_class("hidden")
-
-    def action_save(self):
-        """
-        Hook called on an invoked save action.
-
-        If a store component is running, nothing happens - everything gets written automatically.
-        Otherwise, the config panel opens to let the user fill in missing information.
-        """
-        store = self.query_one("#store").control
-        if store is None:
-            self.query_one(ConfigPanel).remove_class("hidden")
 
     @property
     def language(self) -> str:
