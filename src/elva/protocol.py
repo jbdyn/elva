@@ -6,12 +6,17 @@ from codecs import Codec
 from enum import Enum
 from typing import Self
 
+STATE_ZERO = b"\x00"
+"""The state of an empty YDoc."""
+
+EMPTY_UPDATE = b"\x00\x00"
+"""The update between two equivalent YDoc states."""
+
+
 ##
 #
 # HELPERS
 #
-
-
 def write_var_uint(num: int) -> list[int]:
     """
     Encode an integer into a variable unsigned integer.

@@ -1,4 +1,3 @@
-import sqlite3
 import uuid
 
 import anyio
@@ -6,7 +5,8 @@ import pytest
 from pycrdt import Doc, Text, TransactionEvent
 
 from elva.component import create_component_state
-from elva.store import SQLiteStore, get_metadata, set_metadata
+from elva.protocol import STATE_ZERO
+from elva.store import SQLiteStore, get_metadata, get_updates, set_metadata
 
 pytestmark = pytest.mark.anyio
 
@@ -125,10 +125,7 @@ async def test_read_write(tmp_elva_file):
         assert store._stream_recv.statistics().current_buffer_used > 0
 
     # check if update has really been written to `tmp_elva_file`
-    db = sqlite3.connect(tmp_elva_file)
-    cur = db.cursor()
-    res = cur.execute("SELECT * FROM yupdates")
-    updates = [yupdate for yupdate, *rest in res.fetchall()]
+    updates = get_updates(tmp_elva_file)
 
     # there is only a singe update in the ELVA database, i.e. it has not been lost
     assert len(updates) == 1
@@ -143,3 +140,59 @@ async def test_read_write(tmp_elva_file):
         # the new doc state is equivalent to the previous one, i.e.
         # all Y Document content is properly restored
         assert doc_after.get_state() == doc_before.get_state()
+
+
+async def test_non_empty_ydoc(tmp_elva_file):
+    """The updates of non-empty YDocs should be written to file, too."""
+    # setup
+    identifier = "non-empty-ydoc"
+
+    #
+    # first run with empty file
+    #
+
+    # we have an empty YDoc
+    doc_1 = Doc()
+    assert doc_1.get_state() == STATE_ZERO
+
+    # now we add some content, the store is not running yet
+    content_1_before = "something already in here"
+    doc_1["text"] = ytext = Text(content_1_before)
+    assert doc_1.get_state() != STATE_ZERO
+
+    # run the store, writing the updates to file
+    async with SQLiteStore(doc_1, identifier, tmp_elva_file):
+        content_1_added = "addition while store is running"
+        ytext += content_1_added
+        assert str(ytext) == content_1_before + content_1_added
+
+    # get the list of updates from saved file
+    updates = get_updates(tmp_elva_file)
+
+    # we see two updates: the one before the store was started
+    # and the one made during it was active
+    assert len(updates) == 2
+
+    #
+    # second run with already present updates in file
+    #
+
+    # again, we have an empty YDoc
+    doc_2 = Doc()
+    assert doc_2.get_state() == STATE_ZERO
+
+    # we apply some changes again before the store is started
+    content_2_before = "again we did things before"
+    doc_2["text"] = ytext = Text(content_2_before)
+    assert doc_2.get_state() != STATE_ZERO
+
+    # start the store, which restores all content
+    async with SQLiteStore(doc_2, identifier, tmp_elva_file):
+        assert content_1_before + content_1_added in str(ytext)
+        assert content_2_before in str(ytext)
+
+    # get the list of updates from saved file
+    updates = get_updates(tmp_elva_file)
+
+    # we see the updates from the first and the second run
+    assert len(updates) == 3

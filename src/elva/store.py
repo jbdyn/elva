@@ -17,6 +17,7 @@ from pycrdt import Doc, Subscription, TransactionEvent
 from sqlite_anyio.sqlite import Connection, Cursor
 
 from elva.component import Component, create_component_state
+from elva.protocol import EMPTY_UPDATE
 
 # TODO: check performance
 
@@ -97,6 +98,21 @@ def set_metadata(path: str | Path, metadata: dict[str, str], replace: bool = Fal
         db.close()
 
 
+def get_updates(path):
+    db = sqlite3.connect(path)
+    cur = db.cursor()
+
+    try:
+        res = cur.execute("SELECT * FROM yupdates")
+        updates = res.fetchall()
+        return updates
+    except sqlite3.OperationalError:
+        db.close()
+        raise
+    finally:
+        db.close()
+
+
 SQLiteStoreState = create_component_state("SQLiteStoreState")
 
 
@@ -132,11 +148,11 @@ class SQLiteStore(Component):
     _cursor: Cursor
     """(while running) SQLite cursor operating on the [`_db`][elva.store.SQLiteStore._db] connection."""
 
-    def __init__(self, ydoc: Doc, identifier: str, path: str):
+    def __init__(self, ydoc: Doc, identifier: str | None, path: str):
         """
         Arguments:
             ydoc: instance of the synchronized Y Document.
-            identifier: identifier of the synchronized Y Document.
+            identifier: identifier of the synchronized Y Document. If `None`, it is tried to be retrieved from the `metadata` table in the SQLite database.
             path: path where to store the SQLite database.
         """
         self.ydoc = ydoc
@@ -155,9 +171,8 @@ class SQLiteStore(Component):
         Returns:
             mapping of metadata keys to values.
         """
-        async with self._lock:
-            await self._cursor.execute("SELECT * FROM metadata")
-            res = await self._cursor.fetchall()
+        await self._cursor.execute("SELECT * FROM metadata")
+        res = await self._cursor.fetchall()
 
         return dict(res)
 
@@ -189,6 +204,23 @@ class SQLiteStore(Component):
         # ensure to update the identifier if given
         self.identifier = metadata.get("identifier", None) or self.identifier
 
+    async def get_updates(self) -> list:
+        """
+        Read out the updates saved in the file.
+
+        Returns:
+            a list of updates in the order they were applied to the YDoc.
+        """
+        await self._cursor.execute("SELECT yupdate FROM yupdates")
+        updates = await self._cursor.fetchall()
+
+        if updates:
+            self.log.debug("read updates from file")
+        else:
+            self.log.debug("found no updates in file")
+
+        return updates
+
     def _on_transaction_event(self, event: TransactionEvent):
         """
         Hook called on changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
@@ -217,9 +249,13 @@ class SQLiteStore(Component):
         """
         Hook called before the store sets its `started` signal to ensure the UUID of the YDoc contents is saved.
         """
+        # a specific identifier was not given; try to get it from metadata
         if self.identifier is None:
+            metadata = await self.get_metadata()
+            self.identifier = metadata.get("identifier", None)
             return
 
+        # a specific identifier was given; update the metadata
         async with self._lock:
             try:
                 # insert non-existing identifier
@@ -250,41 +286,64 @@ class SQLiteStore(Component):
 
         self.log.debug("ensured update table")
 
-    async def _read(self):
+    async def _merge(self):
         """
-        Hook to read in updates from the ELVA SQLite database and apply them.
+        Hook to read in and apply updates from the ELVA SQLite database and             write divergent history updates to file.
         """
-        async with self._lock:
-            # read updates
-            await self._cursor.execute("SELECT yupdate FROM yupdates")
-            updates = await self._cursor.fetchall()
-            self.log.debug("read updates from file")
+        # get updates stored in file
+        updates = await self.get_updates()
 
-            # apply updates
-            for update, *rest in updates:
-                self.ydoc.apply_update(update)
+        # the given ydoc might not be empty;
+        # we append the resulting update to file as otherwise
+        # histories would not be restored correctly and callbacks not triggered,
+        # even when sequential updates from this history branch are applied
+        temp = Doc()
 
-        self.log.debug("applied updates from file")
+        for update, *_ in updates:
+            temp.apply_update(update)
+
+        # get divergent update before we apply updates from file to `self.ydoc`
+        divergent_update = self.ydoc.get_update(state=temp.get_state())
+
+        # cleanup unused resources
+        del temp
+
+        # apply updates
+        for update, *_ in updates:
+            self.ydoc.apply_update(update)
+
+        if updates:
+            self.log.debug("applied updates from file")
+
+        # append a non-empty update to a divergent history branch to file as well
+        if divergent_update != EMPTY_UPDATE:
+            # shield the write so content won't get lost
+            with CancelScope(shield=True):
+                await self._write(divergent_update)
+
+            self.log.debug("appended divergent history update to file")
 
     async def _initialize(self):
         """
         Hook initializing the database, i.e. ensuring the presence of connection and the ELVA SQL database scheme.
         """
         # connect
-        self._db = await sqlite.connect(self.path)
-        self._cursor = await self._db.cursor()
-        self.log.debug(f"connected to database {self.path}")
+        await self._connect_database()
 
         # ensure tables and identifier
         await self._ensure_metadata_table()
         await self._ensure_identifier()
         await self._ensure_update_table()
 
-        # read updates from file
-        await self._read()
+        # merge updates from file with the contents from the given YDoc
+        await self._merge()
 
-        # set the initialized event
         self.log.info("initialized database")
+
+    async def _connect_database(self):
+        self._db = await sqlite.connect(self.path)
+        self._cursor = await self._db.cursor()
+        self.log.debug(f"connected to database {self.path}")
 
     async def _disconnect_database(self):
         """
