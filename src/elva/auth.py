@@ -21,6 +21,49 @@ from ldap3.utils.log import (
 from elva.log import LOGGER_NAME
 
 
+class Password:
+    """
+    A container which stores a password behind an attribute and redacts its value.
+
+    The purpose of this class is two-fold:
+    A password's value needs to be requested explicitely and
+    accidential leaking via printing and logging is prevented.
+    """
+
+    value: str
+    """The actual password."""
+
+    redact: str
+    """The string to mask the password."""
+
+    def __init__(self, value: str, redact: str = "[REDACTED]"):
+        """
+        Arguments:
+            value: the actual password.
+            redact: the string to mask the password.
+        """
+        self.value = value
+        self.redact = redact
+
+    def __str__(self) -> str:
+        """
+        The string conversion of this object.
+
+        Returns:
+            the value of the [`redact`][elva.auth.Password.redact] attribute.
+        """
+        return self.redact
+
+    def __repr__(self) -> str:
+        """
+        The string representation of this object.
+
+        Returns:
+            the value of the [`redact`][elva.auth.Password.redact] attribute.
+        """
+        return self.redact
+
+
 class LDAP3LogLevel(IntEnum):
     """
     The logging level specified by the LDAP3 Python library as enumeration.

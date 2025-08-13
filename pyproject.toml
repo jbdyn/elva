@@ -80,6 +80,7 @@ dependencies = [
     "qrcode",
     "tomli-w",
     "tomli",
+    "deepmerge",
 ]
 
 
@@ -119,6 +120,6 @@ issues = "https://github.com/innocampus/elva/issues"
 changelog = "https://github.com/innocampus/elva/blob/main/CHANGELOG.md"
 
 [project.scripts]
-elva = "elva.cli:elva"
+elva = "elva.main:elva"
 
 [tool.setuptools_scm]

@@ -30,11 +30,15 @@ def get_metadata(path: str | Path) -> dict:
         path: path to the ELVA SQLite database.
 
     Raises:
+        FileNotFoundError: if there is no file present.
         sqlite3.OperationalError: if there is no `metadata` table in the database.
 
     Returns:
         mapping of metadata keys to values.
     """
+    if not path.exists():
+        raise FileNotFoundError("no such file or directory")
+
     db = sqlite3.connect(path)
     cur = db.cursor()
 

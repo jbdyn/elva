@@ -4,27 +4,28 @@ Module providing the main command line interface functionality.
 Subcommands are defined in the respective app module.
 """
 
-import importlib
 import logging
+import sqlite3
+import tomllib
+import uuid
+from functools import wraps
 from pathlib import Path
+from typing import Any, Callable
 
 import click
-import platformdirs
 from click.core import ParameterSource
-from rich import print
+from deepmerge import always_merger
 
-from elva.utils import gather_context_information
+from elva.auth import Password
+from elva.core import APP_NAME, CONFIG_NAME, FILE_SUFFIX, LOG_SUFFIX
+from elva.store import get_metadata
 
-###
 #
-# global defaults
+# CONSTANTS
 #
-# names
-APP_NAME = "elva"
-"""Default app name."""
 
-CONFIG_NAME = APP_NAME + ".toml"
-"""Default ELVA configuration file name."""
+PATH_TYPE = click.Path(path_type=Path, dir_okay=False, readable=False)
+"""Default type of path parameters in the CLI API."""
 
 # sort logging levels by verbosity
 # source: https://docs.python.org/3/library/logging.html#logging-levels
@@ -43,300 +44,566 @@ LEVEL = [
     # -vvvvv
     logging.DEBUG,
 ]
-"""Logging levels sorted by verbosity."""
+"""Logging level sorted by verbosity."""
 
-
-###
 #
-# paths
+# GENERAL
 #
 
-CONFIG_PATHS = list()
-"""List containing all found default ELVA configuration file paths."""
 
-USER_HOME_CONFIG = Path(platformdirs.user_config_dir(APP_NAME)) / CONFIG_NAME
-"""Path to the calling system user's ELVA configuration file."""
-
-if USER_HOME_CONFIG.exists():
-    CONFIG_PATHS.append(USER_HOME_CONFIG)
-
-
-def find_config_path():
+def warn(message: str):
     """
-    Find the next ELVA configuration file.
-
-    This function searches the directory tree from bottom to top.
-    """
-    cwd = Path.cwd()
-    for path in [cwd] + list(cwd.parents):
-        config = path / CONFIG_NAME
-        if config.exists():
-            return config
-
-
-config_path = find_config_path()
-
-PROJECT_PATH = None
-"""The path to the current active project."""
-
-if config_path is not None:
-    CONFIG_PATHS.insert(0, config_path)
-    PROJECT_PATH = config_path.parent
-
-
-###
-#
-# cli input callbacks
-#
-def resolve_configs(
-    ctx: click.Context, param: click.Parameter, paths: None | list[Path]
-) -> list[Path]:
-    """
-    Hook sanitizing configuration file paths on invoking the ELVA command.
+    Emit a warning to stderr.
 
     Arguments:
-        ctx: the click context of the current invokation.
-        param: the parameter currently being parsed.
-        paths: the paths given to the parameter.
+        message: the message to include in the warning.
+    """
+    click.echo(f"WARNING: {message}", err=True)
+
+
+def get_composed_decorator(*decorators: Callable) -> Callable:
+    """
+    Compose a decorator out of many.
+
+    Given keyword arguments are used to include or exclude decorators by name.
+
+    Arguments:
+        decorators: mapping of the decorator functions to their names.
 
     Returns:
-        a list of paths to all given and found ELVA configuration files.
+        a decorator applying all given decorators.
     """
-    if paths is not None:
-        paths = [path.resolve() for path in paths]
-        param_source = ctx.get_parameter_source(param.name)
-        if not param_source == ParameterSource.DEFAULT:
-            paths.extend(CONFIG_PATHS)
+
+    def composed(f: Callable) -> Callable:
+        """
+        Decorator applying multiple decorators.
+
+        Arguments:
+            f: the callable to decorate.
+
+        Returns:
+            the decoratored callable `f`.
+        """
+        for dec in reversed(decorators):
+            f = dec(f)
+
+        return f
+
+    return composed
+
+
+#
+# PATHS
+#
+
+
+def get_data_file_path(path: Path) -> Path:
+    """
+    Ensure a correct and resolved data file path.
+
+    Arguments:
+        path: the path to the data file.
+
+    Returns:
+        the correct and resolved data file path.
+    """
+    # resolve given path
+    path = path.resolve()
+
+    # append the ELVA data file suffix if necessary
+    if FILE_SUFFIX not in path.suffixes:
+        path = path.with_name(path.name + FILE_SUFFIX)
+
+    return path
+
+
+def derive_stem(path: Path, extension: None | str = None) -> Path:
+    """
+    Derive the data file stem.
+
+    Arguments:
+        path: the path to the data file.
+        extension: the extension to add to the stem.
+
+    Returns:
+        the data file stem.
+    """
+    # collect all present suffixes
+    suffixes = "".join(path.suffixes)
+
+    # get the data file basename
+    name = path.name.removesuffix(suffixes)
+
+    # strip all suffixes after the data file suffix
+    suffixes = suffixes.split(FILE_SUFFIX, maxsplit=1)[0]
+
+    # translate absent extension definition
+    if extension is None:
+        extension = ""
+
+    # exchange the file name
+    return path.with_name(name + suffixes + extension)
+
+
+def get_render_file_path(path: Path) -> Path:
+    """
+    Derive the render file path from the path to a data file.
+
+    Arguments:
+        path: the path to the data file.
+
+    Returns:
+        the path to the rendered file.
+    """
+    return derive_stem(path)
+
+
+def get_log_file_path(path: Path) -> Path:
+    """
+    Derive the log file path from the path to a data file.
+
+    Arguments:
+        path: the path to the data file.
+
+    Returns:
+        the path to the log file.
+    """
+    return derive_stem(path, extension=LOG_SUFFIX)
+
+
+#
+# CONFIGURATION READING AND MERGING
+#
+
+
+def read_data_file(path: str | Path) -> dict:
+    """
+    Get metadata from file as parameter mapping.
+
+    Arguments:
+        file: path where the ELVA SQLite database is stored.
+
+    Returns:
+        parameter mapping stored in the ELVA SQLite database.
+    """
+    try:
+        return get_metadata(path)
+    except (
+        FileNotFoundError,
+        PermissionError,
+        sqlite3.DatabaseError,
+    ) as exc:
+        warn(f"Ignoring {path}: {exc}")
+
+        return dict()
+
+
+def read_config_files(paths: list[Path]) -> tuple[list[Path], dict]:
+    """
+    Get parameters defined in configuration files.
+
+    Arguments:
+        configs: list of paths to ELVA configuration files.
+
+    Returns:
+        parameter mapping from all configuration files.
+        The value from the highest priority configuration overwrites all other parameter values.
+    """
+    config = dict()
+
+    # filter only first occurences while maintaining order with respect to highest precedence
+    unique_paths = list()
+    for path in paths:
+        path = path.resolve()
+        if path not in unique_paths:
+            unique_paths.append(path)
+
+    # read and apply each config
+    checked_paths = list()
+
+    # go in reversed order because last paths have lowest precedence
+    for path in reversed(unique_paths):
+        try:
+            with path.open(mode="rb") as file:
+                data = tomllib.load(file)
+        except (
+            FileNotFoundError,
+            PermissionError,
+            tomllib.TOMLDecodeError,
+        ) as exc:
+            warn(f"Ignoring {path}: {exc}")
+        else:
+            # perform a deep merge to merge also app tables
+            config = always_merger.merge(config, data)
+
+            # add this path to our list of successful checks
+            checked_paths.append(path)
+
+    checked_paths.reverse()
+
+    return checked_paths, config
+
+
+def merge_configs(ctx: click.Context, app: None | str = None) -> dict:
+    """
+    Update the user-defined parameters with parameters from files.
+
+    Order of Precedence (from highest to lowest)
+
+    1. CLI, explicitely given values
+    2. data file metadata
+    3. additional config files, first has highest precedence
+    4. project config files, nearest has highest precedence
+    5. app directory config file
+    6. CLI defaults
+
+    Arguments:
+        ctx: object holding the parameter mapping to be updated.
+        app: parameters from the same named table in the configuration files.
+
+    Returns:
+        a merged and cleaned mapping of configuration parameters to their values.
+    """
+    # container of merged config
+    config = dict()
+
+    # get all CLI parameters with their respective values
+    cli = ctx.params.copy()
+
+    # CLI defaults
+    for name in ctx.params:
+        source = ctx.get_parameter_source(name)
+        if source == ParameterSource.DEFAULT or source == ParameterSource.DEFAULT_MAP:
+            config[name] = cli.pop(name)
+
+    # user home, project config files and additional config files
+    paths = []
+    for param in ("additional_configs", "configs"):
+        paths += cli.pop(param, []) or config.pop(param, [])
+
+    checked_paths, config_file_config = read_config_files(paths)
+    config.update(config_file_config)
+
+    # only add non-empty list of checked paths
+    if checked_paths:
+        config["configs"] = checked_paths
+
+    # config defined in an app section
+    if app is not None:
+        app_config = config.pop(app, dict())
+        config.update(app_config)
+
+    # config defined in the metadata of an ELVA data file
+    file = ctx.params.get("file")
+    if file is not None:
+        # get or derive render and log file paths
+        for param, get_param_path in (
+            ("render", get_render_file_path),
+            ("log", get_log_file_path),
+        ):
+            path = (
+                cli.pop(param, None) or config.pop(param, None) or get_param_path(file)
+            )
+            config[param] = Path(path).resolve()
+
+        # read in config from data file
+        data_file_config = read_data_file(file)
+        config.update(data_file_config)
+
+    # merge with arguments *explicitly* given via CLI
+    config.update(cli)
+
+    # remove `None` values and unused app sections
+    for key, val in config.copy().items():
+        if val is None or isinstance(val, dict):
+            config.pop(key)
+
+    # complain when two pairs of writable file paths are the same
+    for name_left, name_right in (
+        ("file", "render"),
+        ("file", "log"),
+        ("render", "log"),
+    ):
+        path_left = config.get(name_left)
+        path_right = config.get(name_right)
+
+        if path_left is not None and path_right is not None:
+            if path_left == path_right:
+                raise click.BadArgumentUsage(
+                    (
+                        f"{name_left} path and {name_right} path "
+                        f"are both set to '{path_left}'"
+                    )
+                )
+
+    return config
+
+
+#
+# CLI CALLBACKS
+#
+
+
+def find_default_config_paths() -> list[Path]:
+    """
+    CLI default callback finding config files from highest to lowest precedence.
+
+    It first searches project files in the current working directory and in its parents,
+    then in the OS-specific app directory.
+
+    Returns:
+        a list paths to found config files, sorted by descending precedence.
+    """
+    paths = []
+
+    # find project config files
+    cwd = Path.cwd()
+
+    for path in [cwd] + list(cwd.parents):
+        config = path / CONFIG_NAME
+
+        if config.exists():
+            paths.append(config)
+
+    # find user home config file
+    app_dir = Path(click.get_app_dir(APP_NAME.lower()))
+    app_dir_config = app_dir / CONFIG_NAME
+
+    if app_dir_config.exists():
+        paths.append(app_dir_config)
 
     return paths
 
 
-def resolve_log(
-    ctx: click.Context, param: click.Parameter, log: None | Path
-) -> None | Path:
+def resolve_verbosity(
+    ctx: click.Context, param: click.Parameter, value: None | int
+) -> None | str:
     """
-    Hook sanitizing the log file path on invoking the ELVA command.
+    CLI callback converting counts of verbosity flags to log level names.
 
     Arguments:
-        ctx: the click context of the current invokation.
-        param: the parameter currently being parsed.
-        log: the path of the log file given to the parameter.
+        ctx: the context of the current command invokation.
+        param: the verbosity CLI parameter object.
+        value: the value of the verbosity CLI parameter.
 
     Returns:
-       the resolved path of the log file if one was given, else `None`.
+        the level name if the verbosity flag was given else `None`.
     """
-    if log is not None:
-        log = log.resolve()
+    if value == 0:
+        return None
 
-    return log
+    level = logging.getLevelName(LEVEL[value])
+
+    return level
 
 
-###
+def resolve_data_file_path(
+    ctx: click.Context, param: click.Parameter, path: Path
+) -> None | Path:
+    """
+    CLI callback ensuring a correct and resolved data file path.
+
+    Arguments:
+        ctx: the context of the current command invokation.
+        param: the data file CLI parameter object.
+        value: the value of the data file CLI parameter.
+
+    Returns:
+        the correct and resolved data file path if given else `None`.
+    """
+    if path is not None:
+        path = get_data_file_path(path)
+
+    return path
+
+
 #
-# cli interface definition
+# CLI API
 #
-@click.group(
-    context_settings=dict(
-        ignore_unknown_options=True,
-        allow_extra_args=True,
-    )
-)
-@click.pass_context
-#
-# paths
-#
-@click.option(
+
+
+def pass_config(cmd: click.Command, app: None | str = None) -> Callable:
+    """
+    Command decorator passing the merged configuration dictionary as the first positional argument.
+
+    Arguments:
+        cmd: the command to pass the configuration to.
+        app: the name of the app table to take configuration parameters from.
+
+    Returns:
+        the wrapped command.
+    """
+
+    # wrap the command to let `wrapper` look like `cmd`
+    # (same name and docstring) but with altered signature
+    @wraps(cmd)
+    @click.pass_context
+    def wrapper(ctx: click.Context, *args: tuple, **kwargs: dict) -> Any:
+        """
+        Command wrapper passing the merged ELVA configuration dictionary as the first positional argument.
+
+        Arguments:
+            ctx: the context of the current command invokation.
+            args: positional arguments passed to the command.
+            kwargs: keyword arguments passed to the command.
+
+        Returns:
+            the return value of the command.
+        """
+        # get the merged config from context
+        config = merge_configs(ctx, app=app)
+
+        # invoke the *callable* `cmd` with parameters;
+        # see point 1. in https://click.palletsprojects.com/en/stable/api/#click.Context.invoke
+        return ctx.invoke(cmd, config, *args, **kwargs)
+
+    return wrapper
+
+
+configs_option = click.option(
     "--config",
     "-c",
     "configs",
-    help="Path to config file or directory. Can be specified multiple times.",
-    envvar="ELVA_CONFIG_PATH",
+    help=(
+        "Path to config file. "
+        "Overwrites default config file paths. "
+        "Can be specified multiple times."
+    ),
     multiple=True,
-    show_envvar=True,
-    # a list, as multiple=True
-    default=CONFIG_PATHS,
-    show_default=True,
-    type=click.Path(path_type=Path),
-    callback=resolve_configs,
+    default=find_default_config_paths,
+    type=PATH_TYPE,
 )
-@click.option(
-    "--log",
-    "-l",
-    "log",
-    help="Path to logging file.",
-    envvar="ELVA_LOG",
-    show_envvar=True,
-    type=click.Path(path_type=Path, dir_okay=False),
-    callback=resolve_log,
+"""A CLI command decorator defining an option for exclusive config file paths."""
+
+additional_configs_option = click.option(
+    "--additional-config",
+    "-a",
+    "additional_configs",
+    help=(
+        "Path to config file in addition to the default paths. "
+        "Can be specified multiple times."
+    ),
+    multiple=True,
+    type=PATH_TYPE,
 )
-# logging
-@click.option(
+"""A CLI command decorator defining an option for additional config file paths."""
+
+verbosity_option = click.option(
     "--verbose",
     "-v",
     "verbose",
     help="Verbosity of logging output.",
     count=True,
-    default=LEVEL.index(logging.INFO),
     type=click.IntRange(0, 5, clamp=True),
+    callback=resolve_verbosity,
 )
-#
-# connection information
-#
-@click.option(
+"""A CLI command decorator defining an option for log verbosity."""
+
+log_file_path_option = click.option(
+    "--log",
+    "-l",
+    "log",
+    help="Path to logging file.",
+    type=PATH_TYPE,
+)
+"""A CLI command decorator defining an option for log file path."""
+
+display_name_option = click.option(
     "--name",
     "-n",
     "name",
     help="User display username.",
-    envvar="ELVA_NAME",
-    show_envvar=True,
 )
-@click.option(
+"""A CLI command decorator defining an option for the display name."""
+
+user_name_option = click.option(
     "--user",
     "-u",
     "user",
     help="Username for authentication.",
-    envvar="ELVA_USER",
-    show_envvar=True,
 )
-@click.option(
+"""A CLI command decorator defining an option for a user name."""
+
+password_option = click.password_option(
     "--password",
-    "-p",
     "password",
     help="Password for authentication",
-    # we don't support bad secret management,
-    # so the password is not settable via an envvar
+    metavar="[TEXT]",
+    prompt_required=False,
+    type=Password,
 )
-@click.option(
-    "--server",
-    "-s",
-    "server",
-    help="URI of the syncing server.",
-    envvar="ELVA_SERVER",
-    show_envvar=True,
+"""A CLI command decorator defining an option for a password."""
+
+host_option = click.option(
+    "--host",
+    "-h",
+    "host",
+    metavar="ADDRESS",
+    help="Host of the syncing server.",
 )
-@click.option(
+"""A CLI command decorator defining an option for the host to connect to."""
+
+port_option = click.option(
+    "--port",
+    "-p",
+    "port",
+    type=click.INT,
+    help="Port of the syncing server.",
+)
+"""A CLI command decorator defining an option for the port to connect to."""
+
+safe_option = click.option(
+    "--safe/--unsafe",
+    "safe",
+    help="Enable or disable secure connection.",
+    default=True,
+)
+"""A CLI command decorator defining a flag for safe or unsafe connections."""
+
+identifier_option = click.option(
     "--identifier",
     "-i",
     "identifier",
     help="Unique identifier of the shared document.",
-    envvar="ELVA_IDENTIFIER",
-    show_envvar=True,
+    default=str(uuid.uuid4()),
 )
-@click.option(
-    "--messages",
-    "-m",
-    "messages",
-    help="Protocol used to connect to the syncing server.",
-    envvar="ELVA_MESSAGES",
-    show_envvar=True,
-    type=click.Choice(["yjs", "elva"], case_sensitive=False),
+"""A CLI command decorator defining an option for the YDoc identifier."""
+
+render_file_path_option = click.option(
+    "--render",
+    "-r",
+    "render",
+    help="Path to rendered file.",
+    required=False,
+    type=PATH_TYPE,
 )
-#
-# function definition
-#
-def elva(
-    ctx: click.Context,
-    configs: list[Path],
-    log: Path,
-    verbose: int,
-    name: str,
-    user: str,
-    password: str,
-    server: str | None,
-    identifier: str | None,
-    messages: str,
-):
-    """
-    ELVA - A suite of real-time collaboration TUI apps.
-    \f
+"""A CLI command decorator defining an option for the render file path."""
 
-    Arguments:
-        ctx: the click context holding the configuration parameter object.
-        configs: list of configuration files to parse.
-        log: path of the log file.
-        verbose: verbosity, i.e. log level, indicator from 0 (no logging) to 5 (log everything).
-        name: the name to display instead of the user name.
-        user: the user name to login with.
-        password: the password to login with.
-        server: the address of the remote server for synchronization.
-        identifier: the identifier of the Y document.
-        messages: the type of messages to use for synchronization.
-    """
-
-    ctx.ensure_object(dict)
-    c = ctx.obj
-
-    # paths
-    c["project"] = PROJECT_PATH
-    c["configs"] = configs
-    c["file"] = None
-    c["render"] = None
-    c["log"] = log
-
-    # logging
-    c["level"] = LEVEL[verbose]
-
-    # connection
-    c["name"] = name
-    c["user"] = user
-    c["password"] = password
-    c["identifier"] = identifier
-    c["server"] = server
-    c["messages"] = messages
-
-
-###
-#
-# config
-#
-@elva.command
-@click.pass_context
-@click.argument(
+data_file_path_argument = click.argument(
     "file",
     required=False,
-    type=click.Path(path_type=Path, dir_okay=False),
+    type=PATH_TYPE,
+    callback=resolve_data_file_path,
 )
-@click.option(
-    "--app",
-    "-a",
-    "app",
-    metavar="APP",
-    help="Include the parameters defined in the app.APP config file section.",
+"""A CLI command decorator defining an argument for the data file path."""
+
+file_paths_option_and_argument = get_composed_decorator(
+    render_file_path_option,
+    data_file_path_argument,
 )
-def context(ctx: click.Context, file: None | Path, app: None | str):
-    """
-    Print the parameters passed to apps and other subcommands.
+"""A CLI command decorator defining the render file path option and the data file path."""
 
-    Arguments:
-        ctx: the click context holding the configuration parameter object.
-        file: the path to the ELVA SQLite database file.
-        app: the app section to take additional configuration parameters from.
-    """
-    c = ctx.obj
-
-    gather_context_information(ctx, file, app)
-
-    # sanitize password output
-    if c["password"] is not None:
-        c["password"] = "[REDACTED]"
-
-    # TODO: print config in TOML syntax, so that it can be piped directly
-    print(c)
-
-
-###
-#
-# import `cli` functions of apps
-#
-apps = [
-    ("elva.apps.editor", "edit"),
-    ("elva.apps.chat", "chat"),
-    ("elva.apps.server", "serve"),
-    ("elva.apps.service", "service"),
-]
-for app, command in apps:
-    module = importlib.import_module(app)
-    elva.add_command(module.cli, command)
-
-if __name__ == "__main__":
-    elva()
+common_options = get_composed_decorator(
+    configs_option,
+    additional_configs_option,
+    identifier_option,
+    display_name_option,
+    user_name_option,
+    password_option,
+    host_option,
+    port_option,
+    safe_option,
+    verbosity_option,
+    log_file_path_option,
+)
+"""A CLI command decorator holding common CLI options."""
