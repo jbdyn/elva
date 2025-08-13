@@ -41,7 +41,7 @@ def ydoc_updates_are_empty(ydoc_a, ydoc_b):
     return is_equal and is_empty
 
 
-async def test_connect(free_tcp_port, tmpdir):
+async def test_connect(free_tcp_port, tmp_path):
     """A provider connects to a server and the server spawns a room."""
     # setup local YDoc
     ydoc = Doc()
@@ -51,7 +51,7 @@ async def test_connect(free_tcp_port, tmpdir):
 
     # run the server
     async with WebsocketServer(
-        LOCALHOST, free_tcp_port, persistent=True, path=tmpdir
+        LOCALHOST, free_tcp_port, persistent=True, path=tmp_path
     ) as server:
         # run the provider
         async with WebsocketProvider(

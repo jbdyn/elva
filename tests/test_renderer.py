@@ -13,11 +13,11 @@ LOGGER_NAME.set(__name__)
 pytestmark = pytest.mark.anyio
 
 
-async def test_render_without_start(tmpdir):
+async def test_render_without_start(tmp_path):
     """The renderer does not permit writing without being active."""
 
     # setup path and content
-    path = tmpdir / "test.txt"
+    path = tmp_path / "test.txt"
     ytext = Text()
 
     # integrate into a YDoc
@@ -32,11 +32,11 @@ async def test_render_without_start(tmpdir):
         await renderer.write()
 
 
-async def test_render_ytext(tmpdir):
+async def test_render_ytext(tmp_path):
     """The YText data type is rendered properly."""
 
     # setup path and content
-    path = tmpdir / "test.txt"
+    path = tmp_path / "test.txt"
 
     content1 = "some content"
     ytext = Text(content1)
@@ -98,10 +98,10 @@ async def test_render_ytext(tmpdir):
         assert file.read() == content1 + content2 + content3
 
 
-async def test_render_xml(tmpdir):
+async def test_render_xml(tmp_path):
     """The XML data types are rendered properly."""
     # setup path and content
-    path = tmpdir / "test.xml"
+    path = tmp_path / "test.xml"
     frag = XmlFragment()
 
     # integrate the XML fragment in a YDoc
@@ -146,7 +146,7 @@ async def test_render_xml(tmpdir):
         renderer.unsubscribe(sub)
 
 
-async def test_get_content(tmpdir):
+async def test_get_content(tmp_path):
     """We can define how the content will be formatted."""
 
     class CustomContentRenderer(TextRenderer):
@@ -162,7 +162,7 @@ async def test_get_content(tmpdir):
             return json.dumps(content, indent=4, sort_keys=True)
 
     # setup path and content
-    path = tmpdir / "test.json"
+    path = tmp_path / "test.json"
     map = Map(
         {
             "a": 1,
@@ -214,10 +214,10 @@ async def test_get_content(tmpdir):
         renderer.unsubscribe(sub)
 
 
-async def test_rapid_change_auto_save(tmpdir):
+async def test_rapid_change_auto_save(tmp_path):
     """The `auto_save` property can be toggled rapidly."""
     # setup path and content
-    path = tmpdir / "test.txt"
+    path = tmp_path / "test.txt"
     ytext = Text()
 
     # integrate the YText into a YDoc
@@ -236,10 +236,10 @@ async def test_rapid_change_auto_save(tmpdir):
         renderer.unsubscribe(sub)
 
 
-async def test_auto_save(tmpdir):
+async def test_auto_save(tmp_path):
     """The auto save loop is started and stopped on changing the `auto_save` property."""
     # setup path and content
-    path = tmpdir / "test.txt"
+    path = tmp_path / "test.txt"
     ytext = Text()
 
     # integrate the YText into a YDoc

@@ -12,9 +12,9 @@ pytestmark = pytest.mark.anyio
 
 
 @pytest.fixture
-def tmp_elva_file(tmpdir):
+def tmp_elva_file(tmp_path):
     identifier = str(uuid.uuid4())
-    return tmpdir / f"{identifier}.y"
+    return tmp_path / f"{identifier}.y"
 
 
 @pytest.mark.parametrize(

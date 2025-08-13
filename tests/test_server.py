@@ -289,7 +289,7 @@ async def test_websocket_server_volatile_persistence(free_tcp_port):
         assert state_server == state_local
 
 
-async def test_websocket_server_permanent_persistence(free_tcp_port, tmpdir):
+async def test_websocket_server_permanent_persistence(free_tcp_port, tmp_path):
     ##
     # first run
     #
@@ -300,7 +300,7 @@ async def test_websocket_server_permanent_persistence(free_tcp_port, tmpdir):
         host=LOCALHOST,
         port=free_tcp_port,
         persistent=True,
-        path=tmpdir,  # <-- with a path set
+        path=tmp_path,  # <-- with a path set
     ) as websocket_server:
         # CRDTs to operate on
         doc = Doc()
@@ -378,7 +378,7 @@ async def test_websocket_server_permanent_persistence(free_tcp_port, tmpdir):
         state_store = store.ydoc.get_state()
         assert state_store == state_local
 
-    elva_file = tmpdir / f"{identifier}.y"
+    elva_file = tmp_path / f"{identifier}.y"
     assert elva_file.exists()
 
     state_server_before_reboot = state_server
@@ -405,7 +405,7 @@ async def test_websocket_server_permanent_persistence(free_tcp_port, tmpdir):
         host=LOCALHOST,
         port=free_tcp_port,
         persistent=True,
-        path=tmpdir,
+        path=tmp_path,
     ) as websocket_server:
         # no room created yet
         assert identifier not in websocket_server.rooms
