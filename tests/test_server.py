@@ -14,7 +14,7 @@ from websockets.protocol import State as ConnectionState
 
 from elva.auth import Auth, DummyAuth, basic_authorization_header
 from elva.protocol import YMessage
-from elva.server import RequestProcessor, WebsocketServer
+from elva.server import RequestProcessor, WebsocketServer, free_tcp_port
 
 ## ANYIO PYTEST PLUGIN
 pytestmark = pytest.mark.anyio
@@ -24,6 +24,16 @@ pytestmark = pytest.mark.anyio
 @pytest.fixture(scope="module")
 def anyio_backend():
     return "asyncio"
+
+
+def test_free_tcp_port():
+    # generate some ports without any exceptions raised
+    ports = [free_tcp_port() for _ in range(10)]
+
+    # we indeed got ourselves unique integers
+    for port in ports:
+        assert isinstance(port, int)
+        assert ports.count(port) == 1
 
 
 ## HELPERS

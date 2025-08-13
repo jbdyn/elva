@@ -4,6 +4,8 @@ Websocket server classes.
 
 import logging
 import re
+import socket
+from contextlib import closing
 from http import HTTPStatus
 from pathlib import Path
 from typing import Callable, Iterable
@@ -22,6 +24,55 @@ from websockets.http11 import Request, Response
 from elva.component import Component, create_component_state
 from elva.protocol import YMessage
 from elva.store import SQLiteStore
+
+
+def free_tcp_port(host: None | str = None) -> int:
+    """
+    Let the OS select a free TCP port for IPv4 addresses.
+
+    Arguments:
+        host: the interface to search a free TCP port on.
+
+    Returns:
+        a recently free tcp port.
+    """
+    # see https://docs.python.org/3/library/socket.html#socket-families
+    if host is None:
+        host = ""  # represents socket.INADDR_ANY internally
+
+    while True:
+        # call `sock.close()` on break, return or an exception;
+        # use `closing` as `sock` does not support the context manager protocol
+        with closing(
+            socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+        ) as sock:
+            # AF_INET address family specific address;
+            # a port of `0` let the OS use its default behavior;
+            # see https://docs.python.org/3/library/socket.html#socket.create_connection
+            port = 0
+            address = (host, port)
+
+            # try to bind to the address
+            try:
+                sock.bind(address)
+            except OSError:
+                break
+
+            # prevent OSError due to "address already in use" where
+            # socket is in `TIME_WAIT` state; SO_REUSEADDR tells to not wait for
+            # the socket timeout to expire;
+            # see last example in https://docs.python.org/3/library/socket.html#example
+            level = socket.SOL_SOCKET
+            optname = socket.SO_REUSEADDR
+            value = 1
+            sock.setsockopt(level, optname, value)
+
+            # returns `(address, port)` for AF_INET address family;
+            # filter out port
+            _, port = sock.getsockname()
+
+            return port
+
 
 RE_IDENTIFIER = re.compile(r"^[A-Za-z0-9\-_]{10,250}$")
 
