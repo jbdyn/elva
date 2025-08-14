@@ -3,91 +3,214 @@
 """
 
 import uuid
-from typing import Self
+from typing import Callable, Self, TypeVar
 
 from pycrdt import Text, TextEvent, UndoManager
 from textual._tree_sitter import TREE_SITTER, get_language
 from textual.widgets import TextArea
-from textual.widgets.text_area import Location
+from textual.widgets.text_area import Selection as _Selection
+
+# define type variables for return values of the `on_selection` and `on_tuple` hooks
+S = TypeVar("S")
+T = TypeVar("T")
 
 
-class Selection:
-    """A range of characters within a document from a start point to the end point.
-    The location of the cursor is always considered to be the `end` point of the selection.
-    The selection is inclusive of the minimum point and exclusive of the maximum point.
+class Selection(_Selection):
+    start: tuple
+    """The start location of the selection. Not necessarily the top one."""
+
+    end: tuple
+    """The end location of the selection. Not necessarily the bottom one."""
+
+    """
+    An extended selection object supporting comparison.
+
+    The implementation eases comparing to locations and other selections.
     """
 
-    start: Location = (0, 0)
-    """The start location of the selection.
-
-    If you were to click and drag a selection inside a text-editor, this is where you *started* dragging.
-    """
-    end: Location = (0, 0)
-    """The end location of the selection.
-
-    If you were to click and drag a selection inside a text-editor, this is where you *finished* dragging.
-    """
-
-    def __init__(self, start: Location, end: Location):
-        self.start = start
-        self.end = end
-
-    def __iter__(self):
-        return iter((self.start, self.end))
-
-    @classmethod
-    def cursor(cls, location: Location) -> Self:
-        """Create a Selection with the same start and end point - a "cursor".
-
-        Args:
-            location: The location to create the zero-width Selection.
+    @property
+    def top(self) -> tuple:
         """
-        return cls(location, location)
-
-    @property
-    def is_empty(self) -> bool:
-        """Return True if the selection has 0 width, i.e. it's just a cursor."""
-        start, end = self
-        return start == end
-
-    @property
-    def top(self):
+        The minimum of end and start location of the selection.
+        """
         return min(self.start, self.end)
 
     @property
-    def bottom(self):
+    def bottom(self) -> tuple:
+        """
+        The maximum of end and start location of the selection.
+        """
         return max(self.start, self.end)
 
-    def __contains__(self, location: Location) -> bool:
-        return self.top <= location <= self.bottom
+    def _on_type(
+        self,
+        obj: tuple | Self,
+        on_selection: Callable[[], S],
+        on_tuple: Callable[[], T],
+    ) -> S | T:
+        """
+        Perform defined actions depending on the type of the object to compare to.
 
-    def __gt__(self, location: Location) -> bool:
-        return location < self.top
+        Arguments:
+            obj: the object to compare to.
+            on_selection: the object to call when `obj` is a [`Selection`][elva.widgets.ytextarea.Selection].
+            on_tuple: the object to call when `obj` is an instance of [`tuple`][builtins.tuple].
 
-    def __ge__(self, location: Location) -> bool:
-        return location <= self.top
+        Raises:
+            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
 
-    def __lt__(self, location: Location) -> bool:
-        return location > self.bottom
+        Returns:
+            the return value of either `on_selection` or `on_tuple`.
+        """
+        if type(obj) is type(self):
+            # `obj` is of the *exact* same type as `self`
+            return on_selection()
+        elif isinstance(obj, tuple):
+            # `obj` is a type of or of subtype of `tuple`
+            return on_tuple()
+        else:
+            # something else was passed
+            raise TypeError(
+                (
+                    "comparison not supported between instances of "
+                    f"'{type(self)}' and '{type(obj)}'"
+                )
+            )
 
-    def __le__(self, location: Location) -> bool:
-        return location >= self.bottom
+    def __contains__(self, obj: tuple | Self) -> bool:
+        """
+        Hook called on the `in` operator.
+
+        Arguments:
+            obj: the object to compare to.
+
+        Raises:
+            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+
+        Returns:
+            `True` if the tuple or selection is within the top and bottom location of this selection, else `False`.
+        """
+        return self.top <= obj <= self.bottom
+
+    def __gt__(self, obj: tuple | Self) -> bool:
+        """
+        Hook called on the `>` operator.
+
+        Arguments:
+            obj: the object to compare to.
+
+        Raises:
+            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+
+        Returns:
+            `True` if the tuple or selection is before the top location, else `False`.
+        """
+        return self._on_type(
+            obj,
+            lambda: obj.bottom < self.top,
+            lambda: obj < self.top,
+        )
+
+    def __ge__(self, obj: tuple | Self) -> bool:
+        """
+        Hook called on the `>=` operator.
+
+        Arguments:
+            obj: the object to compare to.
+
+        Raises:
+            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+
+        Returns:
+            `True` if the tuple or selection is before or equal to the top location, else `False`.
+        """
+        return self._on_type(
+            obj,
+            lambda: obj.bottom <= self.top,
+            lambda: obj <= self.top,
+        )
+
+    def __lt__(self, obj: tuple | Self) -> bool:
+        """
+        Hook called on the `<` operator.
+
+        Arguments:
+            obj: the object to compare to.
+
+        Raises:
+            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+
+        Returns:
+            `True` if the tuple or selection is after the bottom location, else `False`.
+        """
+        return self._on_type(
+            obj,
+            lambda: self.bottom < obj.top,
+            lambda: self.bottom < obj,
+        )
+
+    def __le__(self, obj: tuple | Self) -> bool:
+        """
+        Hook called on the `<=` operator.
+
+        Arguments:
+            obj: the object to compare to.
+
+        Raises:
+            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+
+        Returns:
+            `True` if the tuple or selection is after or equal to the bottom location, else `False`.
+        """
+        return self._on_type(
+            obj,
+            lambda: self.bottom <= obj.top,
+            lambda: self.bottom <= obj,
+        )
+
+    def __eq__(self, obj: tuple | Self) -> bool:
+        """
+        Hook called on the `==` operator.
+
+        Arguments:
+            obj: the object to compare to.
+
+        Returns:
+            `True` if the start and end locations are the same, else `False`.
+        """
+        if type(obj) is type(self):
+            return obj.start == self.start and obj.end == self.end
+        else:
+            return False
+
+    def __ne__(self, obj: Self) -> bool:
+        """
+        Hook called on the `!=` operator.
+
+        Arguments:
+            obj: the object to compare to.
+
+        Returns:
+            `False` if start and end locations are the same, else `True`.
+        """
+        return not self == obj
 
 
 def update_location(
-    location: Location, delete: Selection, insert: Selection, target: Location
-) -> Location:
-    """Move a given location with respect to deletion and insertion ranges of an edit.
+    location: tuple, delete: Selection, insert: Selection, target: tuple
+) -> tuple:
+    """
+    Move a given location with respect to deletion and insertion ranges of an edit.
 
-    Args:
-        location: Location before the edit.
+    Arguments:
+        location: tuple before the edit.
         delete: Range which is deleted during the edit.
         insert: Range which is inserted during the edit.
         target: Returned location when `location` is within the deletion range,
             typically the start or the end of the insertion range.
 
     Returns:
-        Location after the edit.
+        location after the edit.
     """
     loc_ = location
     del_ = delete
@@ -165,11 +288,11 @@ class YTextArea(TextArea):
         """
         return len(self.document.text[:index].encode())
 
-    def get_location_from_binary_index(self, index: int) -> Location:
+    def get_location_from_binary_index(self, index: int) -> tuple:
         index = self.get_index_from_binary_index(index)
         return self.document.get_location_from_index(index)
 
-    def get_binary_index_from_location(self, location: Location) -> int:
+    def get_binary_index_from_location(self, location: tuple) -> int:
         index = self.document.get_index_from_location(location)
         return self.get_binary_index_from_index(index)
 
@@ -220,8 +343,8 @@ class YTextArea(TextArea):
     def replace(
         self,
         insert: str,
-        start: Location,
-        end: Location,
+        start: tuple,
+        end: tuple,
     ):
         start, end = sorted((start, end))
 
@@ -284,7 +407,7 @@ class YTextArea(TextArea):
 
     def move_cursor(
         self,
-        location: Location,
+        location: tuple,
         select: bool = False,
         center: bool = False,
         record_width: bool = True,
@@ -301,11 +424,11 @@ class YTextArea(TextArea):
         if center:
             self.scroll_cursor_visible(center)
 
-    def delete(self, start: Location, end: Location):
+    def delete(self, start: tuple, end: tuple):
         start, end = sorted((start, end))
         self.replace("", start, end)
 
-    def insert(self, text: str, location: Location = None):
+    def insert(self, text: str, location: tuple = None):
         if location is None:
             location = self.cursor_location
 
@@ -314,16 +437,16 @@ class YTextArea(TextArea):
     def clear(self):
         self.replace("", self.document.start, self.document.end)
 
-    def _replace_via_keyboard(self, text: str, start: Location, end: Location):
+    def _replace_via_keyboard(self, text: str, start: tuple, end: tuple):
         if self.read_only:
             return
 
         self.replace(text, start, end)
 
-    def _delete_via_keyboard(self, start: Location, end: Location):
+    def _delete_via_keyboard(self, start: tuple, end: tuple):
         self._replace_via_keyboard("", start, end)
 
-    def _apply_update(self, text: str, start: Location, end: Location):
+    def _apply_update(self, text: str, start: tuple, end: tuple):
         old_gutter_width = self.gutter_width
 
         # replaces edit.do(self)
@@ -352,7 +475,7 @@ class YTextArea(TextArea):
         self._build_highlight_map()
         self.post_message(self.Changed(self))
 
-    def _edit(self, text: str, top: Location, bottom: Location):
+    def _edit(self, text: str, top: tuple, bottom: tuple):
         """Perform the edit operation.
 
         Args:
