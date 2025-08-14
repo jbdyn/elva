@@ -1104,3 +1104,76 @@ def test_pass_custom_config(runner):
     assert kwargs["foo"] == "baz"
     assert "bar" in kwargs
     assert kwargs["bar"] == "quux"
+
+
+def test_misuse_of_pass_config_for():
+    with pytest.raises(ValueError):
+
+        @_cli.pass_config_for  # <-- misuse: no round brackets
+        def test(config):
+            pass
+
+
+@pytest.mark.parametrize(
+    ("pass_config_decorator", "expected"),
+    (
+        # app is None
+        (
+            _cli.pass_config_for(),
+            {
+                "foo": "bar",
+            },
+        ),
+        # we also want key-value pairs from `my-app` section
+        (
+            _cli.pass_config_for("my-app"),
+            {
+                "foo": "bar",
+                "baz": "quux",
+            },
+        ),
+        # we want key-value pairs from `another-app` section,
+        # which is not present in the config
+        (
+            _cli.pass_config_for("another-app"),
+            {
+                "foo": "bar",
+            },
+        ),
+    ),
+    ids=(
+        "no app specified",
+        "present app specified",
+        "absent app specified",
+    ),
+)
+def test_pass_config_for(tmp_path, runner, pass_config_decorator, expected):
+    # ensure we are working in `tmp_path`
+    os.chdir(tmp_path)
+    assert Path.cwd() == tmp_path
+
+    # create the config file
+    path = "foo.toml"
+    file = tmp_path / path
+    with file.open("w") as fd:
+        fd.write(
+            tomli_w.dumps(
+                {
+                    "foo": "bar",
+                    "my-app": {"baz": "quux"},
+                }
+            )
+        )
+
+    # define the command
+    @click.command
+    @_cli.additional_configs_option
+    @pass_config_decorator
+    def test(config, **kwargs):
+        # pop list of config paths as they are not of interest here
+        config.pop("configs")
+
+        # the config is as expected
+        assert config == expected
+
+    runner.invoke(test, ["--additional-config", path], standalone_mode=False)

@@ -422,42 +422,71 @@ def resolve_data_file_path(
 #
 
 
-def pass_config(cmd: click.Command, app: None | str = None) -> Callable:
+def pass_config_for(app: None | str = None):
     """
-    Command decorator passing the merged configuration dictionary as the first positional argument.
+    Configure the `pass_config` decorator to respect the `app` table in configurations.
 
     Arguments:
-        cmd: the command to pass the configuration to.
         app: the name of the app table to take configuration parameters from.
 
-    Returns:
-        the wrapped command.
-    """
+    Raises:
+        ValueError: if `app` is callable.
 
-    # wrap the command to let `wrapper` look like `cmd`
-    # (same name and docstring) but with altered signature
-    @wraps(cmd)
-    @click.pass_context
-    def wrapper(ctx: click.Context, *args: tuple, **kwargs: dict) -> Any:
+    Returns:
+        the `pass_config` decorator configured for `app`.
+    """
+    if callable(app):
+        raise ValueError("'app' argument is not supposed to be callable")
+
+    def pass_config(cmd: click.Command) -> Callable:
         """
-        Command wrapper passing the merged ELVA configuration dictionary as the first positional argument.
+        Command decorator passing the merged configuration dictionary as the first positional argument.
 
         Arguments:
-            ctx: the context of the current command invokation.
-            args: positional arguments passed to the command.
-            kwargs: keyword arguments passed to the command.
+            cmd: the command to pass the configuration to.
 
         Returns:
-            the return value of the command.
+            the wrapped command.
         """
-        # get the merged config from context
-        config = merge_configs(ctx, app=app)
 
-        # invoke the *callable* `cmd` with parameters;
-        # see point 1. in https://click.palletsprojects.com/en/stable/api/#click.Context.invoke
-        return ctx.invoke(cmd, config, *args, **kwargs)
+        # wrap the command to let `wrapper` look like `cmd`
+        # (same name and docstring) but with altered signature
+        @wraps(cmd)
+        @click.pass_context
+        def wrapper(ctx: click.Context, *args: tuple, **kwargs: dict) -> Any:
+            """
+            Command wrapper passing the merged ELVA configuration dictionary as the first positional argument.
 
-    return wrapper
+            Arguments:
+                ctx: the context of the current command invokation.
+                args: positional arguments passed to the command.
+                kwargs: keyword arguments passed to the command.
+
+            Returns:
+                the return value of the command.
+            """
+            # get the merged config from context
+            config = merge_configs(ctx, app=app)
+
+            # invoke the *callable* `cmd` with parameters;
+            # see point 1. in https://click.palletsprojects.com/en/stable/api/#click.Context.invoke
+            return ctx.invoke(cmd, config, *args, **kwargs)
+
+        return wrapper
+
+    return pass_config
+
+
+pass_config = pass_config_for()
+"""
+Command decorator passing the merged configuration dictionary as the first positional argument to a [`Command`][click.Command].
+
+Arguments:
+    cmd: the command to pass the configuration to.
+
+Returns:
+    the wrapped command.
+"""
 
 
 configs_option = click.option(
