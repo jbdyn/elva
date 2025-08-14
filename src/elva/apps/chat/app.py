@@ -5,15 +5,10 @@ ELVA chat app.
 import logging
 import re
 import uuid
-from pathlib import Path
 
-import anyio
-import click
 import emoji
-import websockets.exceptions as wsexc
 from pycrdt import Array, ArrayEvent, Doc, Map, MapEvent, Text, TextEvent
 from rich.markdown import Markdown as RichMarkdown
-from rich.text import Text as RichText
 from textual.app import App
 from textual.containers import VerticalScroll
 from textual.css.query import NoMatches
@@ -21,14 +16,10 @@ from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent, TabPane
 
-from elva.auth import basic_authorization_header
-from elva.log import LOGGER_NAME, DefaultFormatter
 from elva.parser import ArrayEventParser, MapEventParser
-from elva.provider import ElvaWebsocketProvider, WebsocketProvider
+from elva.provider import WebsocketProvider
 from elva.store import SQLiteStore
-from elva.utils import gather_context_information
-from elva.widgets.screens import CredentialScreen, ErrorScreen
-from elva.widgets.textarea import YTextArea
+from elva.widgets.ytextarea import YTextArea
 
 log = logging.getLogger(__name__)
 
@@ -170,17 +161,17 @@ class HistoryParser(ArrayEventParser):
         Arguments:
             event: an object holding information about the change in the Y array.
         """
-        log.debug("history callback triggered")
         self._task_group.start_soon(self.parse, event)
+        self.log.debug("history callback triggered")
 
-    async def run(self):
+    async def before(self):
         """
         Hook called after the component sets the [`started`][elva.component.Component.started] signal.
 
         This method subscribes to changes in the Y array message history.
         """
         self.history.observe(self.history_callback)
-        await super().run()
+        self.log.debug("subscribed to changes in history")
 
     async def on_insert(self, range_offset: int, insert_value: str):
         """
@@ -195,7 +186,7 @@ class HistoryParser(ArrayEventParser):
         for message in insert_value:
             message_view = self.widget.mount_message_view(message)
             log.debug("mounting message view in history")
-            self.widget.mount(message_view)
+            self.widget.mount(message_view, after=range_offset)
 
     async def on_delete(self, range_offset: int, range_length: str):
         """
@@ -275,17 +266,17 @@ class FutureParser(MapEventParser):
         Arguments:
             event: an object holding information about the change in the Y map.
         """
-        log.debug("future callback triggered")
         self._task_group.start_soon(self.parse, event)
+        log.debug("future callback triggered")
 
-    async def run(self):
+    async def before(self):
         """
         Hook called after the component set the [`started`][elva.component.Component.started] signal.
 
         This method subscribes to changes in the mapping of currently composed messages.
         """
         self.future.observe(self.future_callback)
-        await super().run()
+        self.log.debug("subscribed to changes in future")
 
     async def on_add(self, key: str, new_value: dict):
         """
@@ -344,57 +335,20 @@ class MessagePreview(Static):
         self.update(RichMarkdown(emoji.emojize(str(self.ytext))))
 
 
-def get_chat_provider(messages: str) -> WebsocketProvider | ElvaWebsocketProvider:
-    """
-    Get the chat provider handling the given message type.
-
-    Arguments:
-        messages: string naming the used message type.
-
-    Returns:
-        the provider component handling Y updates over a network connection.
-    """
-    match messages:
-        case "yjs" | None:
-            BaseProvider = WebsocketProvider
-        case "elva":
-            BaseProvider = ElvaWebsocketProvider
-
-    class ChatProvider(BaseProvider):
-        def __init__(self, ydoc, identifier, server, future, session_id):
-            super().__init__(ydoc, identifier, server)
-            self.future = future
-            self.session_id = session_id
-
-        # TODO: hangs randomly, FutureParser maybe?
-        # causes "Transaction.__exit__ return exception set"
-        async def cleanup(self):
-            self.future.pop(self.session_id)
-
-    return ChatProvider
-
-
 class UI(App):
     """
     User interface.
     """
 
-    CSS_PATH = "chat.tcss"
-    """Path to the applied textual CSS file."""
+    CSS_PATH = "style.tcss"
+    """The path to the default CSS."""
 
-    BINDINGS = [("ctrl+s", "send", "Send currently composed message")]
+    BINDINGS = [("shift+enter", "send", "Send currently composed message")]
     """Key bindings for controlling the app."""
 
     def __init__(
         self,
-        user: str,
-        name: str,
-        password: str,
-        server: str,
-        identifier: str,
-        messages: str,
-        file_path: Path,
-        show_self: bool = True,
+        config,
     ):
         """
         Arguments:
@@ -408,17 +362,19 @@ class UI(App):
             show_self: flag whether to show the own currently composed message.
         """
         super().__init__()
-        self.user = user
-        self.display_name = name
-        self.password = password
+        self.config = c = config
+
+        self.user = user = c.get("user")
+        self.display_name = c.get("name")
+        self.show_self = show_self = c.get("show_self", True)
 
         # structure
-        ydoc = Doc()
+        self.ydoc = ydoc = Doc()
         ydoc["history"] = self.history = Array()
         ydoc["future"] = self.future = Map()
-        self.message, message_id = self.get_message("")
+
+        self.message, self.ytext, message_id = self.get_message("")
         self.session_id = self.get_new_id()
-        self.future[self.session_id] = self.message
 
         # widgets
         self.history_widget = History(self.history, user, id="history")
@@ -427,10 +383,6 @@ class UI(App):
             self.future, self.user, show_self=show_self, id="future"
         )
         self.future_widget.can_focus = False
-        self.message_widget = YTextArea(
-            self.message["text"], id="editor", language="markdown"
-        )
-        self.markdown_widget = MessagePreview(self.message["text"])
 
         # components
         self.history_parser = HistoryParser(self.history, self.history_widget)
@@ -446,31 +398,23 @@ class UI(App):
             self.future_parser,
         ]
 
-        if server is not None and identifier is not None:
-            Provider = get_chat_provider(messages)
-            self.provider = Provider(
-                ydoc,
-                identifier,
-                server,
-                self.future,
-                self.session_id,
+        if c.get("file") is not None:
+            self.store = SQLiteStore(
+                self.ydoc,
+                c["identifier"],
+                c["file"],
             )
-            self.provider.on_exception = self.on_exception
-
-            self.credential_screen = CredentialScreen(
-                self.provider.options, "", self.user
-            )
-
-            self.install_screen(self.credential_screen, name="credential_screen")
-
-            self.tried_auto = False
-            self.tried_modal = False
-
-            self.components.append(self.provider)
-
-        if file_path is not None:
-            self.store = SQLiteStore(self.ydoc, identifier, file_path)
             self.components.append(self.store)
+
+        if c.get("host") is not None:
+            self.provider = WebsocketProvider(
+                ydoc,
+                c["identifier"],
+                c["host"],
+                port=c.get("port"),
+                safe=c.get("safe", True),
+            )
+            self.components.append(self.provider)
 
     def get_new_id(self) -> str:
         """
@@ -494,103 +438,30 @@ class UI(App):
         """
         if message_id is None:
             message_id = self.get_new_id()
-        return Map(
+
+        ytext = Text(text)
+        ymap = Map(
             {
-                "text": Text(text),
+                "text": ytext,
                 "author_display": self.display_name or self.user,
                 # we assume that self.user is unique in the room, ensured by the server
                 "author": self.user,
                 "id": message_id,
             }
-        ), message_id
+        )
 
-    async def on_exception(self, exc: Exception):
-        """
-        Hook called on an exception raised within the provider component.
-
-        This method handles connection errors due to wrong credentials or other issues.
-
-        Arguments:
-            exc: exception raised within the provider component.
-        """
-        match type(exc):
-            case wsexc.InvalidStatus:
-                if exc.response.status_code == 401:
-                    if (
-                        self.user is not None
-                        and self.password is not None
-                        and not self.tried_auto
-                        and not self.tried_modal
-                    ):
-                        header = basic_authorization_header(self.user, self.password)
-
-                        self.provider.options["additional_headers"] = header
-                        self.tried_auto = True
-                    else:
-                        body = exc.response.body.decode()
-                        self.credential_screen.body.update(
-                            RichText(body, justify="center")
-                        )
-                        self.credential_screen.user.clear()
-                        self.credential_screen.user.insert_text_at_cursor(
-                            self.user or ""
-                        )
-
-                        await self.push_screen(
-                            self.credential_screen,
-                            self.update_credentials,
-                            wait_for_dismiss=True,
-                        )
-
-                        self.tried_modal = True
-                else:
-                    await self.push_screen(
-                        ErrorScreen(exc),
-                        self.quit_on_error,
-                        wait_for_dismiss=True,
-                    )
-                    raise exc
-            case wsexc.InvalidURI:
-                await self.push_screen(
-                    ErrorScreen(exc),
-                    self.quit_on_error,
-                    wait_for_dismiss=True,
-                )
-                raise exc
-
-    def update_credentials(self, credentials: tuple[str, str]):
-        """
-        Hook called on new credentials.
-
-        Arguments:
-            credentials: a tuple of user name and password.
-        """
-        old_user = self.user
-        self.user, self.password = credentials
-
-        if old_user != self.user:
-            self.future_widget.query_one(
-                "#id" + self.session_id
-            ).author = f"{self.display_name or self.user} ({self.user})"
-
-    async def quit_on_error(self, exc: Exception):
-        """
-        Hook called on closing an [`ErrorScreen`][elva.widgets.screens.ErrorScreen].
-
-        This method exits the app.
-
-        Arguments:
-            exc: the exception caught by the ErrorScreen.
-        """
-        self.exit()
+        return ymap, ytext, message_id
 
     async def run_components(self):
         """
         Run all components the chat app needs.
         """
-        async with anyio.create_task_group() as self.tg:
-            for comp in self.components:
-                await self.tg.start(comp.start)
+        for comp in self.components:
+            self.run_worker(comp.start())
+            sub = comp.subscribe()
+            while comp.states.RUNNING not in comp.state:
+                await sub.receive()
+            comp.unsubscribe(sub)
 
     async def on_mount(self):
         """
@@ -598,24 +469,31 @@ class UI(App):
 
         This methods waits for all components to set their [`started`][elva.component.Component.started] signal.
         """
-        self.run_worker(self.run_components())
-        self.message_widget.focus()
+        await self.run_components()
 
-        async with anyio.create_task_group() as tg:
-            for comp in self.components:
-                tg.start_soon(comp.started.wait)
+        self.future[self.session_id] = self.message
 
-    async def on_unmount(self):
-        """
-        Hook called when unmounting, i.e. closing, the app.
+        tabbed_content = self.query_one(TabbedContent)
+        ytext_pane = TabPane(
+            "Message",
+            YTextArea(
+                self.ytext,
+                id="editor",
+                language="markdown",
+            ),
+            id="tab-message",
+        )
+        preview_pane = TabPane(
+            "Preview",
+            VerticalScroll(MessagePreview(self.ytext)),
+            id="tab-preview",
+        )
 
-        This methods waits for all components to set their [`stopped`][elva.component.Component.stopped] signal.
-        """
-        async with anyio.create_task_group():
-            # TODO: take a closer look on the dependencies between components
-            #       and stop accordingly
-            for comp in reversed(self.components):
-                await comp.stopped.wait()
+        for pane in (ytext_pane, preview_pane):
+            await tabbed_content.add_pane(pane)
+
+        message_widget = self.query_one(YTextArea)
+        message_widget.focus()
 
     def compose(self):
         """
@@ -624,12 +502,7 @@ class UI(App):
         yield self.history_widget
         yield Rule(line_style="heavy")
         yield self.future_widget
-        with TabbedContent(id="tabview"):
-            with TabPane("Message", id="tab-message"):
-                yield self.message_widget
-            with TabPane("Preview", id="tab-preview"):
-                with VerticalScroll():
-                    yield self.markdown_widget
+        yield TabbedContent(id="tabview")
 
     async def action_send(self):
         """
@@ -637,12 +510,12 @@ class UI(App):
 
         This method transfers the message from the future to the history.
         """
-        text = str(self.message["text"])
+        text = str(self.ytext)
         if re.match(WHITESPACE_ONLY, text) is None:
-            message, _ = self.get_message(text, message_id=self.message["id"])
+            message, *_ = self.get_message(text, message_id=self.message["id"])
             self.history.append(message)
 
-            self.message["text"].clear()
+            self.ytext.clear()
             self.message["id"] = self.get_new_id()
 
     def on_tabbed_content_tab_activated(self, event: Message):
@@ -652,68 +525,6 @@ class UI(App):
         Arguments:
             event: object holding information about the tab activated message.
         """
+        message_widget = self.query_one(YTextArea)
         if event.pane.id == "tab-message":
-            self.message_widget.focus()
-
-
-@click.command
-@click.pass_context
-@click.option(
-    "--show-self",
-    "-s",
-    "show_self",
-    help="Show your own writing in the preview.",
-    is_flag=True,
-    default=False,
-    show_default=True,
-)
-@click.argument(
-    "file",
-    required=False,
-    type=click.Path(path_type=Path, dir_okay=False),
-)
-def cli(ctx, show_self: bool, file: None | Path):
-    """
-    Send messages with real-time preview.
-    \f
-
-    Arguments:
-        show_self: flag whether to show the own currently composed message.
-        file: path to an ELVA SQLite database file.
-    """
-
-    gather_context_information(ctx, file, app="chat")
-
-    c = ctx.obj
-
-    # logging
-    LOGGER_NAME.set(__name__)
-    log_path = c["log"]
-    level = c["level"]
-
-    if level is not None and log_path is not None:
-        handler = logging.FileHandler(log_path)
-        handler.setFormatter(DefaultFormatter())
-        log.addHandler(handler)
-        log.setLevel(level)
-
-    for name, param in [("file", file), ("show_self", show_self)]:
-        if c.get(name) is None:
-            c[name] = param
-
-    # init and run app
-    app = UI(
-        c["user"],
-        c["name"],
-        c["password"],
-        c["server"],
-        c["identifier"],
-        c["messages"],
-        c["file"],
-        c["show_self"],
-    )
-    app.run()
-
-
-if __name__ == "__main__":
-    cli()
+            message_widget.focus()

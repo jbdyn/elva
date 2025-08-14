@@ -26,7 +26,8 @@ Screen {
 
 #editor {
   border: none;
-  padding: 0;
+  padding: 1 1 0 1;
+  background: $background;
 }
 
 Rule {

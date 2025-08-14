@@ -8,14 +8,14 @@ import importlib
 
 import click
 import tomli_w
+from setuptools import find_namespace_packages
 
 from elva.cli import (
     common_options,
-    data_file_path_argument,
+    file_paths_option_and_argument,
     pass_config,
-    render_file_path_option,
 )
-from elva.core import APP_NAME
+from elva.core import APP_NAME, ELVA_APP_DIR, get_app_import_path
 
 
 @click.group()
@@ -29,19 +29,17 @@ def elva():
 
 @elva.command
 @common_options
-@render_file_path_option
 @click.option(
     "--app",
     "app",
     metavar="APP",
     help="Include the parameters defined in the [APP] config file table.",
 )
-@data_file_path_argument
+@file_paths_option_and_argument
 @pass_config
 def context(config: dict, *args: tuple, **kwargs: dict):
     """
-    Print the parameters passed to apps and other subcommands in TOML format,
-    optionally with parameters from data file FILE.
+    Print the parameters passed to apps and other subcommands.
     \f
 
     This command stringifies all [`Path`][pathlib.Path] objects for the TOML
@@ -68,14 +66,10 @@ def context(config: dict, *args: tuple, **kwargs: dict):
 #
 # import `cli` functions of apps
 #
-apps = [
-    ("elva.apps.editor", "edit"),
-    ("elva.apps.chat", "chat"),
-    ("elva.apps.server", "serve"),
-]
-for app, command in apps:
+for app_name in find_namespace_packages(ELVA_APP_DIR):
+    app = get_app_import_path(app_name)
     module = importlib.import_module(app)
-    elva.add_command(module.cli, command)
+    elva.add_command(module.cli)
 
 if __name__ == "__main__":
     elva()
