@@ -109,5 +109,8 @@ def cli(config, **kwargs):
     level = logging.getLevelNamesMapping()[level_name]
     log.setLevel(level)
 
-    # run app
-    anyio.run(app.main, config)
+    # run app, catch file permission errors with an appropriate message
+    try:
+        anyio.run(app.main, config)
+    except PermissionError as exc:
+        raise click.UsageError(exc)

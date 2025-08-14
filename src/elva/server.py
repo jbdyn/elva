@@ -370,6 +370,22 @@ class WebsocketServer(Component):
         self.persistent = persistent
         self.path = path
 
+        if path is not None:
+            # check whether `path` is writable, OS-agnostic
+            try:
+                # ensure `path` exists
+                path.mkdir(parents=True, exist_ok=True)
+
+                # try to write a test file
+                test_file = path / ".permission.test"
+                with test_file.open(mode="w"):
+                    pass
+
+                # remove test file
+                test_file.unlink()
+            except PermissionError:
+                raise PermissionError(f"'{path}' is not writable") from None
+
         if process_request is None:
             self.process_request = self.check_path
         else:
