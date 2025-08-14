@@ -1,6 +1,7 @@
 import pytest
 
-import elva.widgets.ytextarea as _ytextarea
+from elva.widgets.ytextarea.location import update_location
+from elva.widgets.ytextarea.selection import Selection
 
 
 @pytest.mark.parametrize(
@@ -12,29 +13,29 @@ import elva.widgets.ytextarea as _ytextarea
         # `expected` is always equal to `location`
         (
             (0, 0),
-            _ytextarea.Selection((0, 1), (0, 3)),
-            _ytextarea.Selection((0, 0), (0, 0)),
+            Selection((0, 1), (0, 3)),
+            Selection((0, 0), (0, 0)),
             (0, 0),
             (0, 0),
         ),
         (
             (0, 0),
-            _ytextarea.Selection((0, 1), (0, 3)),
-            _ytextarea.Selection((0, 0), (0, 0)),
+            Selection((0, 1), (0, 3)),
+            Selection((0, 0), (0, 0)),
             (10, 0),
             (0, 0),
         ),
         (
             (0, 0),
-            _ytextarea.Selection((0, 1), (0, 3)),
-            _ytextarea.Selection((0, 1), (0, 2)),
+            Selection((0, 1), (0, 3)),
+            Selection((0, 1), (0, 2)),
             (0, 0),
             (0, 0),
         ),
         (
             (0, 0),
-            _ytextarea.Selection((0, 1), (0, 3)),
-            _ytextarea.Selection((0, 1), (0, 2)),
+            Selection((0, 1), (0, 3)),
+            Selection((0, 1), (0, 2)),
             (10, 0),
             (0, 0),
         ),
@@ -44,43 +45,43 @@ import elva.widgets.ytextarea as _ytextarea
         # `expected` is always equal to `target`
         (
             (0, 0),
-            _ytextarea.Selection((0, 0), (0, 0)),
-            _ytextarea.Selection((0, 0), (0, 0)),
+            Selection((0, 0), (0, 0)),
+            Selection((0, 0), (0, 0)),
             (0, 0),
             (0, 0),
         ),
         (
             (0, 0),
-            _ytextarea.Selection((0, 0), (0, 0)),
-            _ytextarea.Selection((0, 0), (0, 0)),
+            Selection((0, 0), (0, 0)),
+            Selection((0, 0), (0, 0)),
             (10, 0),
             (10, 0),
         ),
         (
             (0, 0),
-            _ytextarea.Selection((0, 0), (0, 0)),
-            _ytextarea.Selection((0, 0), (0, 5)),
+            Selection((0, 0), (0, 0)),
+            Selection((0, 0), (0, 5)),
             (0, 0),
             (0, 0),
         ),
         (
             (0, 0),
-            _ytextarea.Selection((0, 0), (0, 0)),
-            _ytextarea.Selection((0, 0), (0, 5)),
+            Selection((0, 0), (0, 0)),
+            Selection((0, 0), (0, 5)),
             (0, 5),
             (0, 5),
         ),
         (
             (0, 0),
-            _ytextarea.Selection((0, 0), (0, 3)),
-            _ytextarea.Selection((0, 0), (0, 5)),
+            Selection((0, 0), (0, 3)),
+            Selection((0, 0), (0, 5)),
             (0, 0),
             (0, 0),
         ),
         (
             (0, 0),
-            _ytextarea.Selection((0, 0), (0, 3)),
-            _ytextarea.Selection((0, 0), (0, 5)),
+            Selection((0, 0), (0, 3)),
+            Selection((0, 0), (0, 5)),
             (0, 5),
             (0, 5),
         ),
@@ -93,16 +94,16 @@ import elva.widgets.ytextarea as _ytextarea
         # edit in the same row solely
         (
             (0, 4),
-            _ytextarea.Selection((0, 0), (0, 3)),
-            _ytextarea.Selection((0, 0), (0, 5)),
+            Selection((0, 0), (0, 3)),
+            Selection((0, 0), (0, 5)),
             (0, 0),
             (0, 6),
         ),
         # changing target has no effect
         (
             (0, 4),
-            _ytextarea.Selection((0, 0), (0, 3)),
-            _ytextarea.Selection((0, 0), (0, 5)),
+            Selection((0, 0), (0, 3)),
+            Selection((0, 0), (0, 5)),
             (10, 0),
             (0, 6),
         ),
@@ -110,16 +111,16 @@ import elva.widgets.ytextarea as _ytextarea
         # only row is shifted, column not
         (
             (2, 8),
-            _ytextarea.Selection((0, 0), (0, 3)),
-            _ytextarea.Selection((0, 0), (1, 20)),
+            Selection((0, 0), (0, 3)),
+            Selection((0, 0), (1, 20)),
             (0, 0),
             (3, 8),
         ),
         # changing target has no effect
         (
             (2, 8),
-            _ytextarea.Selection((0, 0), (0, 3)),
-            _ytextarea.Selection((0, 0), (1, 20)),
+            Selection((0, 0), (0, 3)),
+            Selection((0, 0), (1, 20)),
             (10, 0),
             (3, 8),
         ),
@@ -127,22 +128,22 @@ import elva.widgets.ytextarea as _ytextarea
         # row and column are shifted
         (
             (0, 9),
-            _ytextarea.Selection((0, 0), (0, 3)),
-            _ytextarea.Selection((0, 0), (5, 1)),
+            Selection((0, 0), (0, 3)),
+            Selection((0, 0), (5, 1)),
             (0, 0),
             (5, 7),
         ),
         # changing target has no effect
         (
             (0, 9),
-            _ytextarea.Selection((0, 0), (0, 3)),
-            _ytextarea.Selection((0, 0), (5, 1)),
+            Selection((0, 0), (0, 3)),
+            Selection((0, 0), (5, 1)),
             (10, 0),
             (5, 7),
         ),
     ),
 )
 def test_update_location(location, delete, insert, target, expected):
-    location = _ytextarea.update_location(location, delete, insert, target)
+    location = update_location(location, delete, insert, target)
 
     assert location == expected
