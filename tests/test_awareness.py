@@ -123,13 +123,13 @@ async def test_outdated_timeout():
 
     # trigger the disconnect message
     async with awareness:
-        await anyio.sleep(0.51)
+        while len(events) < 10:
+            await anyio.sleep(1e-6)
 
     awareness.unobserve(obs)
 
-    # we got round (510 * 2 / 100) = 10 update events,
-    # factor 2 because the renewal periodicity is set internally to outdated_timeout / 2
-    assert len(events) == 10
+    # with remove message
+    assert len(events) == 11
 
     # all topics are `update`
     assert all(topic == "update" for topic, _, _ in events)

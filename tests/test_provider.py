@@ -12,7 +12,14 @@ from elva.log import LOGGER_NAME
 from elva.provider import WebsocketProvider
 from elva.server import WebsocketServer
 
-LOGGER_NAME.set(__name__)
+
+@pytest.fixture(scope="module")
+def manage_logger_name():
+    reset_token = LOGGER_NAME.set(__name__)
+    yield
+    LOGGER_NAME.reset(reset_token)
+
+
 log = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.anyio

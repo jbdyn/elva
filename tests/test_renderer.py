@@ -7,7 +7,13 @@ from pycrdt import Doc, Map, Text, XmlElement, XmlFragment, XmlText
 from elva.log import LOGGER_NAME
 from elva.renderer import TextRenderer
 
-LOGGER_NAME.set(__name__)
+
+@pytest.fixture(scope="module")
+def manage_logger_name():
+    reset_token = LOGGER_NAME.set(__name__)
+    yield
+    LOGGER_NAME.reset(reset_token)
+
 
 # use the AnyIO plugin
 pytestmark = pytest.mark.anyio
