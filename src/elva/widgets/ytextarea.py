@@ -204,14 +204,16 @@ def update_location(
 
     Arguments:
         location: tuple before the edit.
-        delete: Range which is deleted during the edit.
-        insert: Range which is inserted during the edit.
-        target: Returned location when `location` is within the deletion range,
+        delete: range which is deleted during the edit.
+        insert: range which is inserted during the edit.
+        target:
+            returned location when `location` is within the deletion range,
             typically the start or the end of the insertion range.
 
     Returns:
         location after the edit.
     """
+    # abbreviate for easier reading
     loc_ = location
     del_ = delete
     ins_ = insert
@@ -227,7 +229,7 @@ def update_location(
         # between delete and insert operations
         shift = (ins_.end[0] - del_.end[0], ins_.end[1] - del_.end[1])
 
-        # only shift columns when edit happened in the same row `loc_` is also in
+        # only shift columns when edit happened before the row `loc_` is also in
         if del_.end[0] < loc_[0]:
             shift = (shift[0], 0)
 
