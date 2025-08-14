@@ -7,7 +7,7 @@ import signal
 import anyio
 from websockets.asyncio.server import basic_auth
 
-from elva.auth import DummyAuth, LDAPBasicAuth
+from elva.auth import DummyAuth, LDAPAuth
 from elva.server import WebsocketServer, free_tcp_port
 
 
@@ -35,7 +35,7 @@ async def main(config):
     dummy = c.get("dummy", False)
 
     if ldap is not None:
-        process_request = LDAPBasicAuth(*ldap).check
+        process_request = LDAPAuth(*ldap).check
     elif dummy:
         process_request = DummyAuth().check
     else:
