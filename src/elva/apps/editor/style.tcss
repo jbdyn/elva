@@ -1,4 +1,28 @@
-#editor {
-  border: none;
-  padding: 0;
+YTextArea {
+  background: transparent;
+}
+
+Dashboard {
+  layout: grid;
+  grid-size: 2;
+  grid-columns: 2fr 1fr;
+
+  ConfigView, AwarenessView {
+    padding: 0 1 0 1;
+    border: solid $primary;
+  }
+}
+
+InputScreen {
+  layout: grid;
+  align: center middle;
+
+  Input {
+    border: solid $border;
+    width: 80%;
+
+    .input--cursor {
+      color: $foreground;
+    }
+  }
 }

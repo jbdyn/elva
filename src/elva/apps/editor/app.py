@@ -3,15 +3,20 @@ ELVA editor app.
 """
 
 import logging
+from pathlib import Path
 
 from pycrdt import Doc, Text
 from textual.app import App
 from textual.binding import Binding
 
+from elva.cli import get_data_file_path, get_render_file_path
 from elva.core import FILE_SUFFIX
 from elva.provider import WebsocketProvider
 from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
+from elva.widgets.awareness import AwarenessView
+from elva.widgets.config import ConfigView
+from elva.widgets.screens import Dashboard, InputScreen
 from elva.widgets.ytextarea import YTextArea
 
 log = logging.getLogger(__package__)
@@ -35,7 +40,16 @@ class UI(App):
     CSS_PATH = "style.tcss"
     """The path to the default CSS."""
 
-    BINDINGS = [Binding("ctrl+s", "save"), Binding("ctrl+r", "render")]
+    SCREENS = {
+        "dashboard": Dashboard,
+        "input": InputScreen,
+    }
+
+    BINDINGS = [
+        Binding("ctrl+s", "save"),
+        Binding("ctrl+r", "render"),
+        Binding("ctrl+b", "toggle_dashboard"),
+    ]
     """Key bindings for actions of the app."""
 
     def __init__(self, config: dict):
@@ -63,6 +77,13 @@ class UI(App):
                 port=c.get("port"),
                 safe=c.get("safe", True),
             )
+
+            data = {}
+            if c.get("name") is not None:
+                data = {"user": {"name": c["name"]}}
+
+            self.provider.awareness.set_local_state(data)
+
             self.components.append(self.provider)
 
         if c.get("file") is not None:
@@ -73,6 +94,7 @@ class UI(App):
             )
             self.components.append(self.store)
 
+        if c.get("render") is not None:
             self.renderer = TextRenderer(
                 self.ytext,
                 c["render"],
@@ -82,6 +104,14 @@ class UI(App):
             self.components.append(self.renderer)
 
         self._language = c.get("language")
+
+    def on_awareness_update(self, topic, data):
+        if topic == "change":
+            self.run_worker(self._on_awareness_update(topic, data))
+
+    async def _on_awareness_update(self, topic, data):
+        if self.screen == self.get_screen("dashboard"):
+            self.push_client_states()
 
     async def wait_for_component_state(self, component, state):
         sub = component.subscribe()
@@ -93,6 +123,11 @@ class UI(App):
         """
         Hook called on mounting the app.
         """
+        if hasattr(self, "provider"):
+            self.subscription = self.provider.awareness.observe(
+                self.on_awareness_update
+            )
+
         for comp in self.components:
             self.run_worker(comp.start())
             await self.wait_for_component_state(
@@ -103,6 +138,10 @@ class UI(App):
         """
         Hook called on unmounting the app.
         """
+        if hasattr(self, "subscription"):
+            self.provider.awareness.unobserve(self.subscription)
+            del self.subscription
+
         for comp in self.components:
             await self.wait_for_component_state(comp, comp.states.NONE)
 
@@ -142,9 +181,71 @@ class UI(App):
         else:
             return self._language
 
+    async def action_save(self):
+        if self.config.get("file") is None:
+            self.run_worker(self.get_and_set_file_paths())
+
+    async def get_and_set_file_paths(self, data_file=True):
+        name = await self.push_screen_wait("input")
+
+        if not name:
+            return
+
+        path = Path(name)
+
+        data_file_path = get_data_file_path(path)
+        if data_file:
+            self.config["file"] = data_file_path
+            self.store = SQLiteStore(
+                self.ydoc, self.config["identifier"], data_file_path
+            )
+            self.components.append(self.store)
+            self.run_worker(self.store.start())
+
+        if self.config.get("render") is None:
+            render_file_path = get_render_file_path(data_file_path)
+            self.config["render"] = render_file_path
+
+            self.renderer = TextRenderer(self.ytext, render_file_path)
+            self.components.append(self.renderer)
+            self.run_worker(self.renderer.start())
+
+        if self.screen == self.get_screen("dashboard"):
+            self.push_config()
+
     async def action_render(self):
         """
         Action performed on triggering the `render` key binding.
         """
-        if hasattr(self, "renderer"):
+        if self.config.get("render") is None:
+            self.run_worker(self.get_and_set_file_paths(data_file=False))
+        else:
             await self.renderer.write()
+
+    async def action_toggle_dashboard(self):
+        if self.screen == self.get_screen("dashboard"):
+            self.pop_screen()
+        else:
+            await self.push_screen("dashboard")
+            self.push_client_states()
+            self.push_config()
+
+    def push_client_states(self):
+        if hasattr(self, "provider"):
+            client_states = self.provider.awareness.client_states.copy()
+            client_id = self.provider.awareness.client_id
+            if client_id not in client_states:
+                return
+            states = list()
+            states.append((client_id, client_states.pop(client_id)))
+            states.extend(list(client_states.items()))
+            states = tuple(states)
+
+            awareness_view = self.screen.query_one(AwarenessView)
+            awareness_view.states = states
+
+    def push_config(self):
+        config = tuple(self.config.items())
+
+        config_view = self.screen.query_one(ConfigView)
+        config_view.config = config

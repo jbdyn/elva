@@ -2,7 +2,6 @@
 [`Textual`](https://textual.textualize.io/) Widgets for realtime text-editing
 """
 
-import uuid
 from typing import Self
 
 from pycrdt import Text, TextEvent, UndoManager
@@ -18,6 +17,18 @@ class YTextArea(TextArea):
     Widget for displaying and manipulating text synchronized in realtime.
     """
 
+    DEFAULT_CSS = """
+        YTextArea {
+          border: none;
+          padding: 0;
+          background: transparent;
+
+          &:focus {
+            border: none;
+          }
+        }
+        """
+
     def __init__(self, ytext: Text, *args: tuple, **kwargs: dict):
         """
         Arguments:
@@ -28,11 +39,14 @@ class YTextArea(TextArea):
         """
         super().__init__(str(ytext), *args, **kwargs)
         self.ytext = ytext
-        self.origin = str(uuid.uuid4())
+        self.origin = ytext.doc.client_id
 
         # record changes in the YText;
         # overwrites TextArea.history
-        self.history = UndoManager(scopes=[ytext])
+        self.history = UndoManager(
+            scopes=[ytext],
+            capture_timeout_millis=300,
+        )
 
         # perform undo and redo solely on our contributions
         self.history.include_origin(self.origin)
