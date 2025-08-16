@@ -14,23 +14,22 @@ nav:
           - "reference/apps/index.md"
           - Editor: reference/apps/editor.md
           - Chat: reference/apps/chat.md
-          - Service: reference/apps/service.md
           - Server: reference/apps/server.md
-          - Drive: reference/apps/drive.md
       - Widgets:
           - "reference/widgets/index.md"
-          - TextArea: reference/widgets/textarea.md
+          - YTextArea: reference/widgets/ytextarea.md
           - Config: reference/widgets/config.md
-          - Status: reference/widgets/status.md
           - Screens: reference/widgets/screens.md
+          - Awareness: reference/widgets/awareness.md
+          - Configuration: reference/widgets/config.md
+      - Core: reference/core.md
+      - Main: reference/main.md
       - CLI: reference/cli.md
-      - CLI Utils: reference/utils.md
-      - Click Utilities: reference/click-utils.md
-      - Click Lazy Loading Group: reference/click-lazy-group.md
       - Component: reference/component.md
       - Authentication: reference/auth.md
       - Server: reference/server.md
       - Provider: reference/provider.md
+      - Awareness: reference/awareness.md
       - Store: reference/store.md
       - Renderer: reference/renderer.md
       - Protocol: reference/protocol.md

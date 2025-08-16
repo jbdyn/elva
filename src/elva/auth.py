@@ -78,7 +78,7 @@ class LDAP3LogLevel(IntEnum):
 
 
 def basic_authorization_header(
-    username: str, password: str, charset="utf-8"
+    username: str, password: str, charset: str = "utf-8"
 ) -> dict[str, str]:
     """
     Compose the Base64 encoded `Authorization` header for `Basic` authentication
@@ -155,7 +155,7 @@ class DummyAuth(Auth):
     def __init__(self):
         self.log.warning("DUMMY AUTHENTICATION. DO NOT USE IN PRODUCTION!")
 
-    def check(self, username, password):
+    def check(self, username: str, password: str) -> bool:
         """
         Checks whether username and password are identical.
 

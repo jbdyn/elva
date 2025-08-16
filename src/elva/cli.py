@@ -181,7 +181,7 @@ def read_data_file(path: str | Path) -> dict:
     Get metadata from file as parameter mapping.
 
     Arguments:
-        file: path where the ELVA SQLite database is stored.
+        path: path where the ELVA SQLite database is stored.
 
     Returns:
         parameter mapping stored in the ELVA SQLite database.
@@ -203,7 +203,7 @@ def read_config_files(paths: list[Path]) -> tuple[list[Path], dict]:
     Get parameters defined in configuration files.
 
     Arguments:
-        configs: list of paths to ELVA configuration files.
+        paths: list of paths to ELVA configuration files.
 
     Returns:
         parameter mapping from all configuration files.
@@ -408,7 +408,7 @@ def resolve_data_file_path(
     Arguments:
         ctx: the context of the current command invokation.
         param: the data file CLI parameter object.
-        value: the value of the data file CLI parameter.
+        path: the value of the data file CLI parameter.
 
     Returns:
         the correct and resolved data file path if given else `None`.
@@ -424,7 +424,7 @@ def resolve_data_file_path(
 #
 
 
-def pass_config_for(app: None | str = None):
+def pass_config_for(app: None | str = None) -> Callable:
     """
     Configure the `pass_config` decorator to respect the `app` table in configurations.
 
@@ -479,12 +479,9 @@ def pass_config_for(app: None | str = None):
     return pass_config
 
 
-pass_config = pass_config_for()
+pass_config: Callable = pass_config_for()
 """
 Command decorator passing the merged configuration dictionary as the first positional argument to a [`Command`][click.Command].
-
-Arguments:
-    cmd: the command to pass the configuration to.
 
 Returns:
     the wrapped command.

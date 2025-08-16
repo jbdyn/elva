@@ -70,7 +70,9 @@ class WebsocketProvider(Component):
         Arguments:
             ydoc: instance if the synchronized Y Document.
             identifier: identifier of the synchronized Y Document.
-            server: address of the Y Document synchronizing websocket server.
+            host: hostname or IP address of the Y Document synchronizing websocket server.
+            port: port of the Y Document synchronizing websocket server.
+            safe: flag whether to establish a secured (`True`) or unsecured (`False`) connection.
             on_exception: callback to which the current connection exception and a reference to the connection option mapping is given.
             *args: positional arguments passed to [`connect`][websockets.asyncio.client.connect].
             **kwargs: keyword arguments passed to [`connect`][websockets.asyncio.client.connect].

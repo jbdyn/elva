@@ -292,11 +292,11 @@ class Component:
 
     async def before(self):
         """
-        Hook to run before the component signals that is has been started.
+        Hook to run before the component signals that is running.
 
         In here, one would define initializing steps necessary for the component to run.
         This method must return, otherwise the component will not set the
-        [`started`][elva.component.Component.started] signal.
+        `RUNNING` state.
 
         It is defined as a no-op and supposed to be implemented in the inheriting class.
         """
@@ -304,7 +304,7 @@ class Component:
 
     async def run(self):
         """
-        Hook to run after the component signals that is has been started.
+        Hook to run after the component set the `RUNNING` state.
 
         In here, one would define the main functionality of the component.
         This method may run indefinitely or return.
@@ -317,11 +317,10 @@ class Component:
     async def cleanup(self):
         """
         Hook to run after the component's [`stop`][elva.component.Component.stop] method
-        has been called and before it sets the [`stopped`][elva.component.Component.stopped] event.
+        has been called and before it sets its state to `NONE`.
 
         In here, one would define cleanup tasks such as closing connections.
-        This method must return, otherwise the component will not set the
-        [`stopped`][elva.component.Component.stopped] signal.
+        This method must return, otherwise the component will not stop.
 
         It is defined as a no-op and supposed to be implemented in the inheriting class.
         """

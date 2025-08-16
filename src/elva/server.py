@@ -102,7 +102,7 @@ class RequestProcessor:
             request: HTTP request header object.
 
         Returns:
-            Abort information like in [`abort_basic_auth`][elva.auth.abort_basic_auth] on first occurence, else `None`.
+            `None` if no processing functions returned anything, or the first [`Response`][websockets.http11.Response] returned.
         """
         for func in self.funcs:
             out = func(websocket, request)
@@ -177,7 +177,7 @@ class Room(Component):
 
     async def before(self):
         """
-        Hook runnig before the [`started`][elva.component.Component.started] signal is set.
+        Hook runnig before the `RUNNING` state is set.
 
         Used to start the Y Document store.
         """
@@ -186,7 +186,7 @@ class Room(Component):
 
     async def cleanup(self):
         """
-        Hook running after the component got cancelled and before its [`stopped`][elva.component.Component.stopped] signal is set.
+        Hook running after the component got cancelled and before it states become unset to `NONE`.
 
         Used to close all client connections gracefully.
         The store is closed automatically and calls its cleanup method separately.
@@ -451,7 +451,7 @@ class WebsocketServer(Component):
             request: HTTP request header object.
 
         Returns:
-            `None` if an identifier was given, else a [`Response`][websockets.datastructures.Response] with HTTP status 403 (forbidden).
+            `None` if an identifier was given, else a [`Response`][websockets.http11.Response] with HTTP status 403 (forbidden).
         """
         # the request path always includes a `/` as first character
         path = request.path[1:]

@@ -239,7 +239,7 @@ class SQLiteStore(Component):
 
     async def _ensure_metadata_table(self):
         """
-        Hook called before the store sets its `started` signal to ensure a table `metadata` exists.
+        Hook called before the store sets its `RUNNING` state to ensure a table `metadata` exists.
         """
         async with self._lock:
             await self._cursor.execute(
@@ -382,7 +382,7 @@ class SQLiteStore(Component):
 
     async def before(self):
         """
-        Hook executed before the component sets its [`started`][elva.component.Component.started] signal.
+        Hook executed before the component sets its `RUNNING` state.
 
         The ELVA SQLite database is being initialized and read.
         Also, the component subscribes to changes in [`ydoc`][elva.store.SQLiteStore.ydoc].

@@ -160,7 +160,7 @@ class TextRenderer(Component):
         """
         Hook run after the component adds the `RUNNING` state.
 
-        The contents of `self.crdt` get rendered to file if [`auto_render`][elva.renderer.TextRenderer.auto_render] is `True`.
+        The contents of `self.crdt` get rendered to file if [`auto_save`][elva.renderer.TextRenderer.auto_save] is `True`.
         """
         if self.auto_save:
             await self._task_group.start(self._run_auto_save)
