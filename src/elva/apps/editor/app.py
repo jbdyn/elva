@@ -128,11 +128,33 @@ class UI(App):
                 self.on_awareness_update
             )
 
+        # load text from rendered file
+        c = self.config
+
+        text = ""
+
+        render_file_path = c.get("render")
+        if render_file_path is not None and render_file_path.exists():
+            # we found some content on disk;
+            # now check whether this has precedence over the data file
+            data_file_path = c.get("file")
+            if data_file_path is None or not data_file_path.exists():
+                # there is no data file on disk associated with this
+                # file name; we load the content
+                with render_file_path.open(mode="r") as fd:
+                    text = fd.read()
+
+        # wait for components to run
         for comp in self.components:
             self.run_worker(comp.start())
             await self.wait_for_component_state(
                 comp, comp.states.ACTIVE | comp.states.RUNNING
             )
+
+        # now add the text to save updates to disk and send them over wire
+        if text:
+            ytextarea = self.query_one(YTextArea)
+            ytextarea.load_text(text)
 
     async def on_unmount(self):
         """
