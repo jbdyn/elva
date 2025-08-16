@@ -17,6 +17,9 @@ class Dashboard(Screen):
         yield ConfigView()
         yield AwarenessView()
 
+    def key_escape(self):
+        self.dismiss()
+
 
 class InputScreen(ModalScreen):
     def compose(self):
