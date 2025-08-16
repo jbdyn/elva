@@ -296,15 +296,14 @@ def merge_configs(ctx: click.Context, app: None | str = None) -> dict:
     # config defined in the metadata of an ELVA data file
     file = ctx.params.get("file")
     if file is not None:
-        # get or derive render and log file paths
+        # derive render and log file paths if not already present
         for param, get_param_path in (
             ("render", get_render_file_path),
             ("log", get_log_file_path),
         ):
-            path = (
-                cli.pop(param, None) or config.pop(param, None) or get_param_path(file)
-            )
-            config[param] = Path(path).resolve()
+            if ctx.params.get(param) is None:
+                path = get_param_path(file)
+                config[param] = path
 
         # read in config from data file
         data_file_config = read_data_file(file)
@@ -313,10 +312,13 @@ def merge_configs(ctx: click.Context, app: None | str = None) -> dict:
     # merge with arguments *explicitly* given via CLI
     config.update(cli)
 
-    # remove `None` values and unused app sections
+    # remove `None` values and unused app sections,
+    # resolve paths
     for key, val in config.copy().items():
         if val is None or isinstance(val, dict):
             config.pop(key)
+        elif isinstance(val, Path):
+            config[key] = val.resolve()
 
     # complain when two pairs of writable file paths are the same
     for name_left, name_right in (
