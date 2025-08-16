@@ -614,6 +614,23 @@ identifier_option = click.option(
 )
 """A CLI command decorator defining an option for the YDoc identifier."""
 
+render_auto_save_option = click.option(
+    "--auto-save/--no-auto-save",
+    "auto_save",
+    is_flag=True,
+    default=True,
+    help="Enable automatic rendering of the file contents.",
+)
+"""A CLI command decorator defining an option for the renderers auto save feature."""
+
+render_timeout_option = click.option(
+    "--timeout",
+    "timeout",
+    help="The time interval in seconds between consecutive renderings.",
+    type=click.IntRange(min=0),
+)
+"""A CLI command decorator defining an option for the renderers auto save timeout."""
+
 render_file_path_option = click.option(
     "--render",
     "-r",
@@ -624,6 +641,13 @@ render_file_path_option = click.option(
 )
 """A CLI command decorator defining an option for the render file path."""
 
+render_options = get_composed_decorator(
+    render_file_path_option,
+    render_auto_save_option,
+    render_timeout_option,
+)
+"""A CLI command decorator defining render options."""
+
 data_file_path_argument = click.argument(
     "file",
     required=False,
@@ -633,10 +657,10 @@ data_file_path_argument = click.argument(
 """A CLI command decorator defining an argument for the data file path."""
 
 file_paths_option_and_argument = get_composed_decorator(
-    render_file_path_option,
+    render_options,
     data_file_path_argument,
 )
-"""A CLI command decorator defining the render file path option and the data file path."""
+"""A CLI command decorator defining the render options and the data file path."""
 
 common_options = get_composed_decorator(
     configs_option,

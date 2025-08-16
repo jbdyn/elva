@@ -1,10 +1,11 @@
-Screen {
-  padding: 1 1;
-}
-
 #future {
   height: auto;
   max-height: 30%;
+  padding: 0 0 1 0;
+}
+
+#history {
+  padding: 1 0 0 0;
 }
 
 #tabview {
@@ -20,7 +21,7 @@ Screen {
 }
 
 .content {
-  border: round grey;
+  border-top: blank grey;
   padding: 0 1 0 1; /* top right bottom left */
 }
 
@@ -32,41 +33,30 @@ Screen {
 
 Rule {
   color: rgb(50, 50, 50);
+  margin: 0;
 }
 
-.modalscreen {
+Dashboard {
+  layout: grid;
+  grid-size: 2;
+  grid-columns: 2fr 1fr;
+
+  ConfigView, AwarenessView {
+    padding: 0 1 0 1;
+    border: solid $primary;
+  }
+}
+
+InputScreen {
+  layout: grid;
   align: center middle;
-}
 
-.modalscreen .form {
-  grid-gutter: 1 2;
-  grid-rows: 5;
-  border: thick $background 80%;
-  height: auto;
-  width: 80;
-  padding: 2;
-  background: $surface;
-}
+  Input {
+    border: solid $border;
+    width: 80%;
 
-#credentialscreen #body {
-  column-span: 2;
-}
-
-#credentialscreen .form {
-  grid-size: 2 3;
-}
-
-#errorscreen .form {
-  grid-size: 1 3;
-}
-
-.modalscreen .confirm {
-  background: green;
-  width: 100%;
-  height: 3;
-  margin: 1;
-}
-
-#credentialscreen .confirm {
-  column-span: 2;
+    .input--cursor {
+      color: $foreground;
+    }
+  }
 }

@@ -206,7 +206,9 @@ class UI(App):
             render_file_path = get_render_file_path(data_file_path)
             self.config["render"] = render_file_path
 
-            self.renderer = TextRenderer(self.ytext, render_file_path)
+            self.renderer = TextRenderer(
+                self.ytext, render_file_path, self.config.get("auto_save", False)
+            )
             self.components.append(self.renderer)
             self.run_worker(self.renderer.start())
 

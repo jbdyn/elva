@@ -5,6 +5,8 @@ ELVA chat app.
 import logging
 import re
 import uuid
+from datetime import datetime
+from pathlib import Path
 
 import emoji
 from pycrdt import Array, ArrayEvent, Doc, Map, MapEvent, Text, TextEvent
@@ -16,9 +18,14 @@ from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent, TabPane
 
+from elva.cli import get_data_file_path, get_render_file_path
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import WebsocketProvider
+from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
+from elva.widgets.awareness import AwarenessView
+from elva.widgets.config import ConfigView
+from elva.widgets.screens import Dashboard, InputScreen
 from elva.widgets.ytextarea import YTextArea
 
 log = logging.getLogger(__name__)
@@ -55,13 +62,18 @@ class MessageView(Widget):
         """
         if not str(self.text):
             self.display = False
-        self.text.observe(self.text_callback)
+        self.subscription = self.text.observe(self.text_callback)
 
     def compose(self):
         """
         Hook arranging child widgets.
         """
         yield self.text_field
+
+    def on_unmount(self):
+        if hasattr(self, "subscription"):
+            self.text.unobserve(self.subscription)
+            del self.subscription
 
     def text_callback(self, event: TextEvent):
         """
@@ -97,7 +109,7 @@ class MessageList(VerticalScroll):
         self.user = user
         self.messages = messages
 
-    def mount_message_view(
+    def get_message_view(
         self, message: Map | dict, message_id: None | str = None
     ) -> MessageView:
         """
@@ -110,7 +122,7 @@ class MessageList(VerticalScroll):
         Returns:
             a message view to be mounted inside an instance of this class.
         """
-        author = f"{message['author_display']} ({message['author']})"
+        author = message["author_display"]
         text = message["text"]
         if message_id is None:
             message_id = "id" + message["id"]
@@ -123,7 +135,7 @@ class MessageList(VerticalScroll):
         return message_view
 
 
-class History(MessageList):
+class History(MessageList, can_focus=False):
     """
     List of already sent messages.
     """
@@ -133,7 +145,7 @@ class History(MessageList):
         Hook arranging child widgets.
         """
         for message in self.messages:
-            message_view = self.mount_message_view(message)
+            message_view = self.get_message_view(message)
             yield message_view
 
 
@@ -161,7 +173,7 @@ class HistoryParser(ArrayEventParser):
         Arguments:
             event: an object holding information about the change in the Y array.
         """
-        self._task_group.start_soon(self.parse, event)
+        self.parse_nowait(event)
         self.log.debug("history callback triggered")
 
     async def before(self):
@@ -170,7 +182,7 @@ class HistoryParser(ArrayEventParser):
 
         This method subscribes to changes in the Y array message history.
         """
-        self.history.observe(self.history_callback)
+        self.subscription = self.history.observe(self.history_callback)
         self.log.debug("subscribed to changes in history")
 
     async def on_insert(self, range_offset: int, insert_value: str):
@@ -184,9 +196,14 @@ class HistoryParser(ArrayEventParser):
             insert_value: the inserted content.
         """
         for message in insert_value:
-            message_view = self.widget.mount_message_view(message)
+            message_view = self.widget.get_message_view(message)
             log.debug("mounting message view in history")
-            self.widget.mount(message_view, after=range_offset)
+            await self.widget.mount(message_view, after=range_offset - 1)
+
+    async def cleanup(self):
+        if hasattr(self, "subscription"):
+            self.history.unobserve(self.subscription)
+            del self.subscription
 
     async def on_delete(self, range_offset: int, range_length: str):
         """
@@ -202,10 +219,10 @@ class HistoryParser(ArrayEventParser):
             range_offset : range_offset + range_length
         ]:
             log.debug("deleting message view in history")
-            message_view.remove()
+            await message_view.remove()
 
 
-class Future(MessageList):
+class Future(MessageList, can_focus=False):
     """
     List of currently composed messages.
     """
@@ -231,7 +248,7 @@ class Future(MessageList):
             if not self.show_self and message["author"] == self.user:
                 continue
             else:
-                message_view = self.mount_message_view(
+                message_view = self.get_message_view(
                     message, message_id="id" + message_id
                 )
                 yield message_view
@@ -266,7 +283,7 @@ class FutureParser(MapEventParser):
         Arguments:
             event: an object holding information about the change in the Y map.
         """
-        self._task_group.start_soon(self.parse, event)
+        self.parse_nowait(event)
         log.debug("future callback triggered")
 
     async def before(self):
@@ -275,8 +292,13 @@ class FutureParser(MapEventParser):
 
         This method subscribes to changes in the mapping of currently composed messages.
         """
-        self.future.observe(self.future_callback)
+        self.subscription = self.future.observe(self.future_callback)
         self.log.debug("subscribed to changes in future")
+
+    async def cleanup(self):
+        if hasattr(self, "subscription"):
+            self.future.unobserve(self.subscription)
+            del self.subscription
 
     async def on_add(self, key: str, new_value: dict):
         """
@@ -291,7 +313,7 @@ class FutureParser(MapEventParser):
         if not self.show_self and new_value["author"] == self.user:
             return
 
-        message_view = self.widget.mount_message_view(new_value, message_id="id" + key)
+        message_view = self.widget.get_message_view(new_value, message_id="id" + key)
         log.debug("mounting message view in future")
         self.widget.mount(message_view)
 
@@ -343,12 +365,24 @@ class UI(App):
     CSS_PATH = "style.tcss"
     """The path to the default CSS."""
 
-    BINDINGS = [("shift+enter", "send", "Send currently composed message")]
+    SCREENS = {
+        "dashboard": Dashboard,
+        "input": InputScreen,
+    }
+
+    BINDINGS = [
+        ("shift+enter", "send", "Send currently composed message"),
+        ("ctrl+b", "toggle_dashboard"),
+        ("ctrl+s", "save"),
+        ("ctrl+r", "render"),
+    ]
     """Key bindings for controlling the app."""
 
     def __init__(
         self,
         config,
+        *args,
+        **kwargs,
     ):
         """
         Arguments:
@@ -361,28 +395,27 @@ class UI(App):
             file_path: path to an ELVA SQLite database file holding the content of the chat.
             show_self: flag whether to show the own currently composed message.
         """
-        super().__init__()
-        self.config = c = config
-
-        self.user = user = c.get("user")
-        self.display_name = c.get("name")
-        self.show_self = show_self = c.get("show_self", True)
+        super().__init__(*args, **kwargs)
 
         # structure
         self.ydoc = ydoc = Doc()
         ydoc["history"] = self.history = Array()
         ydoc["future"] = self.future = Map()
 
+        self.config = c = config
+
+        self.client_id = str(self.ydoc.client_id)
+        self.user = c.get("user", self.client_id)
+        self.display_name = c.get("name")
+        self.show_self = show_self = c.get("show_self", True)
+
         self.message, self.ytext, message_id = self.get_message("")
-        self.session_id = self.get_new_id()
 
         # widgets
-        self.history_widget = History(self.history, user, id="history")
-        self.history_widget.can_focus = False
+        self.history_widget = History(self.history, self.user, id="history")
         self.future_widget = Future(
             self.future, self.user, show_self=show_self, id="future"
         )
-        self.future_widget.can_focus = False
 
         # components
         self.history_parser = HistoryParser(self.history, self.history_widget)
@@ -414,7 +447,22 @@ class UI(App):
                 port=c.get("port"),
                 safe=c.get("safe", True),
             )
+
+            data = {}
+            if c.get("name") is not None:
+                data = {"user": {"name": c["name"]}}
+
+            self.provider.awareness.set_local_state(data)
+
             self.components.append(self.provider)
+
+        if c.get("render") is not None:
+            self.renderer = TextRenderer(
+                self.history,
+                c["render"],
+                c.get("auto_save", True),
+            )
+            self.components.append(self.renderer)
 
     def get_new_id(self) -> str:
         """
@@ -443,10 +491,11 @@ class UI(App):
         ymap = Map(
             {
                 "text": ytext,
-                "author_display": self.display_name or self.user,
+                "author_display": self.display_name or self.client_id,
                 # we assume that self.user is unique in the room, ensured by the server
                 "author": self.user,
                 "id": message_id,
+                "timestamp": datetime.now().isoformat(),
             }
         )
 
@@ -469,9 +518,14 @@ class UI(App):
 
         This methods waits for all components to set their [`started`][elva.component.Component.started] signal.
         """
+        if hasattr(self, "provider"):
+            self.subscription = self.provider.awareness.observe(
+                self.on_awareness_update
+            )
+
         await self.run_components()
 
-        self.future[self.session_id] = self.message
+        self.future[self.client_id] = self.message
 
         tabbed_content = self.query_one(TabbedContent)
         ytext_pane = TabPane(
@@ -504,6 +558,11 @@ class UI(App):
         yield self.future_widget
         yield TabbedContent(id="tabview")
 
+    def on_unmount(self):
+        if hasattr(self, "subscription"):
+            self.provider.awareness.unobserve(self.subscription)
+            del self.subscription
+
     async def action_send(self):
         """
         Hook called on an invoked send action.
@@ -528,3 +587,91 @@ class UI(App):
         message_widget = self.query_one(YTextArea)
         if event.pane.id == "tab-message":
             message_widget.focus()
+
+    def on_awareness_update(self, topic, data):
+        if topic == "change":
+            self.run_worker(self._on_awareness_update(topic, data))
+
+    async def _on_awareness_update(self, topic, data):
+        if self.screen == self.get_screen("dashboard"):
+            self.push_client_states()
+
+        actions, origin = data
+        removed = actions["removed"]
+        for client_id in removed:
+            if str(client_id) != self.client_id:
+                try:
+                    self.future.pop(str(client_id))
+                except KeyError:
+                    pass
+
+    async def action_save(self):
+        if self.config.get("file") is None:
+            self.run_worker(self.get_and_set_file_paths())
+
+    async def get_and_set_file_paths(self, data_file=True):
+        name = await self.push_screen_wait("input")
+
+        if not name:
+            return
+
+        path = Path(name)
+
+        data_file_path = get_data_file_path(path)
+        if data_file:
+            self.config["file"] = data_file_path
+            self.store = SQLiteStore(
+                self.ydoc, self.config["identifier"], data_file_path
+            )
+            self.components.append(self.store)
+            self.run_worker(self.store.start())
+
+        if self.config.get("render") is None:
+            render_file_path = get_render_file_path(data_file_path)
+            self.config["render"] = render_file_path
+
+            self.renderer = TextRenderer(
+                self.history, render_file_path, self.config.get("auto_save", True)
+            )
+            self.components.append(self.renderer)
+            self.run_worker(self.renderer.start())
+
+        if self.screen == self.get_screen("dashboard"):
+            self.push_config()
+
+    async def action_render(self):
+        """
+        Action performed on triggering the `render` key binding.
+        """
+        if self.config.get("render") is None:
+            self.run_worker(self.get_and_set_file_paths(data_file=False))
+        else:
+            await self.renderer.write()
+
+    async def action_toggle_dashboard(self):
+        if self.screen == self.get_screen("dashboard"):
+            self.pop_screen()
+        else:
+            await self.push_screen("dashboard")
+            self.push_client_states()
+            self.push_config()
+
+    def push_client_states(self):
+        if hasattr(self, "provider"):
+            client_states = self.provider.awareness.client_states.copy()
+            client_id = self.provider.awareness.client_id
+            if client_id not in client_states:
+                return
+            states = list()
+            states.append((client_id, client_states.pop(client_id)))
+            states.extend(list(client_states.items()))
+            states = tuple(states)
+
+            awareness_view = self.screen.query_one(AwarenessView)
+            awareness_view.states = states
+
+    def push_config(self):
+        config = tuple(self.config.items())
+
+        config_view = self.screen.query_one(ConfigView)
+        config_view.config = config

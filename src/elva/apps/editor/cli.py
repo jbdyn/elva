@@ -10,19 +10,6 @@ APP_NAME = "editor"
 @click.command(name=APP_NAME)
 @common_options
 @click.option(
-    "--auto-save/--no-auto-save",
-    "auto_save",
-    is_flag=True,
-    default=True,
-    help="Enable automatic rendering of the file contents.",
-)
-@click.option(
-    "--timeout",
-    "timeout",
-    help="The time interval in seconds between consecutive renderings.",
-    type=click.IntRange(min=0),
-)
-@click.option(
     "--ansi-color/--no-ansi-color",
     "ansi_color",
     is_flag=True,
