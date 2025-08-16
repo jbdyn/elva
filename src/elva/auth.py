@@ -36,7 +36,7 @@ class Password:
     redact: str
     """The string to mask the password."""
 
-    def __init__(self, value: str, redact: str = "[REDACTED]"):
+    def __init__(self, value: str, redact: str = "REDACTED"):
         """
         Arguments:
             value: the actual password.

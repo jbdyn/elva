@@ -553,13 +553,27 @@ user_name_option = click.option(
 )
 """A CLI command decorator defining an option for a user name."""
 
+
+class PasswordParameter(click.ParamType):
+    name = "password"
+
+    def convert(self, value, param, ctx):
+        if value is None or isinstance(value, Password):
+            return value
+
+        if not isinstance(value, str):
+            self.fail(f"{value} is of type {type(value)}, but needs to be 'str'")
+
+        return Password(value)
+
+
 password_option = click.password_option(
     "--password",
     "password",
     help="Password for authentication",
     metavar="[TEXT]",
     prompt_required=False,
-    type=Password,
+    type=PasswordParameter(),
 )
 """A CLI command decorator defining an option for a password."""
 

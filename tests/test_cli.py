@@ -6,6 +6,7 @@ import pytest
 import tomli_w
 from click.testing import CliRunner
 
+import elva.auth as _auth
 import elva.cli as _cli
 import elva.core as _core
 import elva.store as _store
@@ -1177,3 +1178,32 @@ def test_pass_config_for(tmp_path, runner, pass_config_decorator, expected):
         assert config == expected
 
     runner.invoke(test, ["--additional-config", path], standalone_mode=False)
+
+
+@pytest.mark.parametrize(
+    ("params", "input", "expected_present", "expected_value"),
+    (
+        (None, None, False, None),
+        (["--password"], "foo\nfoo", True, "foo"),
+        (["--password", "foo"], None, True, "foo"),
+    ),
+)
+def test_password_option(runner, params, input, expected_present, expected_value):
+    @click.command
+    @_cli.password_option
+    @_cli.pass_config
+    def test(config, **kwargs):
+        assert "password" in kwargs
+
+        present = "password" in config
+        assert present == expected_present
+
+        if present:
+            for password in (kwargs["password"], config["password"]):
+                assert type(password) is _auth.Password
+                assert str(password) == password.redact
+                assert password.value == expected_value
+        else:
+            assert kwargs["password"] is None
+
+    runner.invoke(test, params, input=input, standalone_mode=False)
