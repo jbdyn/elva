@@ -2,11 +2,9 @@
 [`Textual`](https://textual.textualize.io/) screens for ELVA apps.
 """
 
-from rich.text import Text as RichText
-from textual.containers import Grid
 from textual.message import Message
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Input, Static
+from textual.widgets import Input, Static
 
 from elva.widgets.awareness import AwarenessView
 from elva.widgets.config import ConfigView
@@ -40,27 +38,21 @@ class ErrorScreen(ModalScreen):
     exc: str
     """The exception message to display."""
 
-    def __init__(self, exc: str):
+    def __init__(self, exc: str, *args, **kwargs):
         """
         Arguments:
             exc: the exception message to display.
         """
-        super().__init__(classes="modalscreen", id="errorscreen")
+        super().__init__(*args, **kwargs)
         self.exc = exc
 
     def compose(self):
         """
         Hook arranging child widgets.
         """
-        with Grid(classes="form"):
-            yield Static(
-                RichText(
-                    "The following error occured and the app will close now:",
-                    justify="center",
-                )
-            )
-            yield Static(RichText(str(self.exc), justify="center"))
-            yield Button("OK", classes="confirm")
+        yield Static("The following error occured and the app will close now:")
+        yield Static(self.exc)
+        yield Static("Press any key or click to continue.")
 
     def on_button_pressed(self, event: Message):
         """
@@ -71,4 +63,10 @@ class ErrorScreen(ModalScreen):
         Arguments:
             event: the message object holding information about the button pressed event.
         """
+        self.dismiss(self.exc)
+
+    def on_key(self):
+        self.dismiss(self.exc)
+
+    def on_mouse_up(self):
         self.dismiss(self.exc)

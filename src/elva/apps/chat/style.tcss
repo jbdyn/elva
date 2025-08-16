@@ -60,3 +60,13 @@ InputScreen {
     }
   }
 }
+
+ErrorScreen {
+  align: center middle;
+  border: solid $error;
+  
+  * {
+    content-align: center middle;
+    padding: 1 0 1 0;
+  }
+}

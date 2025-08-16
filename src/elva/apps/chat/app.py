@@ -17,6 +17,7 @@ from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent, TabPane
+from websockets.exceptions import InvalidStatus
 
 from elva.cli import get_data_file_path, get_render_file_path
 from elva.parser import ArrayEventParser, MapEventParser
@@ -25,7 +26,7 @@ from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
 from elva.widgets.awareness import AwarenessView
 from elva.widgets.config import ConfigView
-from elva.widgets.screens import Dashboard, InputScreen
+from elva.widgets.screens import Dashboard, ErrorScreen, InputScreen
 from elva.widgets.ytextarea import YTextArea
 
 log = logging.getLogger(__name__)
@@ -446,6 +447,7 @@ class UI(App):
                 c["host"],
                 port=c.get("port"),
                 safe=c.get("safe", True),
+                on_exception=self.on_provider_exception,
             )
 
             data = {}
@@ -587,6 +589,19 @@ class UI(App):
         message_widget = self.query_one(YTextArea)
         if event.pane.id == "tab-message":
             message_widget.focus()
+
+    def on_provider_exception(self, exc, config):
+        self.run_worker(self._on_provider_exception(exc, config))
+
+    async def _on_provider_exception(self, exc, config):
+        await self.provider.stop()
+
+        if type(exc) is InvalidStatus:
+            response = exc.response
+            exc = f"HTTP {response.status_code}: {response.reason_phrase}"
+
+        await self.push_screen_wait(ErrorScreen(exc))
+        self.exit(return_code=1)
 
     def on_awareness_update(self, topic, data):
         if topic == "change":

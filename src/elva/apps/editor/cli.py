@@ -53,6 +53,10 @@ def cli(
     ui = app.UI(config)
     ui.run()
 
+    # reflect the app's return code
+    ctx = click.get_current_context()
+    ctx.exit(ui.return_code or 0)
+
 
 if __name__ == "__main__":
     cli()

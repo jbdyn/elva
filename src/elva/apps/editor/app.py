@@ -8,6 +8,7 @@ from pathlib import Path
 from pycrdt import Doc, Text
 from textual.app import App
 from textual.binding import Binding
+from websockets.exceptions import InvalidStatus
 
 from elva.cli import get_data_file_path, get_render_file_path
 from elva.core import FILE_SUFFIX
@@ -16,7 +17,7 @@ from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
 from elva.widgets.awareness import AwarenessView
 from elva.widgets.config import ConfigView
-from elva.widgets.screens import Dashboard, InputScreen
+from elva.widgets.screens import Dashboard, ErrorScreen, InputScreen
 from elva.widgets.ytextarea import YTextArea
 
 log = logging.getLogger(__package__)
@@ -76,6 +77,7 @@ class UI(App):
                 c["host"],
                 port=c.get("port"),
                 safe=c.get("safe", True),
+                on_exception=self.on_provider_exception,
             )
 
             data = {}
@@ -104,6 +106,19 @@ class UI(App):
             self.components.append(self.renderer)
 
         self._language = c.get("language")
+
+    def on_provider_exception(self, exc, config):
+        self.run_worker(self._on_provider_exception(exc, config))
+
+    async def _on_provider_exception(self, exc, config):
+        await self.provider.stop()
+
+        if type(exc) is InvalidStatus:
+            response = exc.response
+            exc = f"HTTP {response.status_code}: {response.reason_phrase}"
+
+        await self.push_screen_wait(ErrorScreen(exc))
+        self.exit(return_code=1)
 
     def on_awareness_update(self, topic, data):
         if topic == "change":
