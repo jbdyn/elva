@@ -1,5 +1,5 @@
 """
-[`Textual`](https://textual.textualize.io/) Widgets for realtime text-editing
+Selection definition.
 """
 
 from typing import Callable, Self, TypeVar
@@ -12,17 +12,17 @@ T = TypeVar("T")
 
 
 class Selection(_Selection):
-    start: tuple
-    """The start location of the selection. Not necessarily the top one."""
-
-    end: tuple
-    """The end location of the selection. Not necessarily the bottom one."""
-
     """
     An extended selection object supporting comparison.
 
     The implementation eases comparing to locations and other selections.
     """
+
+    start: tuple
+    """The start location of the selection. Not necessarily the top one."""
+
+    end: tuple
+    """The end location of the selection. Not necessarily the bottom one."""
 
     @property
     def top(self) -> tuple:
@@ -50,10 +50,10 @@ class Selection(_Selection):
         Arguments:
             obj: the object to compare to.
             on_selection: the object to call when `obj` is a [`Selection`][elva.widgets.ytextarea.Selection].
-            on_tuple: the object to call when `obj` is an instance of [`tuple`][builtins.tuple].
+            on_tuple: the object to call when `obj` is an instance of [`tuple`][tuple].
 
         Raises:
-            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+            TypeError: if `obj` is not an instance of [`tuple`][tuple].
 
         Returns:
             the return value of either `on_selection` or `on_tuple`.
@@ -81,7 +81,7 @@ class Selection(_Selection):
             obj: the object to compare to.
 
         Raises:
-            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+            TypeError: if `obj` is not an instance of [`tuple`][tuple].
 
         Returns:
             `True` if the tuple or selection is within the top and bottom location of this selection, else `False`.
@@ -96,7 +96,7 @@ class Selection(_Selection):
             obj: the object to compare to.
 
         Raises:
-            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+            TypeError: if `obj` is not an instance of [`tuple`][tuple].
 
         Returns:
             `True` if the tuple or selection is before the top location, else `False`.
@@ -115,7 +115,7 @@ class Selection(_Selection):
             obj: the object to compare to.
 
         Raises:
-            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+            TypeError: if `obj` is not an instance of [`tuple`][tuple].
 
         Returns:
             `True` if the tuple or selection is before or equal to the top location, else `False`.
@@ -134,7 +134,7 @@ class Selection(_Selection):
             obj: the object to compare to.
 
         Raises:
-            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+            TypeError: if `obj` is not an instance of [`tuple`][tuple].
 
         Returns:
             `True` if the tuple or selection is after the bottom location, else `False`.
@@ -153,7 +153,7 @@ class Selection(_Selection):
             obj: the object to compare to.
 
         Raises:
-            TypeError: if `obj` is not an instance of [`tuple`][builtins.tuple].
+            TypeError: if `obj` is not an instance of [`tuple`][tuple].
 
         Returns:
             `True` if the tuple or selection is after or equal to the bottom location, else `False`.

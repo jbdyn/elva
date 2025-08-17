@@ -12,13 +12,25 @@ nav:
       - "reference/index.md"
       - Apps:
           - "reference/apps/index.md"
-          - Editor: reference/apps/editor.md
-          - Chat: reference/apps/chat.md
-          - Server: reference/apps/server.md
+          - Editor: 
+              - "reference/apps/editor/index.md"
+              - CLI: "reference/apps/editor/cli.md"
+              - App: "reference/apps/editor/app.md"
+          - Chat:
+              - "reference/apps/chat/index.md"
+              - CLI: "reference/apps/chat/cli.md"
+              - App: "reference/apps/chat/app.md"
+          - Server:
+              - "reference/apps/server/index.md"
+              - CLI: "reference/apps/server/cli.md"
+              - App: "reference/apps/server/app.md"
       - Widgets:
           - "reference/widgets/index.md"
-          - YTextArea: reference/widgets/ytextarea.md
-          - Config: reference/widgets/config.md
+          - YTextArea: 
+              - "reference/widgets/ytextarea/index.md"
+              - Widget: reference/widgets/ytextarea/widget.md
+              - Selection: reference/widgets/ytextarea/selection.md
+              - Location: reference/widgets/ytextarea/location.md
           - Screens: reference/widgets/screens.md
           - Awareness: reference/widgets/awareness.md
           - Configuration: reference/widgets/config.md
@@ -109,6 +121,7 @@ plugins:
             - "https://click.palletsprojects.com/en/stable/objects.inv"
             - "https://anyio.readthedocs.io/en/stable/objects.inv"
             - "https://websockets.readthedocs.io/en/stable/objects.inv"
+            - "https://ldap3.readthedocs.io/en/latest/objects.inv"
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true

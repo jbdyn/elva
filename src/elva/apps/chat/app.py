@@ -1,5 +1,5 @@
 """
-ELVA chat app.
+App definition.
 """
 
 import logging
@@ -7,6 +7,7 @@ import re
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Literal
 
 import emoji
 from pycrdt import Array, ArrayEvent, Doc, Map, MapEvent, Text, TextEvent
@@ -17,7 +18,7 @@ from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent, TabPane
-from websockets.exceptions import InvalidStatus
+from websockets.exceptions import InvalidStatus, WebSocketException
 
 from elva.cli import get_data_file_path, get_render_file_path
 from elva.parser import ArrayEventParser, MapEventParser
@@ -72,6 +73,9 @@ class MessageView(Widget):
         yield self.text_field
 
     def on_unmount(self):
+        """
+        Hook called on unmounting.
+        """
         if hasattr(self, "subscription"):
             self.text.unobserve(self.subscription)
             del self.subscription
@@ -96,7 +100,7 @@ class MessageView(Widget):
 
 class MessageList(VerticalScroll):
     """
-    Base container class for [`MessageView`][elva.apps.chat.MessageView] widgets.
+    Base container class for [`MessageView`][elva.apps.chat.app.MessageView] widgets.
     """
 
     def __init__(self, messages: Array | Map, user: str, **kwargs: dict):
@@ -114,7 +118,7 @@ class MessageList(VerticalScroll):
         self, message: Map | dict, message_id: None | str = None
     ) -> MessageView:
         """
-        Create a [`MessageView`][elva.apps.chat.MessageView].
+        Create a [`MessageView`][elva.apps.chat.app.MessageView].
 
         Arguments:
             message: mapping of message attributes.
@@ -154,7 +158,7 @@ class HistoryParser(ArrayEventParser):
     """
     Parser for changes in the message history.
 
-    This class reflects the state of the Y array with history message in the [`History`][elva.apps.chat.History] message list on changes.
+    This class reflects the state of the Y array with history message in the [`History`][elva.apps.chat.app.History] message list on changes.
     """
 
     def __init__(self, history: Array, widget: History):
@@ -179,7 +183,7 @@ class HistoryParser(ArrayEventParser):
 
     async def before(self):
         """
-        Hook called after the component sets the [`started`][elva.component.Component.started] signal.
+        Hook called before the component sets the `RUNNING` state.
 
         This method subscribes to changes in the Y array message history.
         """
@@ -202,6 +206,9 @@ class HistoryParser(ArrayEventParser):
             await self.widget.mount(message_view, after=range_offset - 1)
 
     async def cleanup(self):
+        """
+        Hook called after cancellation and before the component unsets its state to `NONE`.
+        """
         if hasattr(self, "subscription"):
             self.history.unobserve(self.subscription)
             del self.subscription
@@ -236,7 +243,7 @@ class Future(MessageList, can_focus=False):
             messages: mapping of message identifiers to their corresponding message object.
             user: the current username of the app.
             show_self: flag whether to show the own currently composed message.
-            kwargs: keyword arguments passed to [`MessageList`][elva.apps.chat.MessageList].
+            kwargs: keyword arguments passed to [`MessageList`][elva.apps.chat.app.MessageList].
         """
         super().__init__(messages, user, **kwargs)
         self.show_self = show_self
@@ -259,7 +266,7 @@ class FutureParser(MapEventParser):
     """
     Parser for changes in currently composed messages.
 
-    This class reflects the state of the Y map with currently composed messaged in the [`Future`][elva.apps.chat.Future] message list on changes.
+    This class reflects the state of the Y map with currently composed messaged in the [`Future`][elva.apps.chat.app.Future] message list on changes.
     """
 
     def __init__(self, future: Map, widget: Future, user: str, show_self: bool):
@@ -289,7 +296,7 @@ class FutureParser(MapEventParser):
 
     async def before(self):
         """
-        Hook called after the component set the [`started`][elva.component.Component.started] signal.
+        Hook called before the component sets the `RUNNING` signal.
 
         This method subscribes to changes in the mapping of currently composed messages.
         """
@@ -297,6 +304,9 @@ class FutureParser(MapEventParser):
         self.log.debug("subscribed to changes in future")
 
     async def cleanup(self):
+        """
+        Hook called after cancellation and before the component unsets its state to `NONE`.
+        """
         if hasattr(self, "subscription"):
             self.future.unobserve(self.subscription)
             del self.subscription
@@ -370,6 +380,7 @@ class UI(App):
         "dashboard": Dashboard,
         "input": InputScreen,
     }
+    """The installed screens."""
 
     BINDINGS = [
         ("shift+enter", "send", "Send currently composed message"),
@@ -381,20 +392,15 @@ class UI(App):
 
     def __init__(
         self,
-        config,
-        *args,
-        **kwargs,
+        config: dict,
+        *args: tuple,
+        **kwargs: dict,
     ):
         """
         Arguments:
-            user: the current user name to login with.
-            name: the name to display instead of the user name.
-            password: the password to login with.
-            server: the server address to connect to for synchronization.
-            identifier: the identifier of this chat document.
-            messages: the message type to use.
-            file_path: path to an ELVA SQLite database file holding the content of the chat.
-            show_self: flag whether to show the own currently composed message.
+            config: mapping of configuration parameters.
+            args: positional arguments passed to [`App`][textual.app.App].
+            kwargs: keyword arguments passed to [`App`][textual.app.App].
         """
         super().__init__(*args, **kwargs)
 
@@ -475,7 +481,9 @@ class UI(App):
         """
         return str(uuid.uuid4())
 
-    def get_message(self, text: str, message_id: None | str = None) -> Map:
+    def get_message(
+        self, text: str, message_id: None | str = None
+    ) -> tuple[Map, Text, str]:
         """
         Get a message object.
 
@@ -484,7 +492,7 @@ class UI(App):
             message_id: the identifier of the message.
 
         Returns:
-            a Y map containing a mapping of message attributes.
+            a Y Map containing a mapping of message attributes as well as the Y Text and the message ID included therein.
         """
         if message_id is None:
             message_id = self.get_new_id()
@@ -518,7 +526,7 @@ class UI(App):
         """
         Hook called on mounting the app.
 
-        This methods waits for all components to set their [`started`][elva.component.Component.started] signal.
+        This methods waits for all components to set their `RUNNING` state.
         """
         if hasattr(self, "provider"):
             self.subscription = self.provider.awareness.observe(
@@ -561,6 +569,11 @@ class UI(App):
         yield TabbedContent(id="tabview")
 
     def on_unmount(self):
+        """
+        Hook called on unmounting.
+
+        It cancels the subscription to changes in the awareness states.
+        """
         if hasattr(self, "subscription"):
             self.provider.awareness.unobserve(self.subscription)
             del self.subscription
@@ -590,10 +603,27 @@ class UI(App):
         if event.pane.id == "tab-message":
             message_widget.focus()
 
-    def on_provider_exception(self, exc, config):
+    def on_provider_exception(self, exc: WebSocketException, config: dict):
+        """
+        Wrapper method around the provider exception handler
+        [`_on_provider_exception`][elva.apps.editor.app.UI._on_provider_exception].
+
+        Arguments:
+            exc: the exception raised by the provider.
+            config: the configuration stored in the provider.
+        """
         self.run_worker(self._on_provider_exception(exc, config))
 
-    async def _on_provider_exception(self, exc, config):
+    async def _on_provider_exception(self, exc: WebSocketException, config: dict):
+        """
+        Handler for exceptions raised by the provider.
+
+        It exits the app after displaying the error message to the user.
+
+        Arguments:
+            exc: the exception raised by the provider.
+            config: the configuration stored in the provider.
+        """
         await self.provider.stop()
 
         if type(exc) is InvalidStatus:
@@ -603,11 +633,33 @@ class UI(App):
         await self.push_screen_wait(ErrorScreen(exc))
         self.exit(return_code=1)
 
-    def on_awareness_update(self, topic, data):
+    def on_awareness_update(
+        self, topic: Literal["update", "change"], data: tuple[dict, Any]
+    ):
+        """
+        Wrapper method around the
+        [`_on_awareness_update`][elva.apps.editor.app.UI._on_awareness_update]
+        callback.
+
+        Arguments:
+            topic: the topic under which the changes are published.
+            data: manipulation actions taken as well as the origin of the changes.
+        """
         if topic == "change":
             self.run_worker(self._on_awareness_update(topic, data))
 
-    async def _on_awareness_update(self, topic, data):
+    async def _on_awareness_update(
+        self, topic: Literal["update", "change"], data: tuple[dict, Any]
+    ):
+        """
+        Hook called on a change in the awareness states.
+
+        It pushes client states to the dashboard and removes offline client IDs from the future.
+
+        Arguments:
+            topic: the topic under which the changes are published.
+            data: manipulation actions taken as well as the origin of the changes.
+        """
         if self.screen == self.get_screen("dashboard"):
             self.push_client_states()
 
@@ -621,10 +673,19 @@ class UI(App):
                     pass
 
     async def action_save(self):
+        """
+        Action performed on triggering the `save` key binding.
+        """
         if self.config.get("file") is None:
             self.run_worker(self.get_and_set_file_paths())
 
-    async def get_and_set_file_paths(self, data_file=True):
+    async def get_and_set_file_paths(self, data_file: bool = True):
+        """
+        Get and set the data or render file paths after the input prompt.
+
+        Arguments:
+            data_file: flag whether to add a data file path to the config.
+        """
         name = await self.push_screen_wait("input")
 
         if not name:
@@ -664,6 +725,9 @@ class UI(App):
             await self.renderer.write()
 
     async def action_toggle_dashboard(self):
+        """
+        Action performed on triggering the `toggle_dashboard` key binding.
+        """
         if self.screen == self.get_screen("dashboard"):
             self.pop_screen()
         else:
@@ -672,6 +736,9 @@ class UI(App):
             self.push_config()
 
     def push_client_states(self):
+        """
+        Method pushing the client states to the active dashboard.
+        """
         if hasattr(self, "provider"):
             client_states = self.provider.awareness.client_states.copy()
             client_id = self.provider.awareness.client_id
@@ -686,6 +753,9 @@ class UI(App):
             awareness_view.states = states
 
     def push_config(self):
+        """
+        Method pushing the configuration mapping to the active dashboard.
+        """
         config = tuple(self.config.items())
 
         config_view = self.screen.query_one(ConfigView)

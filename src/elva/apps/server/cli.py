@@ -1,5 +1,5 @@
 """
-ELVA server app.
+CLI definition.
 """
 
 from importlib import import_module as import_
@@ -10,9 +10,25 @@ import click
 from elva.cli import common_options, pass_config_for
 
 APP_NAME = "server"
+"""The name of the app."""
 
 
-def resolve_persistence(ctx, param, persistent):
+def resolve_persistence(
+    ctx: click.Context, param: click.Parameter, persistent: bool | str
+) -> bool:
+    """
+    Derive path and persistence value from the `persistent` CLI option.
+
+    It sets an additional `path` parameter in the context.
+
+    Arguments:
+        ctx: the context of the current invokation.
+        param: the option parameter object.
+        persistent: the value passed from the CLI.
+
+    Returns:
+        the derive persistence flag.
+    """
     match persistent:
         # no flag given
         case None:
@@ -72,18 +88,15 @@ def resolve_persistence(ctx, param, persistent):
     is_flag=True,
 )
 @pass_config_for(APP_NAME)
-def cli(config, **kwargs):
+def cli(config: dict, *args: tuple, **kwargs: dict):
     """
     Run a WebSocket server.
     \f
 
     Arguments:
-        ctx: the click context holding the configuration parameter object.
-        host: the host address to listen on for new connections.
-        port: the port to listen on for new connections.
-        persistent: flag whether and how Y updates should be stored.
-        ldap: flag how to setup an LDAP self bind authentication.
-        dummy: flag whether to use dummy authentication.
+        config: the merged configuration parameters from CLI and files.
+        args: unused positional arguments.
+        kwargs: parameters passed from the CLI.
     """
     # imports
     logging = import_("logging")

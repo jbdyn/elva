@@ -1,7 +1,7 @@
 """
-Module providing the main command line interface functionality.
+Module with the entry point for the `elva` command.
 
-Subcommands are defined in the respective app module.
+Subcommands are defined in the respective app package.
 """
 
 import importlib
@@ -42,9 +42,7 @@ def context(config: dict, *args: tuple, **kwargs: dict):
     Print the parameters passed to apps and other subcommands.
     \f
 
-    This command stringifies all [`Path`][pathlib.Path] objects for the TOML
-    serializer.
-    Also, the password gets redacted if present.
+    This command stringifies all parameter values for the TOML serializer.
 
     Arguments:
         config: mapping of merged configuration parameters from various sources.

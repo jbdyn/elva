@@ -1,7 +1,5 @@
 """
 Module providing the main command line interface functionality.
-
-Subcommands are defined in the respective app module.
 """
 
 import logging
@@ -426,7 +424,7 @@ def resolve_data_file_path(
 
 def pass_config_for(app: None | str = None) -> Callable:
     """
-    Configure the `pass_config` decorator to respect the `app` table in configurations.
+    Configure the [`pass_config`][elva.cli.pass_config] decorator to respect the `app` table in configurations.
 
     Arguments:
         app: the name of the app table to take configuration parameters from.
@@ -435,7 +433,7 @@ def pass_config_for(app: None | str = None) -> Callable:
         ValueError: if `app` is callable.
 
     Returns:
-        the `pass_config` decorator configured for `app`.
+        the [`pass_config`][elva.cli.pass_config] decorator configured for `app`.
     """
     if callable(app):
         raise ValueError("'app' argument is not supposed to be callable")

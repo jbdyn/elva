@@ -1,5 +1,5 @@
 """
-ELVA chat app.
+CLI definition.
 """
 
 from importlib import import_module as import_
@@ -9,6 +9,7 @@ import click
 from elva.cli import common_options, file_paths_option_and_argument, pass_config_for
 
 APP_NAME = "chat"
+"""The name of the app."""
 
 
 @click.command(name=APP_NAME)
@@ -24,14 +25,15 @@ APP_NAME = "chat"
 )
 @file_paths_option_and_argument
 @pass_config_for(APP_NAME)
-def cli(config, **kwargs):
+def cli(config: dict, *args: tuple, **kwargs: dict):
     """
     Send messages with real-time preview.
     \f
 
     Arguments:
-        show_self: flag whether to show the own currently composed message.
-        file: path to an ELVA SQLite database file.
+        config: the merged configuration from CLI parameters and files.
+        args: unused positional arguments.
+        kwargs: parameters passed from the CLI.
     """
     logging = import_("logging")
     _log = import_("elva.log")

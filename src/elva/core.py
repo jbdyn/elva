@@ -1,7 +1,5 @@
 """
-Module providing the main command line interface functionality.
-
-Subcommands are defined in the respective app module.
+Definition of library constants.
 """
 
 APP_NAME = "ELVA"
@@ -17,7 +15,7 @@ LOG_SUFFIX = ".log"
 """Default log file suffix."""
 
 ELVA_APP_DIR_NAME = "apps"
-"""Directory name where app namespace packages are installed."""
+"""Directory name where app namespace packages are searched for."""
 
 ELVA_APP_DIR = f"src/elva/{ELVA_APP_DIR_NAME}"
 """The relative path from the project root to the apps directory."""
@@ -37,4 +35,4 @@ def get_app_import_path(app: str) -> str:
 
 
 ELVA_WIDGET_DIR_NAME = "widgets"
-"""Directory name where widget namespace packages are installed."""
+"""Directory name where widget namespace packages are expected."""

@@ -1,5 +1,5 @@
 """
-Websocket server classes.
+Module containing server components.
 """
 
 import logging
@@ -75,6 +75,7 @@ def free_tcp_port(host: None | str = None) -> int:
 
 
 RE_IDENTIFIER = re.compile(r"^[A-Za-z0-9\-_]{10,250}$")
+"""Regular expression for a valid Y Doc identifier."""
 
 
 class RequestProcessor:
@@ -111,6 +112,7 @@ class RequestProcessor:
 
 
 RoomState = create_component_state("RoomState")
+"""The states of a [`Room`][elva.server.Room] component."""
 
 
 class Room(Component):
@@ -172,7 +174,8 @@ class Room(Component):
                 self.store = SQLiteStore(self.ydoc, identifier, self.path)
 
     @property
-    def states(self):
+    def states(self) -> RoomState:
+        """The states this component can have."""
         return RoomState
 
     async def before(self):
@@ -324,6 +327,7 @@ class Room(Component):
 
 
 WebsocketServerState = create_component_state("WebsocketServerState", ("SERVING",))
+"""The states of a [`WebsocketServer`][elva.server.WebsocketServer] component."""
 
 
 class WebsocketServer(Component):
@@ -396,7 +400,8 @@ class WebsocketServer(Component):
         self.rooms = dict()
 
     @property
-    def states(self):
+    def states(self) -> WebsocketServerState:
+        """The states this component can have."""
         return WebsocketServerState
 
     async def run(self):
@@ -425,13 +430,24 @@ class WebsocketServer(Component):
             await anyio.sleep_forever()
 
     async def cleanup(self):
+        """
+        Hook running on cancellation and before the component unsets its states to `NONE`.
+
+        It waits for all active rooms being stopped.
+        """
         self._change_state(self.states.SERVING, self.states.NONE)
 
         async with anyio.create_task_group() as tg:
             for identifier in self.rooms:
                 tg.start_soon(self.wait_for_room_closed, identifier)
 
-    async def wait_for_room_closed(self, identifier):
+    async def wait_for_room_closed(self, identifier: str):
+        """
+        Wait for a room corresponding to given identifier to stop.
+
+        Arguments:
+            identifier: the identifier to which the room belongs.
+        """
         room = self.rooms[identifier]
         sub = room.subscribe()
         while room.states.ACTIVE in room.state:

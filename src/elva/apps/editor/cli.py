@@ -1,3 +1,7 @@
+"""
+CLI definition.
+"""
+
 from importlib import import_module as import_
 
 import click
@@ -5,6 +9,7 @@ import click
 from elva.cli import common_options, file_paths_option_and_argument, pass_config_for
 
 APP_NAME = "editor"
+"""The name of the app."""
 
 
 @click.command(name=APP_NAME)
@@ -18,18 +23,18 @@ APP_NAME = "editor"
 @file_paths_option_and_argument
 @pass_config_for(APP_NAME)
 def cli(
-    config,
-    **kwargs,
+    config: dict,
+    *args: tuple,
+    **kwargs: dict,
 ):
     """
     Edit text documents collaboratively in real-time.
     \f
 
     Arguments:
-        ctx: the click context holding the configuration parameter mapping.
-        auto_save: flag whether to render on closing.
-        ansi_color: flag whether to use the terminal's ANSI color codes.
-        file: path to the ELVA SQLite database file.
+        config: the merged configuration from CLI parameters and files.
+        args: unused positional arguments.
+        kwargs: parameters passed from the CLI.
     """
     logging = import_("logging")
     _log = import_("elva.log")

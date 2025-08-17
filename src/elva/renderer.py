@@ -22,6 +22,7 @@ from pycrdt import (
 from elva.component import Component, create_component_state
 
 TextRendererState = create_component_state("TextRendererState", ("SAVED",))
+"""The states of the [`TextRenderer`][elva.renderer.TextRenderer] component."""
 
 
 class TextRenderer(Component):

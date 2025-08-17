@@ -1,3 +1,7 @@
+"""
+Module with the awareness component definition.
+"""
+
 from typing import Any, Callable
 
 from pycrdt import Awareness as _Awareness
@@ -5,7 +9,7 @@ from pycrdt import Awareness as _Awareness
 from elva.component import Component, create_component_state
 
 AwarenessState = create_component_state("AwarenessState")
-"""The states an [`Awareness`][elva.awareness.Awareness] component can have."""
+"""The states of the [`Awareness`][elva.awareness.Awareness] component."""
 
 
 class Awareness(Component, _Awareness):

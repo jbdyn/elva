@@ -1,11 +1,12 @@
 """
-Module for generic asynchronous app component.
+Module for a generic asynchronous app component.
 """
 
 import logging
 from contextlib import AsyncExitStack
 from enum import Flag
-from typing import Iterable, Self
+from types import TracebackType
+from typing import Awaitable, Iterable, Self
 
 from anyio import (
     TASK_STATUS_IGNORED,
@@ -97,7 +98,7 @@ class Component:
         return ComponentState
 
     @property
-    def state(self):
+    def state(self) -> ComponentState:
         """
         The current state of the component.
         """
@@ -109,7 +110,7 @@ class Component:
 
         Returns:
             the receiving end of an asynchronous memory object stream emitting
-            tuple of deleted and added states.
+                tuple of deleted and added states.
         """
         # create a stream with a defined maximum buffer size,
         # otherwise - with default of max_buffer_size=0 - sending would block
@@ -128,7 +129,8 @@ class Component:
         Close and remove the memory object stream from the mapping of subscribers.
 
         Arguments:
-            recv: the receiving end of the memory object stream as returned by [`subscribe`][elva.component.Component.subscribe].
+            recv: the receiving end of the memory object stream as returned by
+                [`subscribe`][elva.component.Component.subscribe].
         """
         send = self._subscribers.pop(recv)
         send.close()
@@ -184,15 +186,28 @@ class Component:
             self.unsubscribe(recv)
 
     def __del__(self):
-        # close subscriptions before deletion
+        """
+        Destructor callback.
+
+        It closes all subscriptions before this component gets deleted.
+        """
         self.close()
 
-    def _get_start_lock(self):
+    def _get_start_lock(self) -> Lock:
+        """
+        Get a starting lock to enter the task group exclusively.
+        """
         if self._start_lock is None:
             self._start_lock = Lock()
         return self._start_lock
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
+        """
+        Asynchronous context manager enter callback.
+
+        It starts the [`_run`][elva.component.Component._run] coroutine
+        in a task group.
+        """
         if self._task_group is not None:
             raise RuntimeError(f"{self} already active")
 
@@ -214,13 +229,40 @@ class Component:
 
         return self
 
-    async def __aexit__(self, exc_type, exc_value, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: None | Exception,
+        exc_value: None | str,
+        exc_tb: None | TracebackType,
+    ) -> Awaitable:
+        """
+        Asynchronous context manager exit callback.
+
+        It stops this component by cancelling the inner task group scope.
+
+        Arguments:
+            exc_type: the type of the exception causing the exit.
+            exc_value: the value of the exception causing the exit.
+            exc_tb: the traceback of the exception causing the exit.
+
+        Returns:
+            an awaitable from the exit stacks own exit callback.
+        """
         await self.stop()
         return await self._exit_stack.__aexit__(exc_type, exc_value, exc_tb)
 
     async def _run(self, task_status: TaskStatus[None] = TASK_STATUS_IGNORED):
-        # Handle `run` method gracefully
+        """
+        Hook handling the [`run`][elva.component.Component.run] method gracefully.
 
+        Raises:
+            get_cancelled_exc_class: the exception from cancellation.
+
+        Arguments:
+            task_status: an optional task status object to call
+                [`started`][anyio.abc.TaskStatus.started] on when the task
+                is considered to have started.
+        """
         # start runner and do a shielded cleanup on cancellation
         try:
             await self.before()
@@ -257,7 +299,9 @@ class Component:
         Start the component.
 
         Arguments:
-            task_status: The status to set when the task has started.
+            task_status: an optional task status object to call
+                [`started`][anyio.abc.TaskStatus.started] on when the task
+                is considered to have started.
         """
         if self._task_group is not None:
             raise RuntimeError(f"{self} already active")

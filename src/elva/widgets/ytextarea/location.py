@@ -1,3 +1,7 @@
+"""
+Location manipulation.
+"""
+
 from .selection import Selection
 
 

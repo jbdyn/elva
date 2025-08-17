@@ -118,6 +118,7 @@ def get_updates(path):
 
 
 SQLiteStoreState = create_component_state("SQLiteStoreState")
+"""The states of the [`SQLiteStore`][elva.store.SQLiteStore] component."""
 
 
 class SQLiteStore(Component):
@@ -166,6 +167,7 @@ class SQLiteStore(Component):
 
     @property
     def states(self) -> SQLiteStoreState:
+        """The states this component can have."""
         return SQLiteStoreState
 
     async def get_metadata(self) -> dict:
@@ -345,6 +347,9 @@ class SQLiteStore(Component):
         self.log.info("initialized database")
 
     async def _connect_database(self):
+        """
+        Hook connecting to the data base path.
+        """
         self._db = await sqlite.connect(self.path)
         self._cursor = await self._db.cursor()
         self.log.debug(f"connected to database {self.path}")

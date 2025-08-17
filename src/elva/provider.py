@@ -19,6 +19,7 @@ from elva.protocol import YMessage
 WebsocketProviderState = create_component_state(
     "WebsocketProviderState", ("CONNECTED",)
 )
+"""The states for the [`WebsocketProvider`][elva.provider.WebsocketProvider] component."""
 
 
 class WebsocketProvider(Component):

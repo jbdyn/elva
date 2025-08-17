@@ -1,8 +1,7 @@
 """
-Module defining parsers for events of changes Y data type.
+Module defining parsers for change events from Y data types.
 """
 
-from logging import getLogger
 from typing import Any
 
 import anyio
@@ -10,10 +9,8 @@ from pycrdt import ArrayEvent, MapEvent, TextEvent
 
 from elva.component import Component, create_component_state
 
-log = getLogger(__name__)
-
-
 ParserState = create_component_state("ParserState")
+"""The states of the [`EventParser`][elva.parser.EventParser] component."""
 
 
 class EventParser(Component):
@@ -27,10 +24,16 @@ class EventParser(Component):
     """Event type this parser is supposed to handle."""
 
     @property
-    def states(self):
+    def states(self) -> ParserState:
+        """The states this component can have."""
         return ParserState
 
     async def run(self):
+        """
+        Hook running after the `RUNNING` state has been set.
+
+        It initializes the buffer and waits for incoming events to parse.
+        """
         self.send_stream, self.receive_stream = anyio.create_memory_object_stream(
             max_buffer_size=65543
         )

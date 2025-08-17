@@ -1,5 +1,5 @@
 """
-ELVA server app.
+App definition.
 """
 
 import signal
@@ -11,19 +11,14 @@ from elva.auth import DummyAuth, LDAPAuth
 from elva.server import WebsocketServer, free_tcp_port
 
 
-async def main(config):
+async def main(config: dict):
     """
     Main app routine.
 
     Starts a server component and handles process signals.
 
     Arguments:
-        host: the host address to listen on for new connections.
-        port: the port to listen on for new connections.
-        persistent: flag whether to store Y updates somewhere.
-        path: path where to store Y updates. If `None`, Y updates are stored in volatile memory, else under the given path.
-        ldap: flag whether to use LDAP self bind authentication.
-        dummy: flag whether to use dummy authentication.
+        config: configuration parameter mapping.
     """
     c = config
 

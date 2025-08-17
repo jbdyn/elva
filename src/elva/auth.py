@@ -1,5 +1,5 @@
 """
-Module providing authentication utilities for [`server`][elva.apps.server] app module.
+Module providing authentication utilities.
 """
 
 import logging
@@ -67,14 +67,28 @@ class Password:
 class LDAP3LogLevel(IntEnum):
     """
     The logging level specified by the LDAP3 Python library as enumeration.
+
+    Intended as arguments for `ldap3.utils.log.set_library_log_detail_level`.
+    See [https://ldap3.readthedocs.io/en/latest/logging.html]() for details.
     """
 
     OFF = OFF
+    """Nothing is logged."""
+
     ERROR = ERROR
+    """Only exceptions are logged."""
+
     BASIC = BASIC
+    """Library activity is logged, only operation result is shownn"""
+
     PROTOCOL = PROTOCOL
+    """LDAPv3 operations are logged, sent requests and received responses are shown."""
+
     NETWORK = NETWORK
+    """Socket activity is logged."""
+
     EXTENDED = EXTENDED
+    """LDAP messages are decoded and properly printed."""
 
 
 def basic_authorization_header(
@@ -122,7 +136,10 @@ class Auth:
     """
 
     def __new__(cls, *args, **kwargs):
-        self = super().__new__(cls)
+        """
+        Construct a new class.
+        """
+        self = super().__new__(cls, *args, **kwargs)
         self.log = logging.getLogger(
             f"{LOGGER_NAME.get(__name__)}.{self.__class__.__name__}"
         )
