@@ -5,6 +5,7 @@ Subcommands are defined in the respective app package.
 """
 
 import importlib
+from pathlib import Path
 
 import click
 import tomli_w
@@ -15,7 +16,7 @@ from elva.cli import (
     file_paths_option_and_argument,
     pass_config,
 )
-from elva.core import APP_NAME, ELVA_APP_DIR, get_app_import_path
+from elva.core import APP_NAME, ELVA_APP_DIR_NAME, get_app_import_path
 
 
 @click.group()
@@ -64,7 +65,7 @@ def context(config: dict, *args: tuple, **kwargs: dict):
 #
 # import `cli` functions of apps
 #
-for app_name in find_namespace_packages(ELVA_APP_DIR):
+for app_name in find_namespace_packages(Path(__file__).parent / ELVA_APP_DIR_NAME):
     app = get_app_import_path(app_name)
     module = importlib.import_module(app)
     elva.add_command(module.cli)

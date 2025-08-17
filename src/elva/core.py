@@ -17,9 +17,6 @@ LOG_SUFFIX = ".log"
 ELVA_APP_DIR_NAME = "apps"
 """Directory name where app namespace packages are searched for."""
 
-ELVA_APP_DIR = f"src/elva/{ELVA_APP_DIR_NAME}"
-"""The relative path from the project root to the apps directory."""
-
 
 def get_app_import_path(app: str) -> str:
     """

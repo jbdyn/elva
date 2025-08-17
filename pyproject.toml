@@ -64,6 +64,7 @@ classifiers = [
 
 # see https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies-optional-dependencies
 dependencies = [
+    "setuptools",
     "websockets",
     "pycrdt",
     "pycrdt-websocket",
