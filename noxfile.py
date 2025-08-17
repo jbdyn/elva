@@ -55,8 +55,7 @@ def set_log_file(path: str | Path):
 # CONSTANTS
 #
 
-BACKEND = "uv|virtualenv"
-EDITABLE = ("-e", ".[dev,logo]")
+BACKEND = "uv"
 TIMESTAMP = datetime.now().strftime("%Y-%m-%dT%H-%M")
 LOG_PATH = Path(__file__).parent / "logs" / "nox" / TIMESTAMP
 
@@ -71,8 +70,8 @@ PYTHON = nox.project.python_versions(PROJECT)
 
 # versions to test by compatible release;
 # check for every version adding new functionality or breaking the API
-WEBSOCKETS = ("13.0.0", "13.1.0", "14.0.0", "14.1.0", "14.2.0", "15.0.0")
-TEXTUAL = ("1.0.0", "2.0.0", "2.1.0", "3.0.0", "3.1.0", "3.2.0")
+WEBSOCKETS = ("14.0.0", "14.1.0", "14.2.0", "15.0.0")
+TEXTUAL = ("2.0", "3.0", "4.0", "5.0.0", "5.1.0", "5.2.0", "5.3.0")
 
 
 ##
@@ -96,24 +95,37 @@ def tests(session, websockets, textual):
     set_log_file(LOG_FILE)
 
     # idempotent
-    session.notify("coverage")
-
-    # install from `pyproject.toml`
-    session.install(*EDITABLE)
+    # session.notify("coverage")
 
     # overwrite with specific versions;
     # for compatible release specifier spec,
     # see https://packaging.python.org/en/latest/specifications/version-specifiers/#compatible-release
-    session.install(
+    session.run(
+        "uv",
+        "add",
         f"websockets~={websockets}",
         f"textual~={textual}",
+        f"--python={session.virtualenv.location}",
+        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
 
-    # TODO: run across all tests
+    session.run(
+        "uv",
+        "sync",
+        "--all-extras",
+        f"--python={session.virtualenv.location}",
+        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
+    )
+
     session.run(
         "pytest",
-        "tests/test_component.py",
+        "-x",
+        "--strict-config",
         silent=True,
+    )
+
+    session.run(
+        "git", "restore", "pyproject.toml", "uv.lock", silent=True, external=True
     )
 
 
@@ -133,18 +145,23 @@ def coverage(session):
 
     # install from `pyproject.toml`;
     # make sure to install the latest possible versions since `uv` won't update otherwise
-    if session.venv_backend == "uv":
-        session.install("--exact", "--reinstall", *EDITABLE)
-    else:
-        session.install(*EDITABLE)
+    session.run_install(
+        "uv",
+        "sync",
+        "--reinstall",
+        "--all-extras",
+        "--upgrade",
+        f"--python={session.virtualenv.location}",
+        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
+    )
 
-    # TODO: run across all tests
     session.run(
         "coverage",
         "run",
         "-m",
         "pytest",
-        "tests/test_component.py",
+        "-x",
+        "--strict-config",
         silent=True,
     )
 
@@ -152,3 +169,7 @@ def coverage(session):
     session.run("coverage", "combine", silent=True)
     session.run("coverage", "report", silent=True)
     session.run("coverage", "html", silent=True)
+
+    session.run(
+        "git", "restore", "pyproject.toml", "uv.lock", silent=True, external=True
+    )
