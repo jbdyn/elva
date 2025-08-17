@@ -95,11 +95,12 @@ def tests(session, websockets, textual):
     set_log_file(LOG_FILE)
 
     # idempotent
-    # session.notify("coverage")
+    session.notify("coverage")
 
     # overwrite with specific versions;
     # for compatible release specifier spec,
-    # see https://packaging.python.org/en/latest/specifications/version-specifiers/#compatible-release
+    # see https://packaging.python.org/en/latest/specifications/version-specifiers/#compatible-release;
+    # set the environment for making `uv` in the temporary `nox` venv
     session.run(
         "uv",
         "add",
@@ -109,6 +110,7 @@ def tests(session, websockets, textual):
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
 
+    # sync all dependencies
     session.run(
         "uv",
         "sync",
@@ -117,6 +119,7 @@ def tests(session, websockets, textual):
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
 
+    # run pytest session
     session.run(
         "pytest",
         "-x",
@@ -124,8 +127,14 @@ def tests(session, websockets, textual):
         silent=True,
     )
 
+    # restore altered package management files
     session.run(
-        "git", "restore", "pyproject.toml", "uv.lock", silent=True, external=True
+        "git",
+        "restore",
+        "pyproject.toml",
+        "uv.lock",
+        silent=True,
+        external=True,
     )
 
 
@@ -143,7 +152,6 @@ def coverage(session):
     LOG_FILE = LOG_PATH / f"{NAME}.log"
     set_log_file(LOG_FILE)
 
-    # install from `pyproject.toml`;
     # make sure to install the latest possible versions since `uv` won't update otherwise
     session.run_install(
         "uv",
@@ -155,6 +163,7 @@ def coverage(session):
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
 
+    # run coverage session
     session.run(
         "coverage",
         "run",
@@ -170,6 +179,12 @@ def coverage(session):
     session.run("coverage", "report", silent=True)
     session.run("coverage", "html", silent=True)
 
+    # restore altered package management files
     session.run(
-        "git", "restore", "pyproject.toml", "uv.lock", silent=True, external=True
+        "git",
+        "restore",
+        "pyproject.toml",
+        "uv.lock",
+        silent=True,
+        external=True,
     )
