@@ -93,8 +93,8 @@ def test_strip_var_uint_overshooting_length():
 @pytest.mark.parametrize(
     ("protocol", "protocol_name", "types"),
     (
-        ("y", "YMessage", YMessage.types),
-        ("elva", "ElvaMessage", ElvaMessage.types),
+        ("y", "YMessage", YMessage.get_types()),
+        ("elva", "ElvaMessage", ElvaMessage.get_types()),
     ),
 )
 def test_message_type_repr(protocol, protocol_name, types):
@@ -146,7 +146,7 @@ def test_y_protocol(protocol, message_type, payload_in, message_out):
 
 def test_message_types():
     """List all defined message types."""
-    assert set(YMessage.types) == set(
+    assert set(YMessage.get_types()) == set(
         (
             "SYNC_STEP1",
             "SYNC_STEP2",
@@ -154,7 +154,7 @@ def test_message_types():
             "AWARENESS",
         )
     )
-    assert set(ElvaMessage.types) == set(
+    assert set(ElvaMessage.get_types()) == set(
         (
             "SYNC_STEP1",
             "SYNC_STEP2",
@@ -174,7 +174,7 @@ def test_message_types():
 
 @pytest.mark.parametrize(
     "message_type",
-    ElvaMessage.types,
+    ElvaMessage.get_types(),
 )
 def test_infer_and_decode(message_type):
     """Infer and decode a message for all message types in the ElvaMessage protocol."""

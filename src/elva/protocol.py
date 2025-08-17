@@ -170,8 +170,7 @@ class Message(YCodec, Enum):
         return f"{self.__class__.__name__}.{self.name}"
 
     @classmethod
-    @property
-    def types(cls) -> tuple[str]:
+    def get_types(cls) -> tuple[str]:
         """
         The message types associated with this codec.
 
