@@ -103,12 +103,6 @@ class Component:
         """
         return self._state
 
-    @state.setter
-    def state(self, new: Flag):
-        new = self.states(new)
-        self._state = new
-        self.log.info(f"set state to {new}")
-
     def subscribe(self) -> MemoryObjectReceiveStream:
         """
         Get an object to listen on for differences in component state.
@@ -158,7 +152,8 @@ class Component:
         state = self.state & ~from_state | to_state
 
         # set the state from the component's states
-        self.state = state
+        self._state = state
+        self.log.info(f"set state to {state}")
 
         if from_state != self.states.NONE:
             self.log.info(f"removed state {from_state}")
