@@ -1,11 +1,9 @@
 import io
 import logging
 import multiprocessing
-import os
 import queue
 import random
 import signal
-import time
 from enum import Flag
 
 import anyio
@@ -74,6 +72,24 @@ class QueueLogger(Component):
 
     async def run(self):
         self.queue.put("run")
+
+    async def cleanup(self):
+        self.queue.put("cleanup")
+
+
+class InterruptedLogger(Component):
+    """Component logging to a queue."""
+
+    def __init__(self, queue):
+        self.queue = queue
+
+    async def before(self):
+        self.queue.put("before")
+
+    async def run(self):
+        self.queue.put("run")
+        self.queue.join()
+        signal.raise_signal(signal.SIGINT)
 
     async def cleanup(self):
         self.queue.put("cleanup")
@@ -613,36 +629,31 @@ def test_interrupt_by_signal():
     ctx = multiprocessing.get_context("spawn")
 
     # use a queue accessible over multiple processes
-    q = ctx.Queue()
-    comp = QueueLogger(queue=q)
+    q = ctx.JoinableQueue()
+    comp = InterruptedLogger(queue=q)
 
     # spawn the process
     process = ctx.Process(target=anyio.run, args=(run, comp), name="interrupt")
     process.start()
     assert process.is_alive()
 
-    # give the anyio.run and the QueueLogger component time to start
-    time.sleep(0.5)
-
-    # component should be running by now
+    # get the first two actions and signal to the `InterruptedLogger`
+    # that we got them
     actions = list()
 
-    while True:
-        try:
-            actions.append(q.get(block=False))
-        except queue.Empty:
-            break
-
-    # kill the process so that `pytest` won't get stuck after an AssertionError
-    os.kill(process.pid, signal.SIGINT)
+    for _ in range(2):
+        actions.append(q.get())
+        q.task_done()
 
     assert actions == ["before", "run"]
 
-    # fetch the cleanup action
-    actions.append(q.get())
-
-    assert actions == ["before", "run", "cleanup"]
-
-    # wait until the process has stopped
+    # the process waited for us to get the first two items;
+    # wait for the process to end
     process.join()
     assert not process.is_alive()
+
+    # get the third item
+    actions.append(q.get())
+
+    # we now have all expected items
+    assert actions == ["before", "run", "cleanup"]
