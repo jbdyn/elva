@@ -2,8 +2,6 @@
 App definition.
 """
 
-import signal
-
 import anyio
 from websockets.asyncio.server import basic_auth
 
@@ -52,12 +50,3 @@ async def main(config: dict):
 
     async with anyio.create_task_group() as tg:
         await tg.start(server.start)
-        with anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
-            async for signum in signals:
-                if signum == signal.SIGINT:
-                    server.log.info("process received SIGINT")
-                else:
-                    server.log.info("process received SIGTERM")
-
-                await server.stop()
-                break

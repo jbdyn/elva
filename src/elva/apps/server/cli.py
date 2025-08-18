@@ -127,3 +127,5 @@ def cli(config: dict, *args: tuple, **kwargs: dict):
         anyio.run(app.main, config)
     except PermissionError as exc:
         raise click.UsageError(exc)
+    except KeyboardInterrupt:
+        pass
