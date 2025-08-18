@@ -65,7 +65,7 @@ classifiers = [
 # see https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies-optional-dependencies
 dependencies = [
     "setuptools",
-    "websockets>=14.0.0,<=15.*",
+    "websockets>=14.0.0,<16.0",
     "pycrdt",
     "pycrdt-websocket",
     "anyio",
@@ -75,7 +75,7 @@ dependencies = [
     "python-json-logger",
     "watchdog",
     "ldap3~=2.10.2rc2",
-    "textual[syntax]>=2.0,<=5.*",
+    "textual[syntax]>=2.0,<6.0",
     "tree-sitter-language-pack",
     "pyperclip",
     "qrcode",
