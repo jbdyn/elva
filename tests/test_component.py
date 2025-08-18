@@ -5,7 +5,6 @@ import os
 import queue
 import random
 import signal
-import time
 from enum import Flag
 
 import anyio
@@ -66,17 +65,25 @@ class NamedLogger(Component):
 class QueueLogger(Component):
     """Component logging to a queue."""
 
-    def __init__(self, queue):
-        self.queue = queue
+    def __init__(self, method_queue, states_queue):
+        self.method_queue = method_queue
+        self.states_queue = states_queue
+
+    async def send_states(self, task_status):
+        sub = self.subscribe()
+        task_status.started()
+        async for event in sub:
+            self.states_queue.put(event)
 
     async def before(self):
-        self.queue.put("before")
+        await self._task_group.start(self.send_states)
+        self.method_queue.put("before")
 
     async def run(self):
-        self.queue.put("run")
+        self.method_queue.put("run")
 
     async def cleanup(self):
-        self.queue.put("cleanup")
+        self.method_queue.put("cleanup")
 
 
 ##
@@ -472,8 +479,9 @@ async def test_start_stop_context_manager():
 
     # test QueueLogger component
     q = queue.Queue()
+    p = queue.Queue()
     actions = list()
-    async with QueueLogger(q) as component:
+    async with QueueLogger(q, p) as component:
         i = 0
         while True:
             actions.append(q.get())
@@ -601,7 +609,6 @@ async def test_interrupt_with_method():
 async def run(comp):
     async with anyio.create_task_group() as tg:
         await tg.start(comp.start)
-        await anyio.sleep_forever()
 
 
 def test_interrupt_by_signal():
@@ -612,9 +619,10 @@ def test_interrupt_by_signal():
     # also, avoids specifying the start method globally
     ctx = multiprocessing.get_context("spawn")
 
-    # use a queue accessible over multiple processes
-    q = ctx.Queue()
-    comp = QueueLogger(queue=q)
+    # use queues accessible over multiple processes
+    method_queue = ctx.Queue()
+    states_queue = ctx.Queue()
+    comp = QueueLogger(method_queue, states_queue)
 
     # spawn the process
     process = ctx.Process(target=anyio.run, args=(run, comp), name="interrupt")
@@ -622,14 +630,16 @@ def test_interrupt_by_signal():
     assert process.is_alive()
 
     # give the anyio.run and the QueueLogger component time to start
-    time.sleep(0.5)
+    new = comp.states.NONE
+    while new != comp.states.RUNNING:
+        _, new = states_queue.get()
 
-    # component should be running by now
+    # now the component is running and the method queue should not be empty
     actions = list()
 
     while True:
         try:
-            actions.append(q.get(block=False))
+            actions.append(method_queue.get(block=False))
         except queue.Empty:
             break
 
@@ -639,7 +649,7 @@ def test_interrupt_by_signal():
     assert actions == ["before", "run"]
 
     # fetch the cleanup action
-    actions.append(q.get())
+    actions.append(method_queue.get())
 
     assert actions == ["before", "run", "cleanup"]
 
