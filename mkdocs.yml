@@ -12,25 +12,36 @@ nav:
       - "reference/index.md"
       - Apps:
           - "reference/apps/index.md"
-          - Editor: reference/apps/editor.md
-          - Chat: reference/apps/chat.md
-          - Service: reference/apps/service.md
-          - Server: reference/apps/server.md
-          - Drive: reference/apps/drive.md
+          - Editor: 
+              - "reference/apps/editor/index.md"
+              - CLI: "reference/apps/editor/cli.md"
+              - App: "reference/apps/editor/app.md"
+          - Chat:
+              - "reference/apps/chat/index.md"
+              - CLI: "reference/apps/chat/cli.md"
+              - App: "reference/apps/chat/app.md"
+          - Server:
+              - "reference/apps/server/index.md"
+              - CLI: "reference/apps/server/cli.md"
+              - App: "reference/apps/server/app.md"
       - Widgets:
           - "reference/widgets/index.md"
-          - TextArea: reference/widgets/textarea.md
-          - Config: reference/widgets/config.md
-          - Status: reference/widgets/status.md
+          - YTextArea: 
+              - "reference/widgets/ytextarea/index.md"
+              - Widget: reference/widgets/ytextarea/widget.md
+              - Selection: reference/widgets/ytextarea/selection.md
+              - Location: reference/widgets/ytextarea/location.md
           - Screens: reference/widgets/screens.md
+          - Awareness: reference/widgets/awareness.md
+          - Configuration: reference/widgets/config.md
+      - Core: reference/core.md
+      - Main: reference/main.md
       - CLI: reference/cli.md
-      - CLI Utils: reference/utils.md
-      - Click Utilities: reference/click-utils.md
-      - Click Lazy Loading Group: reference/click-lazy-group.md
       - Component: reference/component.md
       - Authentication: reference/auth.md
       - Server: reference/server.md
       - Provider: reference/provider.md
+      - Awareness: reference/awareness.md
       - Store: reference/store.md
       - Renderer: reference/renderer.md
       - Protocol: reference/protocol.md
@@ -110,6 +121,7 @@ plugins:
             - "https://click.palletsprojects.com/en/stable/objects.inv"
             - "https://anyio.readthedocs.io/en/stable/objects.inv"
             - "https://websockets.readthedocs.io/en/stable/objects.inv"
+            - "https://ldap3.readthedocs.io/en/latest/objects.inv"
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true

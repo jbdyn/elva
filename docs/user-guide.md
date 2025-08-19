@@ -30,7 +30,7 @@ ELVA does not need anything special to start working on shared documents.
 Type
 
 ```sh
-elva edit
+elva editor
 ```
 
 and you will see ELVA's real-time capable editor.
@@ -45,17 +45,10 @@ Point ELVA to a websocket server being capable of forwarding websocket messages.
 You do this with
 
 ```
-elva --server ws://<url-to-server> edit
+elva editor --host <host-name-or-ip> [--port <port>]
 ```
 
 This publishes the document and its contents on the specified server under a random [UUID](https://datatracker.ietf.org/doc/html/rfc4122) (v4).
-
-On some servers, you will need to give credentials to authenticate yourself.
-Provide them with the `--username` and `--password` options:
-
-```
-elva --server ws://<url-to-server> --username foo --password mY$3cR3T edit
-```
 
 
 ### Customize the Identifier
@@ -63,7 +56,7 @@ elva --server ws://<url-to-server> --username foo --password mY$3cR3T edit
 Sometimes, UUIDs are not desired for the sake of readability, sharability or other reasons. You can change the identifier of a document to your liking with
 
 ```
-elva --identifier <my-identifier> edit
+elva editor --identifier <my-identifier>
 ```
 
 Please note that your custom identifier might have been already chosen by someone else or enables others to guess it.
@@ -78,7 +71,7 @@ This makes you dependent on external resources.
 You can address this by specifying a filename:
 
 ```
-elva edit my-file.md
+elva editor my-file.md
 ```
 
 This saves the document locally on your system and you can work on it even if you are offline.
@@ -119,7 +112,7 @@ elva context
 You can also specify a path to a certain `elva.toml` configuration file:
 
 ```
-elva --config path/to/config edit
+elva editor --config path/to/config
 ```
 
 ## Apps
@@ -127,7 +120,7 @@ elva --config path/to/config edit
 ### Editor
 
 ```
-elva edit
+elva editor
 ```
 
 The built in editor can be used for any plain text file.
@@ -141,10 +134,10 @@ elva chat
 The chat enables real-time previews of composed messages and stores the history.
 
 
-### Service
+### Server
 
 ```
-elva service
+elva server
 ```
 
-The service is mainly intended for background synchronization.
+The server forwards and manages Y CRDT update messages.

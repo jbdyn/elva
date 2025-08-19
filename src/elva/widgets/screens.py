@@ -2,91 +2,67 @@
 [`Textual`](https://textual.textualize.io/) screens for ELVA apps.
 """
 
-from typing import Any
-
-from rich.text import Text as RichText
-from textual.containers import Grid
 from textual.message import Message
-from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Static
+from textual.screen import ModalScreen, Screen
+from textual.widgets import Input, Static
 
-from elva.auth import basic_authorization_header
+from elva.widgets.awareness import AwarenessView
+from elva.widgets.config import ConfigView
 
 
-class CredentialScreen(ModalScreen):
+class Dashboard(Screen):
     """
-    Modal screen providing a form for credential input.
+    Screen for displaying session information.
+
+    It features a [`ConfigView`][elva.widgets.config.ConfigView] widget for
+    displaying the current configuration parameters as well as
+    an [`AwarenessView`][elva.widgets.awareness.AwarenessView] widget
+    showing the active clients in the current session.
     """
-
-    options: dict
-    """Mapping of options for the connection provider."""
-
-    body: Static
-    """Instance of the static widget displaying an informational message."""
-
-    user: Input
-    """Instance of the input widget for the user name."""
-
-    password: Input
-    """Instance of the input widget for the password."""
-
-    def __init__(
-        self, options: dict[str, Any], body: None | str = None, user: None | str = None
-    ):
-        """
-        Arguments:
-            options: mapping of options for the connection provider.
-            body: informational message displayed above the credential form.
-            user: user name.
-        """
-        super().__init__(classes="modalscreen", id="credentialscreen")
-        self.options = options
-        self.body = Static(RichText(body, justify="center"), id="body")
-
-        self.user = Input(placeholder="user", id="user")
-        self.user.value = user or ""
-        self.password = Input(placeholder="password", password=True, id="password")
 
     def compose(self):
         """
-        Hook arranging child widgets.
+        Hook adding child widgets.
         """
-        with Grid(classes="form"):
-            yield self.body
-            yield self.user
-            yield self.password
-            yield Button("Confirm", classes="confirm")
+        yield ConfigView()
+        yield AwarenessView()
 
-    def update_and_return_credentials(self):
+    def key_escape(self):
         """
-        Save input credentials and return them after closing the screen.
+        Hook executed on pressing the `Esc` key.
 
-        This method saves the credentials encoded in a basic authorization header in the [`options`][elva.widgets.screens.CredentialScreen.options] attribute for usage in the connection provider.
+        It dismisses the screen.
         """
-        credentials = (self.user.value, self.password.value)
-        header = basic_authorization_header(*credentials)
-        self.options["additional_headers"] = header
-        self.password.clear()
-        self.dismiss(credentials)
+        self.dismiss()
 
-    def on_button_pressed(self, event: Message):
+
+class InputScreen(ModalScreen):
+    """
+    A plain modal screen with a single input field.
+    """
+
+    def compose(self):
         """
-        Hook called on a button pressed event.
+        Hook adding child widgets.
+        """
+        yield Input()
 
-        The credentials get updated and the screen closed.
+    def on_input_submitted(self, event: Message):
+        """
+        Hook executed on an [`Input.Submitted`][textual.widgets.Input.Submitted] message.
 
         Arguments:
-            event: message object holding information about the button pressed event.
+            event: the message containing the submitted value.
         """
-        self.update_and_return_credentials()
+        self.dismiss(event.value)
 
-    def key_enter(self):
+    def key_escape(self):
         """
-        Hook called on an enter pressed event.
+        Hook executed on pressing the `Esc` key.
 
-        The credentials get updated and the screen closed.
+        It dismisses the screen.
         """
-        self.update_and_return_credentials()
+        self.dismiss()
 
 
 class ErrorScreen(ModalScreen):
@@ -97,35 +73,44 @@ class ErrorScreen(ModalScreen):
     exc: str
     """The exception message to display."""
 
-    def __init__(self, exc: str):
+    def __init__(self, exc: str, *args: tuple, **kwargs: dict):
         """
         Arguments:
             exc: the exception message to display.
+            args: positional arguments passed to [`ModalScreen`][textual.screen.ModalScreen]
+            kwargs: keyword arguments passed to [`ModalScreen`][textual.screen.ModalScreen]
         """
-        super().__init__(classes="modalscreen", id="errorscreen")
+        super().__init__(*args, **kwargs)
         self.exc = exc
 
     def compose(self):
         """
         Hook arranging child widgets.
         """
-        with Grid(classes="form"):
-            yield Static(
-                RichText(
-                    "The following error occured and the app will close now:",
-                    justify="center",
-                )
-            )
-            yield Static(RichText(str(self.exc), justify="center"))
-            yield Button("OK", classes="confirm")
+        yield Static("The following error occured and the app will close now:")
+        yield Static(self.exc)
+        yield Static("Press any key or click to continue.")
 
-    def on_button_pressed(self, event: Message):
+    def on_button_pressed(self):
         """
         Hook called on a button pressed event.
 
-        It closes the screen.
+        It dismisses the screen.
+        """
+        self.dismiss(self.exc)
 
-        Arguments:
-            event: the message object holding information about the button pressed event.
+    def on_key(self):
+        """
+        Hook called on a pressed key.
+
+        It dismisses the screen.
+        """
+        self.dismiss(self.exc)
+
+    def on_mouse_up(self):
+        """
+        Hook called on a released mouse button.
+
+        It dismisses the screen.
         """
         self.dismiss(self.exc)

@@ -1,5 +1,6 @@
 # specs: https://docs.astral.sh/ruff/settings
 
+target-version = "py311"
 fix = true
 line-length = 88
 indent-width = 4
@@ -18,4 +19,5 @@ select = [
   "E9",   # pycodestyle, Error
   "F",    # Pyflakes
   "I",    # isort
+  "W291", # trailing whitespace
 ]

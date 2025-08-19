@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 name = "elva"
 description = "A suite of local-first TUI realtime collaboration apps based on CRDTs."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dynamic = ["version"]
 
 keywords = [
@@ -48,7 +48,6 @@ license-files = [
 # see https://pypi.org/classifiers/
 classifiers = [
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -65,22 +64,20 @@ classifiers = [
 
 # see https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies-optional-dependencies
 dependencies = [
-    "websockets",
+    "setuptools",
+    "websockets>=14.0.0,<16.0",
     "pycrdt",
-    "pycrdt-websocket",
     "anyio",
+    "sqlite_anyio",
     "click",
     "rich",
     "emoji",
-    "python-json-logger",
-    "watchdog",
-    "ldap3",
-    "textual[syntax]",
+    "ldap3~=2.10.2rc2",
+    "textual[syntax]>=2.0,<6.0",
     "tree-sitter-language-pack",
-    "pyperclip",
-    "qrcode",
     "tomli-w",
     "tomli",
+    "deepmerge",
 ]
 
 
@@ -90,11 +87,8 @@ dev = [
     "pytest",
     "trio",
     "ruff",
-    "isort",
     "build",
     "setuptools-scm",
-    "tox",
-    "twine",
     "mkdocs",
     "mkdocstrings",
     "textual-dev",
@@ -103,6 +97,8 @@ dev = [
     "mkdocs-material",
     "mkdocstrings-python",
     "pyinstrument",
+    "coverage",
+    "nox",
 ]
 
 logo = [
@@ -119,6 +115,6 @@ issues = "https://github.com/innocampus/elva/issues"
 changelog = "https://github.com/innocampus/elva/blob/main/CHANGELOG.md"
 
 [project.scripts]
-elva = "elva.cli:elva"
+elva = "elva.main:elva"
 
 [tool.setuptools_scm]

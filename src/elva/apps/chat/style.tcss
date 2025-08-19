@@ -1,0 +1,72 @@
+#future {
+  height: auto;
+  max-height: 30%;
+  padding: 0 0 1 0;
+}
+
+#history {
+  padding: 1 0 0 0;
+}
+
+#tabview {
+  height: 30%;
+  min-height: 10;
+  dock: bottom;
+}
+
+.message {
+  height: auto;
+  /* layout: horizontal; */
+  padding: 0 0 1 0; /* top right bottom left */
+}
+
+.content {
+  border-top: blank grey;
+  padding: 0 1 0 1; /* top right bottom left */
+}
+
+#editor {
+  border: none;
+  padding: 1 1 0 1;
+  background: $background;
+}
+
+Rule {
+  color: rgb(50, 50, 50);
+  margin: 0;
+}
+
+Dashboard {
+  layout: grid;
+  grid-size: 2;
+  grid-columns: 2fr 1fr;
+
+  ConfigView, AwarenessView {
+    padding: 0 1 0 1;
+    border: solid $primary;
+  }
+}
+
+InputScreen {
+  layout: grid;
+  align: center middle;
+
+  Input {
+    border: solid $border;
+    width: 80%;
+
+    .input--cursor {
+      color: $foreground;
+    }
+  }
+}
+
+ErrorScreen {
+  align: center middle;
+  border: solid $error;
+  
+  * {
+    content-align: center middle;
+    padding: 1 0 1 0;
+  }
+}

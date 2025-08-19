@@ -1,3 +1,5 @@
+logs
+
 # build
 *.egg-info
 build
@@ -17,3 +19,7 @@ site
 
 # ELVA
 elva.toml
+
+# coverage.py
+.coverage*
+!.coveragerc

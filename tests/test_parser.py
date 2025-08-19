@@ -52,9 +52,14 @@ async def test_text_event_parser():
         async def on_delete(self, retain, length):
             holder.actions.append(("delete", retain, length))
 
-    async with TestParser() as text_event_parser:
+    text_event_parser = TestParser()
+    sub = text_event_parser.subscribe()
+    states = text_event_parser.states
+
+    async with text_event_parser:
         # is it running?
-        assert text_event_parser.started.is_set()
+        while states.RUNNING not in text_event_parser.state:
+            await sub.receive()
 
         # insert
         text += "test"
@@ -117,9 +122,14 @@ async def test_array_event_parser():
         async def on_delete(self, retain, length):
             holder.actions.append(("delete", retain, length))
 
-    async with TestParser() as array_event_parser:
+    array_event_parser = TestParser()
+    sub = array_event_parser.subscribe()
+    states = array_event_parser.states
+
+    async with array_event_parser:
         # is it running?
-        assert array_event_parser.started.is_set()
+        while states.RUNNING not in array_event_parser.state:
+            await sub.receive()
 
         # extend
         array.extend([1, 2, 3])
@@ -179,9 +189,14 @@ async def test_map_event_parser():
         async def on_delete(self, key, old_value):
             holder.actions.add(("delete", key, old_value))
 
-    async with TestParser() as map_event_parser:
+    map_event_parser = TestParser()
+    sub = map_event_parser.subscribe()
+    states = map_event_parser.states
+
+    async with map_event_parser:
         # is it running?
-        assert map_event_parser.started.is_set()
+        while states.RUNNING not in map_event_parser.state:
+            await sub.receive()
 
         # add
         # order does not matter

@@ -1,3 +1,3 @@
 """
-Subpackage containing ready-to-use terminal applications.
+Directory containing terminal applications as namespace packages.
 """
