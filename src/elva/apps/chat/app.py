@@ -321,6 +321,10 @@ class FutureParser(MapEventParser):
             key: the message id that has been added.
             new_value: the message object that has been added.
         """
+        # TODO: fix the origin of empty values
+        if not new_value:
+            return
+
         if not self.show_self and new_value["author"] == self.user:
             return
 
@@ -338,6 +342,10 @@ class FutureParser(MapEventParser):
             key: the message id that has been deleted.
             old_value: the message object that has been deleted.
         """
+        # TODO: fix the origin of empty values
+        if not old_value:
+            return
+
         try:
             message = self.widget.query_one("#id" + key)
             log.debug("deleting message view in future")
