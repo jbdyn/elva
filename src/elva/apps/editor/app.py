@@ -50,9 +50,9 @@ class UI(App):
     """The installed screens."""
 
     BINDINGS = [
-        Binding("ctrl+s", "save"),
-        Binding("ctrl+r", "render"),
-        Binding("ctrl+b", "toggle_dashboard"),
+        Binding("ctrl+b", "toggle_dashboard", "Toggle the dashboard"),
+        Binding("ctrl+s", "save", "Save to data file"),
+        Binding("ctrl+r", "render", "Render to file"),
     ]
     """Key bindings for actions of the app."""
 

@@ -384,9 +384,11 @@ class UI(App):
 
     BINDINGS = [
         ("shift+enter", "send", "Send currently composed message"),
-        ("ctrl+b", "toggle_dashboard"),
-        ("ctrl+s", "save"),
-        ("ctrl+r", "render"),
+        ("ctrl+enter", "send", "Send currently composed message"),
+        ("ctrl+o", "send", "Send currently composed message"),
+        ("ctrl+b", "toggle_dashboard", "Toggle the dashboard"),
+        ("ctrl+s", "save", "Save to data file"),
+        ("ctrl+r", "render", "Render to file"),
     ]
     """Key bindings for controlling the app."""
 
