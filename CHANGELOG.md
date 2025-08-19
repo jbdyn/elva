@@ -9,6 +9,65 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 
 
+## 0.34 - 2025-08-19
+
+### Added
+
+- Add tests for library code: `auth`, `awareness`, `cli`, `component`, `core`, `main`, `parser`, `protocol`, `provider`, `renderer`, `server`, `store`
+- Add developer setup script for installing git hooks
+- Add `pre-commit` and `pre-merge-commit` git hook
+- Add `ruff` config
+- Add matrix testing with `nox`
+- Add dependency constraints for `websockets` and `textual`
+- Add `coverage` development dependency with config file
+- Add link to `elva` Python package on PyPI to the docs
+- Add `Dashboard` and `InputScreen` screens
+- Add handling of permission errors in `server` app
+- Add `free_tcp_port` function to the `server` module and tests
+- Add `pass_config_for` decorator getter and tests
+- Add a state subscription mechanism to `Component`
+- Add an `Awareness` component
+- Add awareness support to `WebsocketProvider`
+
+### Changed
+
+- Adapt apps `editor` (former `edit`), `chat` and `server` to rewritten CLI and define them as namespace packages
+- Create a namespace package for `YTextArea` widget
+- Rename the `cli` module to `main` and expose CLI functionality in a new `cli` module
+- Expose project constants in the `core` module
+- Update the `uv` lock file
+- Update the documentation guides and API reference of all modules
+- Replace legacy `tmpdir` fixture with `tmp_path` in tests
+- Let `WebsocketServer` wait for all `Room`s to be inactive before stopping
+- Adapt logger name for `WebsocketServer`
+- Rewrite connection exception callback and connection details API for `WebsocketProvider`
+- Stabilize `WebsocketProvider` tests by comparing YDoc updates instead of states
+- Rewrite `SQLiteStore` update buffer without async context manager protocol
+- Bump minimal Python version to 3.11
+
+### Fixed
+
+- Fix timing issue on component interrupt signal test
+- Fix clash of `property` and `classmethod` on message enums
+
+### Removed
+
+- Remove unmaintained `Dockerfile`
+- Remove Unix-specific signal handler from `server` app
+- Remove unused dependencies
+- Remove superfluous style definition for `editor`
+- Remove unmaintained app modules `drive.py` and `service.py`
+- Remove unmaintained `examples` and `experiments` directories
+- Remove obsolete test modules
+- Remove unused `click_lazy_group.py` and `click_utils.py`
+- Remove `ElvaRoom` and `ElvaWebsocketServer`
+- Remove `Connection` and `WebsocketConnection` classes
+- Remove `ElvaWebsocketProvider`
+- Remove `started` and `stopped` events
+- Remove custom logic for `YTextArea` widget
+
+
+
 ## 0.33 - 2025-05-07
 
 ### Added
