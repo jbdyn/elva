@@ -5,7 +5,7 @@ Module holding provider components.
 import logging
 from inspect import Signature, isawaitable, signature
 from typing import Any, Awaitable, Callable, Literal
-from urllib.parse import urlunparse
+from urllib.parse import urlencode, urlunparse
 
 from anyio import CancelScope, WouldBlock, create_memory_object_stream
 from pycrdt import Doc, Subscription, TransactionEvent
@@ -65,6 +65,7 @@ class WebsocketProvider(Component):
         host: str,
         *args: tuple[Any],
         port: int = None,
+        client_type: str = "elva",
         on_exception: Awaitable | None = None,
         tls_config: dict = {},
         **kwargs: dict[Any],
@@ -75,6 +76,7 @@ class WebsocketProvider(Component):
             identifier: identifier of the synchronized Y Document.
             host: hostname or IP address of the Y Document synchronizing websocket server.
             port: port of the Y Document synchronizing websocket server.
+            client_type: client type identifier for server logging (default: "elva").
             on_exception: callback to which the current connection exception and a reference to the connection option mapping is given.
             *args: positional arguments passed to [`connect`][websockets.asyncio.client.connect].
             **kwargs: keyword arguments passed to [`connect`][websockets.asyncio.client.connect].
@@ -90,9 +92,10 @@ class WebsocketProvider(Component):
         port = update_port(host, port=port)
 
         netloc = f"{host}:{port}" if port is not None else host
+        query = urlencode({"client": client_type})
 
         # scheme, netloc, url, params, query, fragment
-        uri = urlunparse((scheme, netloc, identifier, None, None, None))
+        uri = urlunparse((scheme, netloc, identifier, None, query, None))
         self.uri = uri
 
         # construct a dictionary of args and kwargs
