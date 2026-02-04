@@ -14,6 +14,7 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 
 from elva.awareness import Awareness
 from elva.component import Component, create_component_state
+from elva.core import update_port
 from elva.protocol import YMessage
 from elva.tls import client
 
@@ -85,6 +86,8 @@ class WebsocketProvider(Component):
         tls = client(host, tls_config)
 
         scheme = "ws" if tls is None else "wss"
+
+        port = update_port(host, port=port)
 
         netloc = f"{host}:{port}" if port is not None else host
 

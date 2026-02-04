@@ -9,6 +9,7 @@ from urllib.request import urlopen
 from click import ClickException, echo
 
 from elva.config import Config
+from elva.core import update_port
 from elva.tls import client
 
 
@@ -54,7 +55,8 @@ def run(config: Config) -> None:
         raise ClickException("no host specified")
 
     # set net location
-    port = c.get("connect.port")
+    port = update_port(host, port=c.get("connect.port"))
+
     netloc = f"{host}:{port}" if port is not None else host
 
     # set up TLS
