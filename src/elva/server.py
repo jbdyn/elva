@@ -611,6 +611,8 @@ class WebsocketServer(Component):
             async for data in websocket:
                 await room.process(data, websocket)
         except ConnectionClosed:
-            self.log.info(f"client {client_ip} ({client_type}) left room '{identifier}'")
+            self.log.info(
+                f"client {client_ip} ({client_type}) left room '{identifier}'"
+            )
         finally:
             room.remove(websocket)
