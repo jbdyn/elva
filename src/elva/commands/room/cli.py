@@ -1,0 +1,52 @@
+from importlib import import_module as import_
+from typing import Callable
+
+from click import INT, command, option
+
+from elva.cli import context
+
+
+@command(name="room")
+@option(
+    "--info",
+    "-i",
+    is_flag=True,
+    help="List available rooms.",
+    default=None,
+)
+@option(
+    "--details",
+    "-d",
+    is_flag=True,
+    help="Add room details to the -i, --info output.",
+    default=None,
+)
+@option(
+    "--json",
+    "-j",
+    is_flag=True,
+    help="Give the -i, --info output as JSON.",
+    default=None,
+)
+@option(
+    "--timeout",
+    "-t",
+    help="Set the time to wait for the info reply.",
+    default=None,
+    type=INT,
+)
+@context
+def cli(config: dict) -> None | Callable:
+    """
+    Configure room settings or list available rooms.
+    \f
+
+    Arguments:
+        config: the `room` section of the ELVA config.
+
+    Returns:
+        the room info routine if `-i`, `--info` is specified,
+        else `None`.
+    """
+    if config.get("info"):
+        return import_(".app", __package__).run

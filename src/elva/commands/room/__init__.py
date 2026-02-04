@@ -1,0 +1,7 @@
+"""
+Configure Room options.
+"""
+
+from .cli import cli
+
+__all__ = [cli]

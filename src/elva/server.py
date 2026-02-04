@@ -7,6 +7,7 @@ import re
 import socket
 from contextlib import closing
 from http import HTTPStatus
+from json import dumps
 from pathlib import Path
 from ssl import SSLContext
 from typing import Callable, Iterable
@@ -512,10 +513,20 @@ class WebsocketServer(Component):
         # the request path always includes a `/` as first character
         path = request.path[1:]
 
+        # Handle `/` endpoint - return list of active rooms as JSON
+        if path == "":
+            info = self.get_room_info()
+            body = dumps(info).encode("utf-8")
+
+            return Response(
+                status_code=HTTPStatus.OK,
+                headers=Headers({"Content-Type": "application/json"}),
+                reason_phrase="OK",
+                body=body,
+            )
+
         if not RE_IDENTIFIER.match(path):
-            if len(path) < 10:
-                reason = f"Identifier too short ({len(path)} chars, need 10-250)"
-            elif len(path) > 250:
+            if len(path) > 250:
                 reason = f"Identifier too long ({len(path)} chars, max 250)"
             else:
                 reason = "Identifier must contain only letters, numbers, hyphens, underscores"
@@ -524,6 +535,22 @@ class WebsocketServer(Component):
                 headers=Headers(),
                 reason_phrase=reason,
             )
+
+    def get_room_info(self) -> list[dict]:
+        """
+        Get information about active rooms.
+
+        Returns:
+            A list of dictionaries containing room information.
+        """
+        return [
+            dict(
+                identifier=identifier,
+                persistent=room.persistent,
+            )
+            for identifier, room in self.rooms.items()
+            if room.states.ACTIVE in room.state
+        ]
 
     async def get_room(self, identifier: str) -> Room:
         """
