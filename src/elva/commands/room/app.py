@@ -1,16 +1,9 @@
-from http.client import RemoteDisconnected
-from json import JSONDecodeError, loads
 from os import linesep
-from ssl import SSLContext
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlunparse
-from urllib.request import urlopen
 
 from click import ClickException, echo
 
 from elva.config import Config
-from elva.core import update_port
-from elva.tls import client
+from elva.server import fetch_rooms
 
 
 def display(room: dict, details: bool = False) -> None | str:
@@ -31,9 +24,11 @@ def display(room: dict, details: bool = False) -> None | str:
         return
 
     if details:
+        clients = room.pop("clients", "?")
+
         keys = ",".join(key for key, value in sorted(room.items()) if value)
 
-        out += f"\t{keys}"
+        out += f"\t{clients}\t{keys}"
 
     return out
 
@@ -54,54 +49,28 @@ def run(config: Config) -> None:
     if host is None:
         raise ClickException("no host specified")
 
-    # set net location
-    port = update_port(host, port=c.get("connect.port"))
-
-    netloc = f"{host}:{port}" if port is not None else host
-
-    # set up TLS
-    ctx = client(host, c.get("tls", {}))
-    safe = isinstance(ctx, SSLContext)
-
-    protocols = [("https" if safe else "http", ctx)]
-
-    # if TLS was enabled by default, add a non-secure fallback,
-    # else don't try to set up a TLS context automatically
-    if c.get("tls.on") is None and safe:
-        protocols.append(("http", None))
-
+    #
     # set config details and default values
-    timeout = c.get("room.timeout", 5)
+    timeout = c.get("room.timeout")
     details = c.get("room.details", False)
     json = c.get("room.json", False)
 
-    data = None
-    error = None
+    try:
+        rooms = fetch_rooms(
+            host,
+            port=c.get("connect.port"),
+            tls_config=c.get("tls", {}),
+            timeout=timeout,
+            raw=json,
+        )
+    except Exception as exc:
+        reason = getattr(exc, "reason", str(exc))
+        raise ClickException(reason)
 
-    for protocol, tls in protocols:
-        url = urlunparse((protocol, netloc, "", None, None, None))
-
-        try:
-            with urlopen(url, timeout=timeout, context=tls) as response:
-                data = response.read().decode("utf-8")
-                rooms = loads(data)
-                break
-        except (HTTPError, RemoteDisconnected) as exc:
-            # HTTP error (4xx, 5xx) - don't retry with different protocol
-            raise ClickException(f"server error: {exc}")
-        except URLError as exc:
-            # Connection error - try next protocol
-            error = exc
-            continue
-        except JSONDecodeError as exc:
-            raise ClickException(f"invalid response from server: {exc}")
-
-    if data is None:
-        reason = getattr(error, "reason", error)
-        raise ClickException(f"could not connect to server: {reason}")
-
+    #
+    # print fetch result
     if json:
-        echo(data)
+        echo(rooms)
     else:
         if not rooms:
             echo("no active rooms", err=True)

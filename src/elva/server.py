@@ -7,11 +7,13 @@ import re
 import socket
 from contextlib import closing
 from http import HTTPStatus
-from json import dumps
+from json import dumps, loads
 from pathlib import Path
 from ssl import SSLContext
 from typing import Callable, Iterable
-from urllib.parse import parse_qs, urlparse
+from urllib.error import URLError
+from urllib.parse import parse_qs, urlparse, urlunparse
+from urllib.request import urlopen
 
 import anyio
 from pycrdt import Doc
@@ -25,9 +27,65 @@ from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
 
 from elva.component import Component, create_component_state
+from elva.core import update_port
 from elva.protocol import YMessage
 from elva.store import SQLiteStore
-from elva.tls import server
+from elva.tls import client, server
+
+
+def fetch_rooms(
+    host: str,
+    port: int | None = None,
+    tls_config: dict = {},
+    timeout: int = 5,
+    raw: bool = False,
+) -> str | list[dict]:
+    """
+    Fetch list of room identifiers from server.
+
+    Arguments:
+        host: the server hostname.
+        port: the server port.
+        tls_config: the `tls` section of the ELVA config.
+        timeout: the time in seconds to wait for a server response.
+        raw: if `True`, return the JSON response as is, else parse it.
+
+    Returns:
+        the UTF-8 decoded response if `raw` is `True`, else
+        a list of room info mappings.
+    """
+    # set up TLS
+    tls = client(host, tls_config)
+    safe = isinstance(tls, SSLContext)
+
+    protocols = [("https" if safe else "http", tls)]
+
+    # if TLS was enabled by default, add a non-secure fallback,
+    # else don't try to set up a TLS context automatically
+    if tls_config.get("on") is None and safe:
+        protocols.append(("http", None))
+
+    port = update_port(host, port=port)
+    netloc = f"{host}:{port}" if port is not None else host
+
+    tried = False
+
+    for protocol, tls in protocols:
+        url = urlunparse((protocol, netloc, "", None, None, None))
+
+        try:
+            with urlopen(url, timeout=timeout, context=tls) as response:
+                data = response.read().decode("utf-8")
+                break
+        except URLError:
+            # Connection error - try next protocol
+            if not tried and len(protocols) > 1:
+                tried = True
+                continue
+            else:
+                raise
+
+    return data if raw else loads(data)
 
 
 def free_tcp_port(host: None | str = None) -> int:
@@ -356,6 +414,19 @@ class Room(Component):
         message, _ = YMessage.AWARENESS.encode(state)
         self.broadcast(message, client)
 
+    def info(self) -> dict:
+        """
+        Get room information.
+
+        Returns:
+            a mapping of room attributes to their respective values.
+        """
+        return dict(
+            identifier=self.identifier,
+            clients=len(self.clients),
+            persistent=self.persistent,
+        )
+
 
 WebsocketServerState = create_component_state("WebsocketServerState", ("SERVING",))
 """The states of a [`WebsocketServer`][elva.server.WebsocketServer] component."""
@@ -517,7 +588,7 @@ class WebsocketServer(Component):
 
         # Handle `/` endpoint - return list of active rooms as JSON
         if path == "":
-            info = self.get_room_info()
+            info = self.filter_rooms()
             body = dumps(info).encode("utf-8")
 
             return Response(
@@ -538,7 +609,7 @@ class WebsocketServer(Component):
                 reason_phrase=reason,
             )
 
-    def get_room_info(self) -> list[dict]:
+    def filter_rooms(self) -> list[dict]:
         """
         Get information about active rooms.
 
@@ -546,11 +617,8 @@ class WebsocketServer(Component):
             A list of dictionaries containing room information.
         """
         return [
-            dict(
-                identifier=identifier,
-                persistent=room.persistent,
-            )
-            for identifier, room in self.rooms.items()
+            room.info()
+            for room in self.rooms.values()
             if room.states.ACTIVE in room.state
         ]
 
