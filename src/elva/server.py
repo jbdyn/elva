@@ -473,10 +473,16 @@ class WebsocketServer(Component):
         path = request.path[1:]
 
         if not RE_IDENTIFIER.match(path):
+            if len(path) < 10:
+                reason = f"Identifier too short ({len(path)} chars, need 10-250)"
+            elif len(path) > 250:
+                reason = f"Identifier too long ({len(path)} chars, max 250)"
+            else:
+                reason = "Identifier must contain only letters, numbers, hyphens, underscores"
             return Response(
                 status_code=HTTPStatus.FORBIDDEN,
                 headers=Headers(),
-                reason_phrase="Invalid identifier",
+                reason_phrase=reason,
             )
 
     async def get_room(self, identifier: str) -> Room:
