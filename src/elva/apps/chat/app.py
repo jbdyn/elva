@@ -347,7 +347,6 @@ class UI(App):
                 c["identifier"],
                 c["host"],
                 port=c.get("port"),
-                safe=c.get("safe"),
                 on_exception=self.on_provider_exception,
             )
 
