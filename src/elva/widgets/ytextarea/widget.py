@@ -2,7 +2,7 @@
 Widget definition.
 """
 
-from typing import Callable, Self
+from typing import Self
 
 from pycrdt import Text, UndoManager
 from rich.segment import Segment
@@ -12,16 +12,11 @@ from textual.events import MouseDown
 from textual.strip import Strip
 from textual.widgets import TextArea
 
+from elva.awareness import Awareness
 from elva.parser import TextEventParser
 
 from .location import update_location
 from .selection import Selection
-
-# Colors for remote user cursors
-CURSOR_COLORS = [
-    "#ff6666", "#66ff66", "#6666ff", "#ffff66", "#ff66ff", "#66ffff",
-    "#ff9933", "#33ff99", "#9933ff", "#99ff33", "#ff3399", "#3399ff",
-]
 
 
 class YTextArea(TextArea, TextEventParser):
@@ -51,16 +46,16 @@ class YTextArea(TextArea, TextEventParser):
         """
     """Default CSS."""
 
-    _cursor_change_callback: Callable[[int], None] | None = None
-    """Callback for cursor position changes (byte position)."""
+    default_cursor_color: str
+    """Color used for remote cursors when there is no color information in the awareness document."""
 
-    _remote_cursors: dict[int, tuple[int, str]]
-    """Mapping of client_id to (byte_position, color)."""
-
-    _cursor_color_map: dict[int, str]
-    """Mapping of client_id to assigned color."""
-
-    def __init__(self, ytext: Text, *args: tuple, **kwargs: dict):
+    def __init__(
+        self,
+        ytext: Text,
+        *args: tuple,
+        awareness: Awareness | None = None,
+        **kwargs: dict,
+    ):
         """
         Arguments:
             ytext: Y text data type holding the text.
@@ -69,6 +64,7 @@ class YTextArea(TextArea, TextEventParser):
         """
         super().__init__(str(ytext), *args, **kwargs)
         self.ytext = ytext
+        self.awareness = awareness
         self.origin = ytext.doc.client_id
 
         # record changes in the YText;
@@ -82,12 +78,7 @@ class YTextArea(TextArea, TextEventParser):
         self.history.include_origin(self.origin)
 
         # Initialize remote cursor tracking
-        self._remote_cursors = {}
-        self._cursor_color_map = {}
-        self._cursor_change_callback = None
-        self._last_notified_cursor_pos = None  # Debounce cursor updates
-        self._applying_remote_edit = False  # Flag to suppress cursor broadcast during remote edits
-        self._local_edit_in_progress = False  # Flag to detect local vs remote edits
+        self.default_cursor_color = "#808080"
 
     @classmethod
     def code_editor(cls, ytext: Text, *args: tuple, **kwargs: dict) -> Self:
@@ -167,15 +158,6 @@ class YTextArea(TextArea, TextEventParser):
         start = self.get_location_from_binary_index(retain)
         end = self.get_location_from_binary_index(retain + delete)
 
-        # Only adjust remote cursor positions for LOCAL edits
-        # Remote edits: the remote client will send their updated cursor position
-        # Local edits: remote clients haven't seen our edit yet, so adjust their cursors
-        if self._local_edit_in_progress:
-            insert_bytes = len(insert.encode("utf-8")) if insert else 0
-            delta = insert_bytes - delete
-            if delta != 0:
-                self._adjust_remote_cursors(retain, delta)
-
         # apply the update to the UI
         self._apply_update(insert, start, end)
 
@@ -187,6 +169,11 @@ class YTextArea(TextArea, TextEventParser):
         """
         self.subscription_textevent = self.ytext.observe(self.parse)
 
+        if self.awareness is not None:
+            self.subscription_awareness = self.awareness.observe(
+                self._handle_awareness_update
+            )
+
     def on_unmount(self):
         """
         Hook called on unmounting.
@@ -195,6 +182,9 @@ class YTextArea(TextArea, TextEventParser):
         """
         self.ytext.unobserve(self.subscription_textevent)
         del self.subscription_textevent
+
+        if self.awareness is not None:
+            self.awareness.unobserve(self.subscription_awareness)
 
     def load_text(self, text: str, language: str | None = None):
         """
@@ -235,18 +225,13 @@ class YTextArea(TextArea, TextEventParser):
         istart = self.get_binary_index_from_location(start)
         iend = self.get_binary_index_from_location(end)
 
-        # Mark as local edit so _apply_update doesn't suppress cursor broadcast
-        self._local_edit_in_progress = True
-        try:
-            # perform an atomic edit
-            with doc.transaction(origin=self.origin):
-                if not istart == iend:
-                    del self.ytext[istart:iend]
+        # perform an atomic edit
+        with doc.transaction(origin=self.origin):
+            if not istart == iend:
+                del self.ytext[istart:iend]
 
-                if insert:
-                    self.ytext.insert(istart, insert)
-        finally:
-            self._local_edit_in_progress = False
+            if insert:
+                self.ytext.insert(istart, insert)
 
     def delete(self, start: tuple, end: tuple):
         """
@@ -293,8 +278,6 @@ class YTextArea(TextArea, TextEventParser):
             return
 
         self.replace(insert, start, end)
-        # Notify cursor change after typing
-        self._notify_cursor_change()
 
     def _delete_via_keyboard(self, start: tuple, end: tuple):
         """
@@ -317,42 +300,40 @@ class YTextArea(TextArea, TextEventParser):
             start: the start location of the deletion range.
             end: the end location of the deletion range.
         """
-        # Suppress cursor broadcast during remote edit application (not local edits)
-        is_remote = not self._local_edit_in_progress
-        if is_remote:
-            self._applying_remote_edit = True
-        try:
-            old_gutter_width = self.gutter_width
+        old_gutter_width = self.gutter_width
 
-            # replaces edit.do(self)
-            selection, top, bottom, insert_end = self._edit(text, start, end)
+        # replaces edit.do(self)
+        selection, top, bottom, insert_end = self._edit(text, start, end)
 
-            new_gutter_width = self.gutter_width
+        new_gutter_width = self.gutter_width
 
-            if old_gutter_width != new_gutter_width:
-                self.wrapped_document.wrap(
-                    self.wrap_width,
-                    self.indent_width,
-                )
-            else:
-                self.wrapped_document.wrap_range(
-                    top,
-                    bottom,
-                    insert_end,
-                )
+        if old_gutter_width != new_gutter_width:
+            self.wrapped_document.wrap(
+                self.wrap_width,
+                self.indent_width,
+            )
+        else:
+            self.wrapped_document.wrap_range(
+                top,
+                bottom,
+                insert_end,
+            )
 
-            self._refresh_size()
+        self._refresh_size()
 
-            # replaces edit.after(self)
-            self.selection = selection
-            self.record_cursor_width()
+        # replaces edit.after(self)
+        old_selection = self.selection
 
-            self._build_highlight_map()
-            self.post_message(self.Changed(self))
-        finally:
-            # Re-enable cursor broadcast after remote edit
-            if is_remote:
-                self._applying_remote_edit = False
+        self.selection = selection
+
+        if selection != old_selection:
+            self._set_cursor_state()
+
+        self.record_cursor_width()
+
+        self._build_highlight_map()
+
+        self.post_message(self.Changed(self))
 
     def _edit(
         self, text: str, top: tuple, bottom: tuple
@@ -368,14 +349,14 @@ class YTextArea(TextArea, TextEventParser):
         Returns:
             the updated selection, top and bottom locations as well as the end location of the insertion range.
         """
-
         edit_result = self.document.replace_range(top, bottom, text)
 
-        start, end = self.selection
         insert_end = edit_result.end_location
 
         delete = Selection(top, bottom)
         insert = Selection(top, insert_end)
+
+        start, end = self.selection
 
         if (start in delete) and (end in delete):
             # the current selection has been deleted, i.e. is within the deletion range;
@@ -402,6 +383,7 @@ class YTextArea(TextArea, TextEventParser):
             end = update_location(end, delete, insert, target_end)
 
         selection = Selection(start, end)
+
         return selection, top, bottom, insert_end
 
     def undo(self):
@@ -507,14 +489,57 @@ class YTextArea(TextArea, TextEventParser):
         if center:
             self.scroll_cursor_visible(center)
 
-    def set_cursor_change_callback(self, callback: Callable[[int], None] | None):
+    def _handle_awareness_update(self, topic, data):
         """
-        Set a callback to be called when cursor position changes.
+        Called in changes in the awareness document.
+        """
+        changes, origin = data
 
-        Arguments:
-            callback: function taking the cursor byte position as argument.
+        if origin == "remote":
+            self.refresh()
+
+    def _get_cursor_states(self):
         """
-        self._cursor_change_callback = callback
+        Extract cursor information from the awareness states.
+        """
+        my_id = self.awareness.client_id
+        states = self.awareness.client_states
+
+        cursors = dict()
+
+        for client_id, data in states.items():
+            # skip own id
+            if client_id == my_id:
+                continue
+
+            cursor = data.get("cursor")
+
+            if cursor is not None:
+                istart = cursor["anchor"]
+                iend = cursor["head"]
+
+                start = self.get_location_from_binary_index(istart)
+                end = self.get_location_from_binary_index(iend)
+
+                cursors[client_id] = (start, end)
+
+        return cursors
+
+    def _set_cursor_state(self):
+        """
+        Set cursor information in own awareness state.
+        """
+        start, end = self.selection
+
+        istart = self.get_binary_index_from_location(start)
+        iend = self.get_binary_index_from_location(end)
+
+        cursor = dict(cursor=dict(anchor=istart, head=iend))
+
+        state = self.awareness.get_local_state()
+        state.update(cursor)
+
+        self.awareness.set_local_state(state)
 
     def _get_cursor_color(self, client_id: int) -> str:
         """
@@ -526,82 +551,21 @@ class YTextArea(TextArea, TextEventParser):
         Returns:
             a hex color string.
         """
-        if client_id not in self._cursor_color_map:
-            idx = len(self._cursor_color_map) % len(CURSOR_COLORS)
-            self._cursor_color_map[client_id] = CURSOR_COLORS[idx]
-        return self._cursor_color_map[client_id]
+        states = self.awareness.client_states
+        user = states.get("user", {})
+        color = user.get("color", None)
 
-    def update_remote_cursors(self, cursors: dict[int, int]):
-        """
-        Update the display of remote user cursors.
+        return color or self.default_cursor_color
 
-        Arguments:
-            cursors: mapping of client_id to cursor byte position.
-        """
-        self._remote_cursors = {}
-        for client_id, byte_pos in cursors.items():
-            color = self._get_cursor_color(client_id)
-            self._remote_cursors[client_id] = (byte_pos, color)
-        # NOTE: _line_cache is a Textual private API; no public cache
-        # invalidation exists. May break on Textual upgrades.
-        self._line_cache.clear()
-        self.refresh()
-
-    def _adjust_remote_cursors(self, pos: int, delta: int):
-        """
-        Adjust stored remote cursor positions after an edit.
-
-        Arguments:
-            pos: the byte position where the edit occurred.
-            delta: positive for insertion length, negative for deletion length.
-        """
-        if not self._remote_cursors:
-            return
-
-        adjusted = {}
-        for client_id, (byte_pos, color) in self._remote_cursors.items():
-            if byte_pos >= pos:
-                # Cursor is at or after edit position - adjust it
-                new_pos = max(pos, byte_pos + delta)
-                adjusted[client_id] = (new_pos, color)
-            else:
-                adjusted[client_id] = (byte_pos, color)
-        self._remote_cursors = adjusted
-
-        # NOTE: _line_cache is a Textual private API (see update_remote_cursors)
-        self._line_cache.clear()
-
-    def _notify_cursor_change(self):
-        """
-        Notify the cursor change callback of the current cursor position.
-
-        Only notifies if the position has actually changed to avoid redundant updates.
-        Skips notification during remote edit application to prevent cursor "dragging".
-        """
-        if self._cursor_change_callback is None:
-            return
-
-        # Don't broadcast cursor changes caused by remote edits
-        if self._applying_remote_edit:
-            return
-
-        # Get cursor position (end of selection) as byte position
-        _, end = self.selection
-        byte_pos = self.get_binary_index_from_location(end)
-
-        # Only notify if position changed
-        if byte_pos != self._last_notified_cursor_pos:
-            self._last_notified_cursor_pos = byte_pos
-            self._cursor_change_callback(byte_pos)
-
-    def _watch_selection(self, selection: Selection):
+    def _watch_selection(self, old: Selection, new: Selection):
         """
         Hook called when selection changes.
 
         Arguments:
             selection: the new selection.
         """
-        self._notify_cursor_change()
+        if hasattr(self, "awareness") and self.awareness is not None:
+            self._set_cursor_state()
 
     def render_line(self, y: int) -> Strip:
         """
@@ -615,7 +579,9 @@ class YTextArea(TextArea, TextEventParser):
         """
         strip = super().render_line(y)
 
-        if not self._remote_cursors:
+        cursors = self._get_cursor_states()
+
+        if not cursors:
             return strip
 
         # Screen row accounting for scroll
@@ -623,31 +589,22 @@ class YTextArea(TextArea, TextEventParser):
 
         # Collect cursor positions on this line
         cursor_positions = []
-        doc_text = self.document.text
-        doc_bytes = len(doc_text.encode("utf-8"))
 
-        for client_id, (byte_pos, color) in self._remote_cursors.items():
-            try:
-                # Clamp byte position to valid range
-                byte_pos = max(0, min(byte_pos, doc_bytes))
+        for client_id, (start, _) in cursors.items():
+            color = self._get_cursor_color(client_id)
 
-                # Convert byte position to document location
-                location = self.get_location_from_binary_index(byte_pos)
+            # Convert document location to screen offset (handles wrapping)
+            screen_offset = self.wrapped_document.location_to_offset(start)
 
-                # Convert document location to screen offset (handles wrapping)
-                screen_offset = self.wrapped_document.location_to_offset(location)
+            # run calculations only for the screen row containing the cursor
+            if screen_offset.y == screen_row:
+                # Account for gutter width and scroll
+                gutter_width = self.gutter_width
+                scroll_x = self.scroll_offset.x
+                screen_col = screen_offset.x + gutter_width - scroll_x
 
-                if screen_offset.y == screen_row:
-                    # Account for gutter width and scroll
-                    gutter_width = self.gutter_width
-                    scroll_x = self.scroll_offset.x
-                    screen_col = screen_offset.x + gutter_width - scroll_x
-
-                    if 0 <= screen_col < strip.cell_length:
-                        cursor_positions.append((screen_col, color))
-            except (IndexError, ValueError, AttributeError):
-                # Skip if position is invalid
-                pass
+                if 0 <= screen_col < strip.cell_length:
+                    cursor_positions.append((screen_col, color))
 
         # Apply cursor highlights by dividing and rejoining the strip
         for screen_col, color in cursor_positions:
