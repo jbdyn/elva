@@ -6,52 +6,43 @@ from importlib import import_module as import_
 
 import click
 
-from elva.cli import common_options, file_paths_option_and_argument, pass_config_for
-
-APP_NAME = "chat"
-"""The name of the app."""
+from elva.cli import app, file
 
 
-@click.command(name=APP_NAME)
-@common_options
+@click.command(name="chat")
 @click.option(
-    "--show-self",
+    "--self",
     "-s",
-    "show_self",
     help="Show your own writing in the preview.",
     is_flag=True,
-    default=False,
-    show_default=True,
+    default=None,
 )
-@file_paths_option_and_argument
-@pass_config_for(APP_NAME)
-def cli(config: dict, *args: tuple, **kwargs: dict):
+@file
+@app
+def cli(config: dict) -> None:
     """
     Send messages with real-time preview.
     \f
 
     Arguments:
         config: the merged configuration from CLI parameters and files.
-        args: unused positional arguments.
-        kwargs: parameters passed from the CLI.
     """
     logging = import_("logging")
     _log = import_("elva.log")
-    app = import_("elva.apps.chat.app")
+    app = import_(".app", __package__)
 
     # logging
     _log.LOGGER_NAME.set(__package__)
     log = logging.getLogger(__package__)
 
-    log_path = config.get("log")
-    level_name = config.get("verbose")
+    file = config.get("log", {}).get("file")
+    level = config.get("log", {}).get("level")
 
-    if level_name is not None and log_path is not None:
-        handler = logging.FileHandler(log_path)
+    if level is not None and file is not None:
+        handler = logging.FileHandler(file)
         handler.setFormatter(_log.DefaultFormatter())
         log.addHandler(handler)
 
-        level = logging.getLevelNamesMapping()[level_name]
         log.setLevel(level)
 
     # init and run app

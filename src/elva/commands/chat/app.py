@@ -164,7 +164,7 @@ class History(MessageList, ArrayEventParser, can_focus=False):
         """
         self.messages.unobserve(self._subscription)
 
-    def _on_edit(self, retain: int = 0, delete: int = 0, insert: list = [], txn = None):
+    def _on_edit(self, retain: int = 0, delete: int = 0, insert: list = [], txn=None):
         """
         Hook called by the [`parse`][elva.parser.ArrayEventParser.parse] method.
 
@@ -227,7 +227,9 @@ class Future(MessageList, MapEventParser, can_focus=False):
         """
         self.messages.unobserve(self._subscription)
 
-    def _on_edit(self, delete: dict = {}, update: dict = {}, insert: dict = {}, txn = None):
+    def _on_edit(
+        self, delete: dict = {}, update: dict = {}, insert: dict = {}, txn=None
+    ):
         """
         Hook called by the [`parse`][elva.parser.MapEventParser.parse] method.
 

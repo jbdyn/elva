@@ -14,21 +14,21 @@ FILE_SUFFIX = ".y"
 LOG_SUFFIX = ".log"
 """Default log file suffix."""
 
-ELVA_APP_DIR_NAME = "apps"
-"""Directory name where app namespace packages are searched for."""
+ELVA_COMMAND_DIR_NAME = "commands"
+"""Directory name where command namespace packages are searched for."""
 
 
-def get_app_import_path(app: str) -> str:
+def get_command_import_path(command: str) -> str:
     """
     Get the Python import path for an app.
 
     Arguments:
-        app: the app namespace package name.
+        command: the command namespace package name.
 
     Returns:
-        the import path of an app namespace package.
+        the import path of a command namespace package.
     """
-    return f"elva.{ELVA_APP_DIR_NAME}.{app}"
+    return f"elva.{ELVA_COMMAND_DIR_NAME}.{command}"
 
 
 ELVA_WIDGET_DIR_NAME = "widgets"

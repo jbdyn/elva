@@ -6,27 +6,20 @@ from importlib import import_module as import_
 
 import click
 
-from elva.cli import common_options, file_paths_option_and_argument, pass_config_for
-
-APP_NAME = "editor"
-"""The name of the app."""
+from elva.cli import app, file
 
 
-@click.command(name=APP_NAME)
-@common_options
+@click.command(name="editor")
 @click.option(
-    "--ansi-color/--no-ansi-color",
-    "ansi_color",
+    "--ansi/--textual",
+    "-a/-t",
     is_flag=True,
     help="Use the terminal ANSI colors for the Textual colortheme.",
+    default=None,
 )
-@file_paths_option_and_argument
-@pass_config_for(APP_NAME)
-def cli(
-    config: dict,
-    *args: tuple,
-    **kwargs: dict,
-):
+@file
+@app
+def cli(config: dict) -> None:
     """
     Edit text documents collaboratively in real-time.
     \f
@@ -38,20 +31,21 @@ def cli(
     """
     logging = import_("logging")
     _log = import_("elva.log")
-    app = import_("elva.apps.editor.app")
+    app = import_(".app", __package__)
 
     # logging
     _log.LOGGER_NAME.set(__package__)
     log = logging.getLogger(__package__)
 
-    log_path = config.get("log")
-    level_name = config.get("verbose")
-    if level_name is not None and log_path is not None:
-        handler = logging.FileHandler(log_path)
+    log_config = config.get("log", {})
+    file = log_config.get("file")
+    level = log_config.get("level")
+
+    if level is not None and file is not None:
+        handler = logging.FileHandler(file)
         handler.setFormatter(_log.DefaultFormatter())
         log.addHandler(handler)
 
-        level = logging.getLevelNamesMapping()[level_name]
         log.setLevel(level)
 
     # run app
