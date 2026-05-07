@@ -2,15 +2,18 @@
 CLI definition.
 """
 
-from importlib import import_module as import_
+from logging import FileHandler, getLogger
 
-import click
+from click import command, get_current_context, option
 
 from elva.cli import app, file
+from elva.log import LOGGER_NAME, DefaultFormatter
+
+from .app import UI
 
 
-@click.command(name="editor")
-@click.option(
+@command(name="editor")
+@option(
     "--ansi/--textual",
     "-a/-t",
     is_flag=True,
@@ -29,31 +32,27 @@ def cli(config: dict) -> None:
         args: unused positional arguments.
         kwargs: parameters passed from the CLI.
     """
-    logging = import_("logging")
-    _log = import_("elva.log")
-    app = import_(".app", __package__)
-
     # logging
-    _log.LOGGER_NAME.set(__package__)
-    log = logging.getLogger(__package__)
+    LOGGER_NAME.set(__package__)
+    log = getLogger(__package__)
 
     log_config = config.get("log", {})
     file = log_config.get("file")
     level = log_config.get("level")
 
     if level is not None and file is not None:
-        handler = logging.FileHandler(file)
-        handler.setFormatter(_log.DefaultFormatter())
+        handler = FileHandler(file)
+        handler.setFormatter(DefaultFormatter())
         log.addHandler(handler)
 
         log.setLevel(level)
 
     # run app
-    ui = app.UI(config)
+    ui = UI(config)
     ui.run()
 
     # reflect the app's return code
-    ctx = click.get_current_context()
+    ctx = get_current_context()
     ctx.exit(ui.return_code or 0)
 
 

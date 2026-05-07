@@ -2,9 +2,11 @@
 Module holding store components.
 """
 
-import sqlite3
+from contextlib import closing
+from sqlite3 import connect
+from tomllib import loads
+from typing import Any, Callable
 
-import sqlite_anyio as sqlite
 from anyio import (
     CancelScope,
     Lock,
@@ -13,8 +15,11 @@ from anyio import (
     create_memory_object_stream,
 )
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+from deepmerge import always_merger
 from pycrdt import Doc, Subscription, TransactionEvent
+from sqlite_anyio import connect as aconnect
 from sqlite_anyio.sqlite import Connection, Cursor
+from tomli_w import dumps
 
 from elva.component import Component, create_component_state
 from elva.protocol import EMPTY_UPDATE
@@ -22,99 +27,167 @@ from elva.protocol import EMPTY_UPDATE
 # TODO: check performance
 
 
-def get_metadata(path: str | Path) -> dict:
+deepmerge = always_merger.merge
+"""
+Deepmerge two dictionaries.
+"""
+
+
+def operate(path: Path, fn: Callable, *args: Any, **kwargs: Any) -> Any:
     """
-    Retrieve metadata from a given ELVA SQLite database.
+    Open an SQLite database for performing an operation on it.
+
+    The operation `fn` gets the database connection passed as
+    first positional argument.
 
     Arguments:
-        path: path to the ELVA SQLite database.
-
-    Raises:
-        FileNotFoundError: if there is no file present.
-        sqlite3.OperationalError: if there is no `metadata` table in the database.
+        path: the file path to the SQLite database.
+        fn: the operation to perform.
+        args: positional arguments for the operation.
+        kwargs: keyword arguments for the operation.
 
     Returns:
-        mapping of metadata keys to values.
+        the return value of the operation.
     """
-    if not path.exists():
-        raise FileNotFoundError("no such file or directory")
+    with closing(connect(path)) as db:
+        return fn(db, *args, **kwargs)
 
-    db = sqlite3.connect(path)
+
+def _get_metadata(db: Connection, key: str) -> dict:
+    """
+    Retrieve metadata of a given key from an ELVA SQLite database.
+
+    Arguments:
+        db: the database connection.
+        key: the key to fetch the value of.
+
+    Returns:
+        the metadata associated with the given key.
+    """
     cur = db.cursor()
 
-    try:
-        res = cur.execute("SELECT * FROM metadata")
-    except sqlite3.OperationalError:
-        # no existing `metadata` table, hence no ELVA SQLite database
-        db.close()
-        raise
+    cur.execute("SELECT value FROM metadata WHERE key = ?", [key])
+    res = cur.fetchall()
+
+    if res:
+        # there is just one value, i.e. a single row with a single column
+        res = loads(res[0][0].decode())
     else:
-        res = dict(res.fetchall())
-    finally:
-        db.close()
+        res = dict()
 
     return res
 
 
-def set_metadata(path: str | Path, metadata: dict[str, str], replace: bool = False):
+def get_metadata(path: Path, key: str) -> dict:
     """
-    Set `metadata` in an ELVA SQLite database at `path`.
+    Retrieve metadata of a given key from a given ELVA SQLite database.
 
     Arguments:
         path: path to the ELVA SQLite database.
-        metadata: mapping of metadata keys to values.
-        replace: flag whether to just insert or update keys (`False`) or to delete absent keys as well (`True`).
+        key: the key to fetch the value of.
+
+    Raises:
+        FileNotFoundError: if there is no file present.
+
+    Returns:
+        the metadata associated with the given key.
     """
-    db = sqlite3.connect(path)
+    if not path.exists():
+        raise FileNotFoundError("no such file or directory")
+
+    return operate(path, _get_metadata, key)
+
+
+def _set_metadata(
+    db: Connection,
+    key: str,
+    data: dict,
+    *,
+    replace: bool = False,
+) -> None:
+    """
+    Insert or replace mapped metadata at the given key.
+
+    Arguments:
+        db: the database connection.
+        key: the key associated with the metadata.
+        data: mapping to update or replace with.
+        replace: flag whether to just insert or update keys (`False`) or
+          to delete absent keys as well (`True`).
+    """
     cur = db.cursor()
 
-    try:
-        if replace:
-            cur.execute("DROP TABLE IF EXISTS metadata")
+    res = _get_metadata(db, key)
 
-        # ensure `metadata` table with `key` being primary, i.e. unique
-        cur.execute("CREATE TABLE IF NOT EXISTS metadata(key PRIMARY KEY, value)")
+    # the presence of `key` determines how to insert the new data
+    update = key in res
 
-        for key, value in metadata.items():
-            # check for each item separately
-            try:
-                # insert non-existing `key` with `value`
-                cur.execute(
-                    "INSERT INTO metadata VALUES (?, ?)",
-                    (key, value),
-                )
-            except sqlite3.IntegrityError:  # `UNIQUE` constraint failed
-                # update existing `key` with value
-                cur.execute(
-                    "UPDATE metadata SET value = ? WHERE key = ?",
-                    (value, key),
-                )
+    if replace:
+        res.pop(key, None)
 
-        # commit the changes
-        db.commit()
-    except sqlite3.OperationalError:
-        # something went wrong, so we need to close the database cleanly
-        db.close()
+    # merge data and save serialized to TOML
+    res = deepmerge(res, data)
 
-        # reraise for the application to handle this
-        raise
-    finally:
-        db.close()
+    # convert object to bytes
+    value = dumps(res).encode()
+
+    if update:
+        cur.execute("UPDATE metadata SET value = ? WHERE key = ?", [value, key])
+    else:
+        cur.execute("INSERT INTO metadata VALUES (?, ?)", [key, value])
+
+    # commit the changes
+    db.commit()
 
 
-def get_updates(path):
-    db = sqlite3.connect(path)
+def set_metadata(
+    path: Path,
+    key: str,
+    data: dict,
+    *,
+    replace: bool,
+) -> None:
+    """
+    Insert or replace mapped metadata at the given key.
+
+    Arguments:
+        path: path to the ELVA SQLite database.
+        key: the key associated with the metadata.
+        data: mapping to update or replace with.
+        replace: flag whether to just insert or update keys (`False`) or
+          to delete absent keys as well (`True`).
+    """
+    return operate(path, _set_metadata, key, data, replace=replace)
+
+
+def _get_updates(db: Connection) -> list[tuple]:
+    """
+    Retrieve all Y updates from an ELVA data file.
+
+    Arguments:
+        db: the database connection.
+
+    Returns:
+        a list of single-length tuples with a Y update each.
+    """
     cur = db.cursor()
 
-    try:
-        res = cur.execute("SELECT * FROM yupdates")
-        updates = res.fetchall()
-        return updates
-    except sqlite3.OperationalError:
-        db.close()
-        raise
-    finally:
-        db.close()
+    cur.execute("SELECT * FROM yupdates")
+
+    return cur.fetchall()
+
+
+def get_updates(path: Path) -> list[tuple]:
+    """
+    Retrieve all Y updates from an ELVA data file.
+
+    Arguments:
+        path: the file path to an ELVA data file.
+
+    Returns:
+        a list of single-length tuples with a Y update each.
+    """
+    return operate(path, _get_updates)
 
 
 SQLiteStoreState = create_component_state("SQLiteStoreState")
@@ -170,45 +243,67 @@ class SQLiteStore(Component):
         """The states this component can have."""
         return SQLiteStoreState
 
-    async def get_metadata(self) -> dict:
+    async def get_metadata(self, key: str) -> dict:
         """
         Retrieve metadata from a given ELVA SQLite database.
 
+        Arguments:
+            key: the key to retrieve values for.
+
         Returns:
-            mapping of metadata keys to values.
+            mapping of metadata values.
         """
-        await self._cursor.execute("SELECT * FROM metadata")
+        await self._cursor.execute("SELECT value FROM metadata where key = ?", [key])
         res = await self._cursor.fetchall()
 
-        return dict(res)
+        if res:
+            return loads(res[0][0].decode())
+        else:
+            return {}
 
-    async def set_metadata(self, metadata: dict, replace: bool = False):
+    async def set_metadata(self, key: str, data: dict, *, replace: bool = False):
         """
-        Set given metadata in a given ELVA SQLite database.
+        Set given config in a given ELVA SQLite database.
 
         Arguments:
-            metadata: mapping of metadata keys to values.
+            key: the metadata key to update or replace.
+            data: mapping of value to update or replace with.
             replace: flag whether to just insert or update keys (`False`) or to delete absent keys as well (`True`).
         """
         async with self._lock:
-            if replace:
-                await self._cursor.execute("DELETE FROM metadata")
+            cur = self._cursor
 
-            for key, value in metadata.items():
-                # check for each item separately
-                try:
-                    await self._cursor.execute(
-                        "INSERT INTO metadata VALUES (?, ?)", (key, value)
-                    )
-                except sqlite3.IntegrityError:
-                    await self._cursor.execute(
-                        "UPDATE metadata SET value = ? WHERE key = ?", (value, key)
-                    )
+            # ensure `metadata` table
+            await cur.execute(
+                "CREATE TABLE IF NOT EXISTS metadata (key PRIMARY KEY, value BLOB)"
+            )
+
+            # read TOML serialized value
+            res = await self.get_metadata(key)
+
+            empty = len(res) == 0
+
+            if replace:
+                res.pop(key, None)
+
+            # merge config and save serialized to TOML
+            res = deepmerge(res, data)
+
+            value = dumps(res).encode()
+
+            if empty:
+                await cur.execute(
+                    "INSERT INTO metadata (key, value) VALUES (?, ?)", [key, value]
+                )
+            else:
+                await cur.execute(
+                    "UPDATE metadata SET value = ? WHERE key = ?", [value, key]
+                )
 
             await self._db.commit()
 
         # ensure to update the identifier if given
-        self.identifier = metadata.get("identifier", None) or self.identifier
+        self.identifier = res.get("connect", {}).get("identifier") or self.identifier
 
     async def get_updates(self) -> list:
         """
@@ -241,12 +336,13 @@ class SQLiteStore(Component):
 
     async def _ensure_metadata_table(self):
         """
-        Hook called before the store sets its `RUNNING` state to ensure a table `metadata` exists.
+        Hook called before the store sets its `RUNNING` state to ensure a table `config` exists.
         """
         async with self._lock:
             await self._cursor.execute(
-                "CREATE TABLE IF NOT EXISTS metadata(key PRIMARY KEY, value)"
+                "CREATE TABLE IF NOT EXISTS metadata (key PRIMARY KEY, value BLOB)"
             )
+
             await self._db.commit()
 
         self.log.debug("ensured metadata table")
@@ -255,27 +351,31 @@ class SQLiteStore(Component):
         """
         Hook called before the store sets its `started` signal to ensure the UUID of the YDoc contents is saved.
         """
-        # a specific identifier was not given; try to get it from metadata
-        if self.identifier is None:
-            metadata = await self.get_metadata()
-            self.identifier = metadata.get("identifier", None)
-            return
+        key = "config"
 
-        # a specific identifier was given; update the metadata
         async with self._lock:
-            try:
-                # insert non-existing identifier
-                await self._cursor.execute(
-                    "INSERT INTO metadata VALUES (?, ?)",
-                    ["identifier", self.identifier],
-                )
-            except sqlite3.IntegrityError:  # UNIQUE constraint failed
-                # update existing identifier
-                await self._cursor.execute(
-                    "UPDATE metadata SET value = ? WHERE key = ?",
-                    [self.identifier, "identifier"],
-                )
-            finally:
+            res = await self.get_metadata(key)
+            self.identifier = self.identifier or res.get("connect", {}).get(
+                "identifier"
+            )
+
+            if self.identifier is not None:
+                empty = len(res) == 0
+
+                res.setdefault("connect", {})
+                res["connect"]["identifier"] = self.identifier
+
+                value = dumps(res).encode()
+
+                if empty:
+                    await self._cursor.execute(
+                        "INSERT INTO metadata VALUES (?, ?)", [key, value]
+                    )
+                else:
+                    await self._cursor.execute(
+                        "UPDATE metadata SET value = ? WHERE key = ?", [value, key]
+                    )
+
                 await self._db.commit()
 
         self.log.debug("ensured identifier")
@@ -286,8 +386,9 @@ class SQLiteStore(Component):
         """
         async with self._lock:
             await self._cursor.execute(
-                "CREATE TABLE IF NOT EXISTS yupdates(yupdate BLOB)"
+                "CREATE TABLE IF NOT EXISTS yupdates (yupdate BLOB)"
             )
+
             await self._db.commit()
 
         self.log.debug("ensured update table")
@@ -350,8 +451,9 @@ class SQLiteStore(Component):
         """
         Hook connecting to the data base path.
         """
-        self._db = await sqlite.connect(self.path)
+        self._db = await aconnect(self.path)
         self._cursor = await self._db.cursor()
+
         self.log.debug(f"connected to database {self.path}")
 
     async def _disconnect_database(self):

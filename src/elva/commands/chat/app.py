@@ -328,46 +328,43 @@ class UI(App):
         self.config = c = config
 
         self.client_id = str(self.ydoc.client_id)
-        self.user = c.get("user", self.client_id)
-        self.display_name = c.get("name")
-        self.show_self = c.get("show_self", True)
+        user = c.get("user", {})
+        self.user = user.get("name", self.client_id)
+        self.display_name = user.get("name")
+        self.show_self = c.get("chat", {}).get("self", False)
 
         self.message, self.ytext, message_id = self.get_message("")
 
         # components
         self.components = []
 
-        if c.get("file") is not None:
+        if (file := c.get("chat", {}).get("data")) is not None:
             self.store = SQLiteStore(
                 self.ydoc,
-                c["identifier"],
-                c["file"],
+                c.get("connect", {}).get("identifier", self.ydoc.guid),
+                file,
             )
             self.components.append(self.store)
 
-        if c.get("host") is not None:
+        if c.get("connect", {}).get("host") is not None:
             self.provider = WebsocketProvider(
                 ydoc,
-                c["identifier"],
-                c["host"],
-                port=c.get("port"),
-                safe=c.get("safe", True),
+                c.get("connect", {}).get("identifier", self.ydoc.guid),
+                c.get("connect", {})["host"],
+                port=c.get("connect", {}).get("port"),
+                safe=c.get("connect", {}).get("safe", True),
                 on_exception=self.on_provider_exception,
             )
 
-            data = {}
-            if c.get("name") is not None:
-                data = {"user": {"name": c["name"]}}
-
-            self.provider.awareness.set_local_state(data)
+            self.provider.awareness.set_local_state(user)
 
             self.components.append(self.provider)
 
-        if c.get("render") is not None:
+        if (file := c.get("render", {}).get("file")) is not None:
             self.renderer = TextRenderer(
                 self.history,
-                c["render"],
-                c.get("auto_save", True),
+                file,
+                c.get("render", {}).get("auto", True),
             )
             self.components.append(self.renderer)
 
@@ -575,7 +572,7 @@ class UI(App):
         """
         Action performed on triggering the `save` key binding.
         """
-        if self.config.get("file") is None:
+        if self.config.get("chat", {}).get("data") is None:
             self.run_worker(self.get_and_set_file_paths())
 
     async def get_and_set_file_paths(self, data_file: bool = True):
@@ -594,19 +591,26 @@ class UI(App):
 
         data_file_path = get_data_file_path(path)
         if data_file:
-            self.config["file"] = data_file_path
+            chat = self.config.setdefault("chat", {})
+            chat["data"] = data_file_path
+
             self.store = SQLiteStore(
-                self.ydoc, self.config["identifier"], data_file_path
+                self.ydoc,
+                self.config.get("connect", {}).get("identifier", self.ydoc.guid),
+                data_file_path,
             )
             self.components.append(self.store)
             self.run_worker(self.store.start())
 
-        if self.config.get("render") is None:
+        if self.config.get("render", {}).get("file") is None:
             render_file_path = get_render_file_path(data_file_path)
-            self.config["render"] = render_file_path
+            render = self.config.setdefault("render", {})
+            render["file"] = render_file_path
 
             self.renderer = TextRenderer(
-                self.history, render_file_path, self.config.get("auto_save", True)
+                self.history,
+                render_file_path,
+                self.config.get("render", {}).get("auto", True),
             )
             self.components.append(self.renderer)
             self.run_worker(self.renderer.start())
@@ -618,7 +622,7 @@ class UI(App):
         """
         Action performed on triggering the `render` key binding.
         """
-        if self.config.get("render") is None:
+        if self.config.get("render", {}).get("file") is None:
             self.run_worker(self.get_and_set_file_paths(data_file=False))
         else:
             await self.renderer.write()

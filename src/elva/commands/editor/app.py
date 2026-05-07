@@ -65,13 +65,21 @@ class UI(App):
         """
         self.config = c = config
 
-        ansi_color = c.get("ansi_color", False)
+        editor = c.get("editor", {})
+        ansi_color = editor.get("ansi", False)
         super().__init__(ansi_color=ansi_color)
 
+        # document structure
+        self.ydoc = Doc()
+        self.ytext = Text()
+        self.ydoc["ytext"] = self.ytext
+
         # Build title for header
-        host = c.get("host")
-        port = c.get("port")
-        identifier = c.get("identifier", "")
+        connect = c.get("connect", {})
+        host = connect.get("host")
+        port = connect.get("port")
+        identifier = connect.get("identifier", self.ydoc.guid)
+
         if host and identifier:
             if port:
                 self.title = f"{host}:{port}/{identifier}"
@@ -82,45 +90,37 @@ class UI(App):
         else:
             self.title = "Elva"
 
-        # document structure
-        self.ydoc = Doc()
-        self.ytext = Text()
-        self.ydoc["ytext"] = self.ytext
-
         self.components = list()
 
-        if c.get("host") is not None:
+        if host is not None:
             self.provider = WebsocketProvider(
                 self.ydoc,
-                c["identifier"],
-                c["host"],
-                port=c.get("port"),
-                safe=c.get("safe", True),
+                identifier,
+                host,
+                port=port,
+                safe=connect.get("safe", True),
                 on_exception=self.on_provider_exception,
             )
 
-            data = {}
-            if c.get("name") is not None:
-                data = {"user": {"name": c["name"]}}
-
+            data = c.get("user", {})
             self.provider.awareness.set_local_state(data)
 
             self.components.append(self.provider)
 
-        if c.get("file") is not None:
+        if editor.get("data") is not None:
             self.store = SQLiteStore(
                 self.ydoc,
-                c["identifier"],
-                c["file"],
+                identifier,
+                editor["data"],
             )
             self.components.append(self.store)
 
-        if c.get("render") is not None:
+        if render := c.get("render") is not None:
             self.renderer = TextRenderer(
                 self.ytext,
-                c["render"],
-                c.get("auto_save", False),
-                c.get("timeout", 300),
+                render["file"],
+                render.get("auto", False),
+                render.get("timeout", 300),
             )
             self.components.append(self.renderer)
 
@@ -216,11 +216,13 @@ class UI(App):
 
         text = ""
 
-        render_file_path = c.get("render")
+        render_file_path = c.get("render", {}).get("file")
+
         if render_file_path is not None and render_file_path.exists():
             # we found some content on disk;
             # now check whether this has precedence over the data file
-            data_file_path = c.get("file")
+            data_file_path = c.get("editor", {}).get("data")
+
             if data_file_path is None or not data_file_path.exists():
                 # there is no data file on disk associated with this
                 # file name; we load the content
@@ -276,7 +278,8 @@ class UI(App):
         The language the text document is written in.
         """
         c = self.config
-        file_path = c.get("file")
+        file_path = c.get("editor", {}).get("data")
+
         if file_path is not None and file_path.suffix:
             suffixes = "".join(file_path.suffixes)
             suffix = suffixes.split(FILE_SUFFIX)[0].removeprefix(".")
@@ -298,7 +301,7 @@ class UI(App):
         """
         Action performed on triggering the `save` key binding.
         """
-        if self.config.get("file") is None:
+        if self.config.get("editor", {}).get("data") is None:
             self.run_worker(self.get_and_set_file_paths())
 
     async def get_and_set_file_paths(self, data_file: bool = True):
@@ -316,20 +319,23 @@ class UI(App):
         path = Path(name)
 
         data_file_path = get_data_file_path(path)
+
         if data_file:
-            self.config["file"] = data_file_path
+            editor = self.config.setdefault("editor", {})
+            editor["data"] = data_file_path
             self.store = SQLiteStore(
-                self.ydoc, self.config["identifier"], data_file_path
+                self.ydoc, self.config.get("connect", {}).get("identifier", self.ydoc.guid), data_file_path
             )
             self.components.append(self.store)
             self.run_worker(self.store.start())
 
-        if self.config.get("render") is None:
+        if self.config.get("render", {}).get("file") is None:
             render_file_path = get_render_file_path(data_file_path)
-            self.config["render"] = render_file_path
+            render = self.config.setdefault("render", {})
+            render["file"] = render_file_path
 
             self.renderer = TextRenderer(
-                self.ytext, render_file_path, self.config.get("auto_save", False)
+                self.ytext, render_file_path, render.get("auto", False)
             )
             self.components.append(self.renderer)
             self.run_worker(self.renderer.start())

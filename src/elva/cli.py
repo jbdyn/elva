@@ -2,10 +2,10 @@
 Module providing the main command line interface functionality.
 """
 
-import sqlite3
 from functools import partial, wraps
 from importlib import import_module as import_
 from pathlib import Path
+from sqlite3 import DatabaseError
 from tomllib import TOMLDecodeError, load
 from typing import Any, Callable
 
@@ -31,7 +31,6 @@ from elva.core import (
     get_command_import_path,
 )
 from elva.store import get_metadata
-
 
 deepmerge = always_merger.merge
 """
@@ -162,11 +161,11 @@ def read_data_file(path: str | Path) -> dict:
         parameter mapping stored in the ELVA SQLite database.
     """
     try:
-        return get_metadata(path)
+        return get_metadata(path, "config")
     except (
         FileNotFoundError,
         PermissionError,
-        sqlite3.DatabaseError,
+        DatabaseError,
     ) as exc:
         info(f"Ignoring {path}: {exc}")
 

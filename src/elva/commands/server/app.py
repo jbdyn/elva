@@ -18,14 +18,16 @@ async def main(config: dict):
     Arguments:
         config: configuration parameter mapping.
     """
-    c = config
+    connect = config.get("connect", {})
 
-    host = c.get("host", "0.0.0.0")
-    port = c.get("port") or free_tcp_port()
-    persistent = c.get("persistent", False)
-    path = c.get("path")
-    ldap = c.get("ldap")
-    dummy = c.get("dummy", False)
+    host = connect.get("host", "0.0.0.0")
+    port = connect.get("port") or free_tcp_port()
+
+    server = config.get("server", {})
+    persistent = server.get("persistent", False)
+    directory = server.get("directory")
+    ldap = server.get("ldap")
+    dummy = server.get("dummy", False)
 
     if ldap is not None:
         process_request = LDAPAuth(*ldap).check
@@ -44,7 +46,7 @@ async def main(config: dict):
         host=host,
         port=port,
         persistent=persistent,
-        path=path,
+        path=directory,
         process_request=process_request,
     )
 
