@@ -2,7 +2,7 @@
 App definition.
 """
 
-import anyio
+from anyio import create_task_group
 from websockets.asyncio.server import basic_auth
 
 from elva.auth import DummyAuth, LDAPAuth
@@ -18,16 +18,15 @@ async def main(config: dict):
     Arguments:
         config: configuration parameter mapping.
     """
-    connect = config.get("connect", {})
+    c = config
 
-    host = connect.get("host", "0.0.0.0")
-    port = connect.get("port") or free_tcp_port()
+    host = c.connect.host.get("0.0.0.0")
+    port = c.connect.port.get("port") or free_tcp_port()
 
-    server = config.get("server", {})
-    persistent = server.get("persistent", False)
-    directory = server.get("directory")
-    ldap = server.get("ldap")
-    dummy = server.get("dummy", False)
+    persistent = c.server.persistent.get(False)
+    directory = c.server.directory.get()
+    ldap = c.server.ldap.get()
+    dummy = c.server.dummy.get(False)
 
     if ldap is not None:
         process_request = LDAPAuth(*ldap).check
@@ -50,5 +49,5 @@ async def main(config: dict):
         process_request=process_request,
     )
 
-    async with anyio.create_task_group() as tg:
+    async with create_task_group() as tg:
         await tg.start(server.start)

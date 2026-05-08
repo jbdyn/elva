@@ -2,13 +2,18 @@
 CLI definition.
 """
 
+import sys
 from importlib import import_module as import_
+from logging import INFO, FileHandler, StreamHandler, getLogger
 from pathlib import Path
 
+from anyio import run
 from click import Path as PathParamType
 from click import UsageError, command, option
 
 from elva.cli import app
+from elva.config import Config
+from elva.log import LOGGER_NAME, DefaultFormatter
 
 
 @command(name="server")
@@ -48,7 +53,7 @@ from elva.cli import app
     default=None,
 )
 @app
-def cli(config: dict, *args: tuple, **kwargs: dict) -> None:
+def cli(config: Config, *args: tuple, **kwargs: dict) -> None:
     """
     Run a WebSocket server.
     \f
@@ -58,32 +63,26 @@ def cli(config: dict, *args: tuple, **kwargs: dict) -> None:
         args: unused positional arguments.
         kwargs: parameters passed from the CLI.
     """
-    # imports
-    logging = import_("logging")
-    sys = import_("sys")
-
-    anyio = import_("anyio")
-
-    _log = import_("elva.log")
-    app = import_(".app", __package__)
-
     # logging
-    _log.LOGGER_NAME.set(__package__)
-    log = logging.getLogger(__package__)
+    LOGGER_NAME.set(__package__)
+    log = getLogger(__package__)
 
-    if file := config.get("log", {}).get("file") is not None:
-        log_handler = logging.FileHandler(file)
+    if (file := config.log.file.get()) is not None:
+        handler = FileHandler(file)
     else:
-        log_handler = logging.StreamHandler(sys.stdout)
-    log_handler.setFormatter(_log.DefaultFormatter())
-    log.addHandler(log_handler)
+        handler = StreamHandler(sys.stdout)
+    handler.setFormatter(DefaultFormatter())
+    log.addHandler(handler)
 
-    level = config.get("log", {}).get("level") or logging.INFO
+    level = config.log.level.get(INFO)
     log.setLevel(level)
+
+    # defer heavy app import
+    app = import_(".app", __package__)
 
     # run app, catch file permission errors with an appropriate message
     try:
-        anyio.run(app.main, config)
+        run(app.main, config)
     except PermissionError as exc:
         raise UsageError(exc)
     except KeyboardInterrupt:

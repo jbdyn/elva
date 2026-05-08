@@ -2,14 +2,14 @@
 CLI definition.
 """
 
+from importlib import import_module as import_
 from logging import FileHandler, getLogger
 
 from click import command, get_current_context, option
 
 from elva.cli import app, file
+from elva.config import Config
 from elva.log import LOGGER_NAME, DefaultFormatter
-
-from .app import UI
 
 
 @command(name="chat")
@@ -22,7 +22,7 @@ from .app import UI
 )
 @file
 @app
-def cli(config: dict) -> None:
+def cli(config: Config) -> None:
     """
     Send messages with real-time preview.
     \f
@@ -35,9 +35,8 @@ def cli(config: dict) -> None:
     LOGGER_NAME.set(__package__)
     log = getLogger(__package__)
 
-    clog = config.get("log", {})
-    file = clog.get("file")
-    level = clog.get("level")
+    level = config.log.level.get()
+    file = config.log.file.get()
 
     if level is not None and file is not None:
         handler = FileHandler(file)
@@ -46,8 +45,11 @@ def cli(config: dict) -> None:
 
         log.setLevel(level)
 
+    # defer heavy app import
+    app = import_(".app", __package__)
+
     # init and run app
-    ui = UI(config)
+    ui = app.UI(config)
     ui.run()
 
     # reflect the app's return code

@@ -20,6 +20,7 @@ from textual.widgets import Rule, Static, TabbedContent, TabPane
 from websockets.exceptions import InvalidStatus, WebSocketException
 
 from elva.cli import get_data_file_path, get_render_file_path
+from elva.config import Config
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import WebsocketProvider
 from elva.renderer import TextRenderer
@@ -308,7 +309,7 @@ class UI(App):
 
     def __init__(
         self,
-        config: dict,
+        config: Config,
         *args: tuple,
         **kwargs: dict,
     ):
@@ -328,43 +329,42 @@ class UI(App):
         self.config = c = config
 
         self.client_id = str(self.ydoc.client_id)
-        user = c.get("user", {})
-        self.user = user.get("name", self.client_id)
-        self.display_name = user.get("name")
-        self.show_self = c.get("chat", {}).get("self", False)
+        self.user = c.user.name.get(self.client_id)
+        self.display_name = c.user.display.get(self.client_id)
+        self.show_self = c.chat.self.get(False)
 
         self.message, self.ytext, message_id = self.get_message("")
 
         # components
         self.components = []
 
-        if (file := c.get("chat", {}).get("data")) is not None:
+        if (file := c.chat.data.get()) is not None:
             self.store = SQLiteStore(
                 self.ydoc,
-                c.get("connect", {}).get("identifier", self.ydoc.guid),
+                c.connect.identifier.get(self.ydoc.guid),
                 file,
             )
             self.components.append(self.store)
 
-        if c.get("connect", {}).get("host") is not None:
+        if c.connect.host.get() is not None:
             self.provider = WebsocketProvider(
                 ydoc,
-                c.get("connect", {}).get("identifier", self.ydoc.guid),
-                c.get("connect", {})["host"],
-                port=c.get("connect", {}).get("port"),
-                safe=c.get("connect", {}).get("safe", True),
+                c.connect.identifier.get(self.ydoc.guid),
+                c.connect.host.get(),
+                port=c.connect.port.get(),
+                safe=c.connect.safe.get(True),
                 on_exception=self.on_provider_exception,
             )
 
-            self.provider.awareness.set_local_state(user)
+            self.provider.awareness.set_local_state(c.user.get())
 
             self.components.append(self.provider)
 
-        if (file := c.get("render", {}).get("file")) is not None:
+        if (file := c.render.file.get()) is not None:
             self.renderer = TextRenderer(
                 self.history,
                 file,
-                c.get("render", {}).get("auto", True),
+                c.render.auto.get(True),
             )
             self.components.append(self.renderer)
 
@@ -397,7 +397,7 @@ class UI(App):
         ymap = Map(
             {
                 "text": ytext,
-                "author_display": self.display_name or self.client_id,
+                "author_display": self.display_name,
                 # we assume that self.user is unique in the room, ensured by the server
                 "author": self.user,
                 "id": message_id,
@@ -572,7 +572,10 @@ class UI(App):
         """
         Action performed on triggering the `save` key binding.
         """
-        if self.config.get("chat", {}).get("data") is None:
+        # alias
+        c = self.config
+
+        if c.chat.data.get() is None:
             self.run_worker(self.get_and_set_file_paths())
 
     async def get_and_set_file_paths(self, data_file: bool = True):
@@ -587,30 +590,32 @@ class UI(App):
         if not name:
             return
 
+        # alias
+        c = self.config
+
         path = Path(name)
 
         data_file_path = get_data_file_path(path)
         if data_file:
-            chat = self.config.setdefault("chat", {})
-            chat["data"] = data_file_path
+            c.chat.data.set(data_file_path)
 
             self.store = SQLiteStore(
                 self.ydoc,
-                self.config.get("connect", {}).get("identifier", self.ydoc.guid),
+                c.connect.identifier.get(self.ydoc.guid),
                 data_file_path,
             )
             self.components.append(self.store)
             self.run_worker(self.store.start())
 
-        if self.config.get("render", {}).get("file") is None:
+        if c.render.file.get() is None:
             render_file_path = get_render_file_path(data_file_path)
-            render = self.config.setdefault("render", {})
-            render["file"] = render_file_path
+
+            c.render.file.set(render_file_path)
 
             self.renderer = TextRenderer(
                 self.history,
                 render_file_path,
-                self.config.get("render", {}).get("auto", True),
+                c.render.auto.get(True),
             )
             self.components.append(self.renderer)
             self.run_worker(self.renderer.start())
@@ -622,7 +627,10 @@ class UI(App):
         """
         Action performed on triggering the `render` key binding.
         """
-        if self.config.get("render", {}).get("file") is None:
+        # alias
+        c = self.config
+
+        if c.render.file.get() is None:
             self.run_worker(self.get_and_set_file_paths(data_file=False))
         else:
             await self.renderer.write()
@@ -659,7 +667,7 @@ class UI(App):
         """
         Method pushing the configuration mapping to the active dashboard.
         """
-        config = tuple(self.config.items())
+        config = tuple(self.config.raw.items())
 
         config_view = self.screen.query_one(ConfigView)
         config_view.config = config

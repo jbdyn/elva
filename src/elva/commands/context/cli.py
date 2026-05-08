@@ -4,6 +4,7 @@ from click import command, echo
 from tomli_w import dumps
 
 from elva.cli import app, file
+from elva.config import Config
 
 
 def convert(item: Any) -> Any:
@@ -31,7 +32,7 @@ def convert(item: Any) -> Any:
 @command(name="context")
 @file
 @app
-def cli(config: dict) -> None:
+def cli(config: Config) -> None:
     """
     Print the parameters passed to apps and other subcommands.
     \f
@@ -41,6 +42,6 @@ def cli(config: dict) -> None:
     Arguments:
         config: mapping of merged configuration parameters from various sources.
     """
-    config = convert(config)
+    raw = convert(config.raw)
 
-    echo(dumps(config))
+    echo(dumps(raw))

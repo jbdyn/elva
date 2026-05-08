@@ -23,6 +23,7 @@ from click import Path as PathParamType
 from click.core import ParameterSource
 from deepmerge import always_merger
 
+from elva.config import Config
 from elva.core import (
     APP_NAME,
     CONFIG_NAME,
@@ -547,4 +548,4 @@ def run(returned) -> None:
     typecast(config, ctxs)
 
     # run the command
-    cmd(config)
+    cmd(Config(config))
