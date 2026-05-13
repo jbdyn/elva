@@ -1,6 +1,7 @@
 import sqlite3
 import uuid
 from http import HTTPStatus
+import tomllib
 
 import anyio
 import pytest
@@ -396,8 +397,10 @@ async def test_websocket_server_permanent_persistence(free_tcp_port, tmp_path):
     cur = db.cursor()
     metadata = cur.execute("SELECT * FROM metadata")
     metadata = dict(metadata.fetchall())
-    assert "identifier" in metadata
-    assert metadata["identifier"] == identifier
+    config = tomllib.loads(metadata["config"].decode())
+    connect = config["connect"]
+    assert "identifier" in connect
+    assert connect["identifier"] == identifier
 
     yupdates = cur.execute("SELECT yupdate FROM yupdates")
     yupdates = [update for update, *rest in yupdates.fetchall()]

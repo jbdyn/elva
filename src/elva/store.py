@@ -53,7 +53,19 @@ def operate(path: Path, fn: Callable, *args: Any, **kwargs: Any) -> Any:
         return fn(db, *args, **kwargs)
 
 
-def _get_metadata(db: Connection, key: str) -> dict:
+def _ensure_metadata_table(db: Connection) -> None:
+    """
+    Make sure the `metadata` table exists.
+
+    Arguments:
+        db: the database connection.
+    """
+    cur = db.cursor()
+
+    cur.execute("CREATE TABLE IF NOT EXISTS metadata (key PRIMARY KEY, value BLOB)")
+    db.commit()
+
+def _get_metadata(db: Connection, key: str) -> dict | None:
     """
     Retrieve metadata of a given key from an ELVA SQLite database.
 
@@ -64,6 +76,8 @@ def _get_metadata(db: Connection, key: str) -> dict:
     Returns:
         the metadata associated with the given key.
     """
+    _ensure_metadata_table(db)
+
     cur = db.cursor()
 
     cur.execute("SELECT value FROM metadata WHERE key = ?", [key])
@@ -73,12 +87,12 @@ def _get_metadata(db: Connection, key: str) -> dict:
         # there is just one value, i.e. a single row with a single column
         res = loads(res[0][0].decode())
     else:
-        res = dict()
+        res = None
 
     return res
 
 
-def get_metadata(path: Path, key: str) -> dict:
+def get_metadata(path: Path, key: str) -> dict | None:
     """
     Retrieve metadata of a given key from a given ELVA SQLite database.
 
@@ -120,21 +134,24 @@ def _set_metadata(
     res = _get_metadata(db, key)
 
     # the presence of `key` determines how to insert the new data
-    update = key in res
+    empty = res is None
+
+    if empty:
+        res = dict()
 
     if replace:
-        res.pop(key, None)
-
-    # merge data and save serialized to TOML
-    res = deepmerge(res, data)
+        res = data
+    else:
+        # merge data and save serialized to TOML
+        res = deepmerge(res, data)
 
     # convert object to bytes
     value = dumps(res).encode()
 
-    if update:
-        cur.execute("UPDATE metadata SET value = ? WHERE key = ?", [value, key])
-    else:
+    if empty:
         cur.execute("INSERT INTO metadata VALUES (?, ?)", [key, value])
+    else:
+        cur.execute("UPDATE metadata SET value = ? WHERE key = ?", [value, key])
 
     # commit the changes
     db.commit()
@@ -145,7 +162,7 @@ def set_metadata(
     key: str,
     data: dict,
     *,
-    replace: bool,
+    replace: bool = False,
 ) -> None:
     """
     Insert or replace mapped metadata at the given key.
@@ -243,7 +260,7 @@ class SQLiteStore(Component):
         """The states this component can have."""
         return SQLiteStoreState
 
-    async def get_metadata(self, key: str) -> dict:
+    async def get_metadata(self, key: str) -> dict | None:
         """
         Retrieve metadata from a given ELVA SQLite database.
 
@@ -259,7 +276,7 @@ class SQLiteStore(Component):
         if res:
             return loads(res[0][0].decode())
         else:
-            return {}
+            return None
 
     async def set_metadata(self, key: str, data: dict, *, replace: bool = False):
         """
@@ -281,13 +298,16 @@ class SQLiteStore(Component):
             # read TOML serialized value
             res = await self.get_metadata(key)
 
-            empty = len(res) == 0
+            empty = res is None
+
+            if empty:
+                res = dict()
 
             if replace:
-                res.pop(key, None)
-
-            # merge config and save serialized to TOML
-            res = deepmerge(res, data)
+                res = data
+            else:
+                # merge config and save serialized to TOML
+                res = deepmerge(res, data)
 
             value = dumps(res).encode()
 
@@ -354,7 +374,8 @@ class SQLiteStore(Component):
         key = "config"
 
         async with self._lock:
-            res = await self.get_metadata(key)
+            res = await self.get_metadata(key) or {}
+
             self.identifier = self.identifier or res.get("connect", {}).get(
                 "identifier"
             )

@@ -26,9 +26,10 @@ def tmp_elva_file(tmp_path):
     ),
 )
 async def test_metadata(tmp_elva_file, metadata):
+    KEY = "somekey"
     # module functions for metadata retrieval without a running SQLiteStore component
-    set_metadata(tmp_elva_file, metadata)
-    metadata_read = get_metadata(tmp_elva_file)
+    set_metadata(tmp_elva_file, KEY, metadata)
+    metadata_read = get_metadata(tmp_elva_file, KEY)
     assert metadata_read == metadata
 
     # running with a
@@ -36,43 +37,47 @@ async def test_metadata(tmp_elva_file, metadata):
     identifier = None
     async with SQLiteStore(ydoc, identifier, tmp_elva_file) as store:
         # the metadata we wrote previously to the database can be also retrieved from the component
-        assert await store.get_metadata() == metadata
+        assert await store.get_metadata(KEY) == metadata
 
         # the default API is equivalent to updating a dict
         metadata.update({"quux": 3.14})
-        await store.set_metadata(metadata)
-        assert await store.get_metadata() == metadata
+        await store.set_metadata(KEY, metadata)
+        assert await store.get_metadata(KEY) == metadata
 
         # still just updating existing or inserting new metadata without deletion
         metadata = {"a": "b"}
-        await store.set_metadata(metadata)
-        assert await store.get_metadata() != metadata
+        await store.set_metadata(KEY, metadata)
+        assert await store.get_metadata(KEY) != metadata
 
         # trimming database metadata to the passed keys
-        await store.set_metadata(metadata, replace=True)
-        assert await store.get_metadata() == metadata
+        await store.set_metadata(KEY, metadata, replace=True)
+        assert await store.get_metadata(KEY) == metadata
 
     # reset exactly to the initial metadata
-    set_metadata(tmp_elva_file, metadata_read, replace=True)
-    assert get_metadata(tmp_elva_file) == metadata_read
+    set_metadata(tmp_elva_file, KEY, metadata_read, replace=True)
+    assert get_metadata(tmp_elva_file, KEY) == metadata_read
 
 
 async def test_metadata_with_identifier(tmp_elva_file):
     ydoc = Doc()
+
     identifier = "something-unique"
+    KEY = "config"
+
     async with SQLiteStore(ydoc, identifier, tmp_elva_file) as store:
         # the identifier is present as class attribute
         assert store.identifier == identifier
 
         # when specifying an identifier, it gets directly written to file
-        metadata = await store.get_metadata()
-        assert "identifier" in metadata
-        assert metadata["identifier"] == identifier
+        config = await store.get_metadata(KEY)
+        connect = config["connect"]
+        assert "identifier" in connect
+        assert connect["identifier"] == identifier
 
         # the class attribute gets updated alongside with the metadata key in the file
         identifier = "something-new"
-        new = {"identifier": identifier}
-        await store.set_metadata(new)
+        new = {"connect": {"identifier": identifier}}
+        await store.set_metadata(KEY, new)
         assert store.identifier == identifier
 
 

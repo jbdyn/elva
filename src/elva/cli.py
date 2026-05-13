@@ -82,6 +82,9 @@ def get_data_file_path(path: Path) -> Path:
     Returns:
         the correct and resolved data file path.
     """
+    if path.is_dir():
+        raise ValueError(f"{path} is a directory")
+
     # resolve given path
     path = path.resolve()
 
