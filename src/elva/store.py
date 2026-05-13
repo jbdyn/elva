@@ -65,6 +65,7 @@ def _ensure_metadata_table(db: Connection) -> None:
     cur.execute("CREATE TABLE IF NOT EXISTS metadata (key PRIMARY KEY, value BLOB)")
     db.commit()
 
+
 def _get_metadata(db: Connection, key: str) -> dict | None:
     """
     Retrieve metadata of a given key from an ELVA SQLite database.

@@ -2,33 +2,33 @@
 Module providing the main command line interface functionality.
 """
 
-from functools import partial, wraps
 from importlib import import_module as import_
 from pathlib import Path
 from sqlite3 import DatabaseError
 from tomllib import TOMLDecodeError, load
-from typing import Any, Callable
+from typing import Any
 
 from click import (
     ClickException,
     Context,
     Group,
-    Parameter,
     echo,
     get_app_dir,
+    group,
     option,
-    pass_context,
 )
 from click import Path as PathParamType
+from click import (
+    version_option as version,
+)
 from click.core import ParameterSource
 from deepmerge import always_merger
 
+from elva.cli.integration import context
 from elva.config import Config
 from elva.core import (
     APP_NAME,
     CONFIG_NAME,
-    FILE_SUFFIX,
-    LOG_SUFFIX,
     get_command_import_path,
 )
 from elva.store import get_metadata
@@ -67,113 +67,35 @@ def info(message: str):
     echo(message, err=True)
 
 
-#
-# PATHS
-#
-
-
-def get_data_file_path(path: Path) -> Path:
+def find_default_config_paths() -> list[Path]:
     """
-    Ensure a correct and resolved data file path.
+    CLI default callback finding config files from highest to lowest precedence.
 
-    Arguments:
-        path: the path to the data file.
+    It first searches project files in the current working directory and in its parents,
+    then in the OS-specific app directory.
 
     Returns:
-        the correct and resolved data file path.
+        a list paths to found config files, sorted by descending precedence.
     """
-    if path.is_dir():
-        raise ValueError(f"{path} is a directory")
+    paths = []
 
-    # resolve given path
-    path = path.resolve()
+    # find project config files
+    cwd = Path.cwd()
 
-    # append the ELVA data file suffix if necessary
-    if FILE_SUFFIX not in path.suffixes:
-        path = path.with_name(path.name + FILE_SUFFIX)
+    for path in [cwd] + list(cwd.parents):
+        config = path / CONFIG_NAME
 
-    return path
+        if config.exists():
+            paths.append(config)
 
+    # find user home config file
+    app_dir = Path(get_app_dir(APP_NAME.lower()))
+    app_dir_config = app_dir / CONFIG_NAME
 
-def derive_stem(path: Path, extension: None | str = None) -> Path:
-    """
-    Derive the data file stem.
+    if app_dir_config.exists():
+        paths.append(app_dir_config)
 
-    Arguments:
-        path: the path to the data file.
-        extension: the extension to add to the stem.
-
-    Returns:
-        the data file stem.
-    """
-    # collect all present suffixes
-    suffixes = "".join(path.suffixes)
-
-    # get the data file basename
-    name = path.name.removesuffix(suffixes)
-
-    # strip all suffixes after the data file suffix
-    suffixes = suffixes.split(FILE_SUFFIX, maxsplit=1)[0]
-
-    # translate absent extension definition
-    if extension is None:
-        extension = ""
-
-    # exchange the file name
-    return path.with_name(name + suffixes + extension)
-
-
-def get_render_file_path(path: Path) -> Path:
-    """
-    Derive the render file path from the path to a data file.
-
-    Arguments:
-        path: the path to the data file.
-
-    Returns:
-        the path to the rendered file.
-    """
-    return derive_stem(path)
-
-
-def get_log_file_path(path: Path) -> Path:
-    """
-    Derive the log file path from the path to a data file.
-
-    Arguments:
-        path: the path to the data file.
-
-    Returns:
-        the path to the log file.
-    """
-    return derive_stem(path, extension=LOG_SUFFIX)
-
-
-#
-# CONFIGURATION READING AND MERGING
-#
-
-
-def read_data_file(path: str | Path) -> dict:
-    """
-    Get metadata from file as parameter mapping.
-
-    Arguments:
-        path: path where the ELVA SQLite database is stored.
-
-    Returns:
-        parameter mapping stored in the ELVA SQLite database.
-    """
-    try:
-        return get_metadata(path, "config")
-    except (
-        FileNotFoundError,
-        PermissionError,
-        DatabaseError,
-    ) as exc:
-        info(f"Ignoring {path}: {exc}")
-
-        return dict()
+    return paths
 
 
 def read_config_files(paths: list[Path]) -> tuple[list[Path], dict]:
@@ -226,146 +148,26 @@ def read_config_files(paths: list[Path]) -> tuple[list[Path], dict]:
     return checked_paths, config
 
 
-#
-# CLI CALLBACKS
-#
-
-
-def find_default_config_paths() -> list[Path]:
+def read_data_file(path: str | Path) -> dict:
     """
-    CLI default callback finding config files from highest to lowest precedence.
-
-    It first searches project files in the current working directory and in its parents,
-    then in the OS-specific app directory.
-
-    Returns:
-        a list paths to found config files, sorted by descending precedence.
-    """
-    paths = []
-
-    # find project config files
-    cwd = Path.cwd()
-
-    for path in [cwd] + list(cwd.parents):
-        config = path / CONFIG_NAME
-
-        if config.exists():
-            paths.append(config)
-
-    # find user home config file
-    app_dir = Path(get_app_dir(APP_NAME.lower()))
-    app_dir_config = app_dir / CONFIG_NAME
-
-    if app_dir_config.exists():
-        paths.append(app_dir_config)
-
-    return paths
-
-
-def resolve_data_file_path(ctx: Context, param: Parameter, path: Path) -> None | Path:
-    """
-    CLI callback ensuring a correct and resolved data file path.
+    Get metadata from file as parameter mapping.
 
     Arguments:
-        ctx: the context of the current command invokation.
-        param: the data file CLI parameter object.
-        path: the value of the data file CLI parameter.
+        path: path where the ELVA SQLite database is stored.
 
     Returns:
-        the correct and resolved data file path if given else `None`.
+        parameter mapping stored in the ELVA SQLite database.
     """
-    if path is not None:
-        path = get_data_file_path(path)
+    try:
+        return get_metadata(path, "config")
+    except (
+        FileNotFoundError,
+        PermissionError,
+        DatabaseError,
+    ) as exc:
+        info(f"Ignoring {path}: {exc}")
 
-    return path
-
-
-file = option(
-    "--file",
-    "-f",
-    "data",
-    help="Set the path to the data file.",
-    type=PathParamType(
-        path_type=Path,
-        exists=False,
-        file_okay=True,
-        dir_okay=False,
-        readable=True,
-        writable=True,
-        executable=False,
-        resolve_path=True,
-        allow_dash=False,
-    ),
-    callback=resolve_data_file_path,
-)
-"""A CLI command decorator defining the render options and the data file path."""
-
-
-#
-# CLI API
-#
-
-
-def context(arg: Callable | None = None, /, cmd: bool = False) -> Callable:
-    """
-    Make a function return the subcommand.
-
-    Arguments:
-        arg: the first argument needed for convenient operation with and without paranthesis.
-        cmd: flag whether to include decorated function in the returned mapping.
-
-    Returns:
-        the decorated function.
-    """
-
-    def _context(fn: Callable) -> Callable:
-        """
-        Command decorator for returning the CLI context and the command function in a mapping.
-
-        Arguments:
-            fn: the command to get the CLI context from.
-
-        Returns:
-            the wrapped command.
-        """
-
-        # wrap the command to let `wrapper` look like `cmd`
-        # (same name and docstring) but with altered signature
-        @wraps(fn)
-        @pass_context
-        def __context(ctx: Context, **kwargs: Any) -> Any:
-            """
-            Command wrapper returning the CLI context and, the command function if `cmd` is `True`.
-
-            Arguments:
-                ctx: the context of the current command invokation.
-                kwargs: keyword arguments passed in from the CLI parser.
-
-            Returns:
-                the mapping of the command name to its associated CLI context.
-            """
-            # map the command's name to its context
-            mapping = {
-                ctx.command.name: ctx,
-            }
-
-            if cmd:
-                # include the command function itself
-                mapping["cmd"] = fn
-
-            return mapping
-
-        return __context
-
-    # make decorator work with and without paranthesis
-    if callable(arg):
-        return _context(arg)
-    else:
-        return _context
-
-
-app = partial(context, cmd=True)
-"""App subcommand decorator returning a routine to run in addition to its CLI context."""
+        return dict()
 
 
 def stored(ctxs: dict[str, Context]) -> dict[str, Any]:
@@ -496,6 +298,10 @@ def typecast(config: dict, ctxs: dict[str, Context]) -> None:
     """
     # iterate over read config sections, not over available commands
     for name in config:
+        if name == "config":
+            # the `config` subcommand is integrated into the ELVA CLI
+            continue
+
         # import the command
         command_path = get_command_import_path(name)
 
@@ -552,3 +358,51 @@ def run(returned) -> None:
 
     # run the command
     cmd(Config(config))
+
+
+@group(
+    cls=OrderedGroup,
+    chain=True,
+    result_callback=run,
+)
+@version(prog_name=APP_NAME)
+def elva():
+    """
+    ELVA - A suite of real-time collaboration TUI apps.
+    """
+    return
+
+
+@elva.command
+@option(
+    "--include/--exclude",
+    "-i/-x",
+    "defaults",
+    help="Include or exclude default config file paths.",
+    default=True,
+    show_default=True,
+)
+@option(
+    "--file",
+    "-f",
+    "files",
+    multiple=True,
+    help="Path to config file. Can be given multiple times.",
+    type=PathParamType(
+        path_type=Path,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        writable=False,
+        executable=False,
+        resolve_path=True,
+        allow_dash=False,
+    ),
+)
+@context
+def config() -> None:
+    """
+    Configure config files.
+    """
+    return

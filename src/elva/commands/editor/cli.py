@@ -7,7 +7,7 @@ from logging import FileHandler, getLogger
 
 from click import command, get_current_context, option
 
-from elva.cli import app, file
+from elva.cli import app, data
 from elva.config import Config
 from elva.log import LOGGER_NAME, DefaultFormatter
 
@@ -20,7 +20,7 @@ from elva.log import LOGGER_NAME, DefaultFormatter
     help="Use the terminal ANSI colors for the Textual colortheme.",
     default=None,
 )
-@file
+@data
 @app
 def cli(config: Config) -> None:
     """

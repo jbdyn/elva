@@ -12,10 +12,10 @@ from textual.binding import Binding
 from textual.widgets import Footer, Header
 from websockets.exceptions import InvalidStatus, WebSocketException
 
-from elva.cli import get_data_file_path, get_render_file_path
 from elva.component import Component, ComponentState
 from elva.config import Config
 from elva.core import FILE_SUFFIX
+from elva.files import get_data_file_path, get_render_file_path
 from elva.provider import WebsocketProvider
 from elva.renderer import TextRenderer
 from elva.store import SQLiteStore

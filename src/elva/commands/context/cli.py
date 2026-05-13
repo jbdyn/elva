@@ -3,7 +3,7 @@ from typing import Any
 from click import command, echo
 from tomli_w import dumps
 
-from elva.cli import app, file
+from elva.cli import app, data
 from elva.config import Config
 
 
@@ -30,7 +30,7 @@ def convert(item: Any) -> Any:
 
 
 @command(name="context")
-@file
+@data
 @app
 def cli(config: Config) -> None:
     """

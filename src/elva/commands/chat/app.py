@@ -19,8 +19,8 @@ from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent, TabPane
 from websockets.exceptions import InvalidStatus, WebSocketException
 
-from elva.cli import get_data_file_path, get_render_file_path
 from elva.config import Config
+from elva.files import get_data_file_path, get_render_file_path
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import WebsocketProvider
 from elva.renderer import TextRenderer

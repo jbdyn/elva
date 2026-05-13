@@ -4,7 +4,7 @@ Module defining parsers for change events from Y data types.
 
 from typing import Any
 
-from pycrdt import ArrayEvent, MapEvent, TextEvent, ReadTransaction
+from pycrdt import ArrayEvent, MapEvent, ReadTransaction, TextEvent
 
 
 class IndexBasedEventParser:

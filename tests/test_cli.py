@@ -2,10 +2,10 @@ import os
 from pathlib import Path
 
 import tomli_w
-from click.testing import CliRunner
-from pytest import fixture, mark, raises
+from pytest import mark, raises
 
 import elva.cli as _cli
+import elva.files as _files
 import elva.store as _store
 
 # alias
@@ -17,7 +17,7 @@ def test_empty_data_file_path():
     Empty paths and directories are not allowed.
     """
     with raises(ValueError):
-        _cli.get_data_file_path(Path(""))
+        _files.get_data_file_path(Path(""))
 
 
 @parametrize(
@@ -43,7 +43,7 @@ def test_get_data_file_path(tmp_path: Path, path: str, expected: str):
     assert Path.cwd() == tmp_path
 
     # get the data file path
-    data_file_path = _cli.get_data_file_path(Path(path))
+    data_file_path = _files.get_data_file_path(Path(path))
 
     # the file name and the resolved path are as expected
     assert data_file_path.name == expected
@@ -72,7 +72,7 @@ def test_derive_stem(path, expected):
     path = Path(path)
 
     # the stem is as expected
-    stem = _cli.derive_stem(path)
+    stem = _files.derive_stem(path)
     assert stem.name == expected
 
 
@@ -99,7 +99,7 @@ def test_render_file_path(path, expected):
 
     # the render file name is equal to the stem,
     # as no additional extension is specified
-    render_file_path = _cli.get_render_file_path(path)
+    render_file_path = _files.get_render_file_path(path)
     assert render_file_path.name == expected
 
 
@@ -125,7 +125,7 @@ def test_log_file_path(path, expected):
     path = Path(path)
 
     # the log file name is the stem + _cli.LOG_SUFFIX
-    log_file_path = _cli.get_log_file_path(path)
+    log_file_path = _files.get_log_file_path(path)
     assert log_file_path.name == expected
 
 
@@ -144,7 +144,7 @@ def test_log_file_path(path, expected):
 )
 def test_read_data_file(tmp_path, capfd, metadata, expected, warn):
     # we know this works correctly
-    data_file_path = _cli.get_data_file_path(tmp_path / "test")
+    data_file_path = _files.get_data_file_path(tmp_path / "test")
 
     # write data to file
     if isinstance(metadata, str):
@@ -154,7 +154,7 @@ def test_read_data_file(tmp_path, capfd, metadata, expected, warn):
         _store.set_metadata(data_file_path, "config", metadata)
 
     # the return dict is populated as expected
-    res = _cli.read_data_file(data_file_path)
+    res = _cli.basis.read_data_file(data_file_path)
     assert res == expected
 
     # no output to stdout
@@ -340,7 +340,7 @@ def test_read_config_files(tmp_path, capfd, paths, data, expected, warn):
     expected_paths = [Path(path).resolve() for path in expected_paths]
 
     # get the checked paths and underlying config
-    checked_paths, config = _cli.read_config_files(paths)
+    checked_paths, config = _cli.basis.read_config_files(paths)
 
     # everything is as expected
     assert checked_paths == expected_paths
