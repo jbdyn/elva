@@ -165,7 +165,7 @@ def read_data_file(path: str | Path) -> dict:
         PermissionError,
         DatabaseError,
     ) as exc:
-        info(f"Ignoring {path}: {exc}")
+        info(f"Ignoring config in {path}: {exc}")
 
         return dict()
 
