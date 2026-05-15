@@ -15,16 +15,13 @@ from click import (
     echo,
     get_app_dir,
     group,
-    option,
 )
-from click import Path as PathParamType
 from click import (
     version_option as version,
 )
 from click.core import ParameterSource
 from deepmerge import always_merger
 
-from elva.cli.integration import context
 from elva.config import Config
 from elva.core import (
     APP_NAME,
@@ -298,10 +295,6 @@ def typecast(config: dict, ctxs: dict[str, Context]) -> None:
     """
     # iterate over read config sections, not over available commands
     for name in config:
-        if name == "config":
-            # the `config` subcommand is integrated into the ELVA CLI
-            continue
-
         # import the command
         command_path = get_command_import_path(name)
 
@@ -369,40 +362,5 @@ def run(returned) -> None:
 def elva():
     """
     ELVA - A suite of real-time collaboration TUI apps.
-    """
-    return
-
-
-@elva.command
-@option(
-    "--include/--exclude",
-    "-i/-x",
-    "defaults",
-    help="Include or exclude default config file paths.",
-    default=True,
-    show_default=True,
-)
-@option(
-    "--file",
-    "-f",
-    "files",
-    multiple=True,
-    help="Path to config file. Can be given multiple times.",
-    type=PathParamType(
-        path_type=Path,
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        readable=True,
-        writable=False,
-        executable=False,
-        resolve_path=True,
-        allow_dash=False,
-    ),
-)
-@context
-def config() -> None:
-    """
-    Configure config files.
     """
     return
