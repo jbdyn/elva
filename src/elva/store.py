@@ -2,30 +2,25 @@
 Module holding store components.
 """
 
-from contextlib import closing
-from sqlite3 import connect
+from pathlib import Path
+from sqlite3 import Connection, Cursor, DatabaseError, connect
 from tomllib import loads
-from typing import Any, Callable
+from types import TracebackType
+from typing import Self, Sequence
 
 from anyio import (
     CancelScope,
-    Lock,
-    Path,
     WouldBlock,
     create_memory_object_stream,
 )
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from deepmerge import always_merger
 from pycrdt import Doc, Subscription, TransactionEvent
-from sqlite_anyio import connect as aconnect
-from sqlite_anyio.sqlite import Connection, Cursor
 from tomli_w import dumps
 
 from elva.component import Component, create_component_state
+from elva.config import Config
 from elva.protocol import EMPTY_UPDATE
-
-# TODO: check performance
-
 
 deepmerge = always_merger.merge
 """
@@ -33,317 +28,302 @@ Deepmerge two dictionaries.
 """
 
 
-def operate(path: Path, fn: Callable, *args: Any, **kwargs: Any) -> Any:
+class Metadata:
     """
-    Open an SQLite database for performing an operation on it.
-
-    The operation `fn` gets the database connection passed as
-    first positional argument.
-
-    Arguments:
-        path: the file path to the SQLite database.
-        fn: the operation to perform.
-        args: positional arguments for the operation.
-        kwargs: keyword arguments for the operation.
-
-    Returns:
-        the return value of the operation.
+    Handle ELVA metadata in an SQLite database.
     """
-    with closing(connect(path)) as db:
-        return fn(db, *args, **kwargs)
 
-
-def _ensure_metadata_table(db: Connection) -> None:
+    path: Path
     """
-    Make sure the `metadata` table exists.
-
-    Arguments:
-        db: the database connection.
+    The path to the SQLite database.
     """
-    cur = db.cursor()
 
-    cur.execute("CREATE TABLE IF NOT EXISTS metadata (key PRIMARY KEY, value BLOB)")
-    db.commit()
-
-
-def _get_metadata(db: Connection, key: str) -> dict | None:
+    db: Connection
     """
-    Retrieve metadata of a given key from an ELVA SQLite database.
-
-    Arguments:
-        db: the database connection.
-        key: the key to fetch the value of.
-
-    Returns:
-        the metadata associated with the given key.
+    The SQLite database connection instance.
     """
-    _ensure_metadata_table(db)
 
-    cur = db.cursor()
+    def __init__(self, path: str | Path, fail: bool = False) -> None:
+        """
+        Arguments:
+            path: the path to the SQLite database.
+            fail: raise an error when the path does not exist.
 
-    cur.execute("SELECT value FROM metadata WHERE key = ?", [key])
-    res = cur.fetchall()
+        Raises:
+            FileNotFoundError: if `fail` is `True` and `path` does not exist.
+        """
+        # ensure `Path` object
+        path = Path(path)
 
-    if res:
-        # there is just one value, i.e. a single row with a single column
-        res = loads(res[0][0].decode())
-    else:
-        res = None
+        # check for existence
+        if fail and not path.exists():
+            raise FileNotFoundError(f"{path}: no such file")
 
-    return res
+        # attributes
+        self.path = path
+        self.db = connect(path)
+
+        # ensure `metadata` table
+        self._ensure()
+
+    def __del__(self) -> None:
+        """
+        Destructor.
+
+        Closes the database connection if present.
+        """
+        if hasattr(self, "db"):
+            self.db.close()
+
+    def __enter__(self) -> Self:
+        """
+        Enter a context.
+
+        Returns:
+            itself.
+        """
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """
+        Exit a context.
+
+        Deletes itself.
+
+        Arguments:
+            exc_type: the type of the occured exception.
+            exc_val: the occured exception.
+            exc_tb: the occured exception's traceback.
+        """
+        del self
+
+    def _execute(self, statement: str, parameters: dict | Sequence = tuple()) -> Cursor:
+        """
+        Execute an SQL statement with given parameters.
+
+        Arguments:
+            statement: the SQL statement.
+            parameters: the parameters to use in the SQL statement.
+
+        Returns:
+            the current cursor.
+        """
+        return self.db.cursor().execute(statement, parameters)
+
+    def _commit(self) -> None:
+        """
+        Commit an SQL change.
+        """
+        self.db.commit()
+
+    def _ensure(self) -> None:
+        """
+        Ensure the `metadata` table.
+        """
+        self._execute(
+            "CREATE TABLE IF NOT EXISTS metadata (key PRIMARY KEY, value BLOB)",
+        )
+        self._commit()
+
+    def get(self, key: str) -> bytes | None:
+        """
+        Get the metadata value for a given key.
+
+        Arguments:
+            key: the metadata key.
+
+        Returns:
+            the value corresponding to the given key
+            or `None` if no value exists.
+        """
+        res = self._execute(
+            "SELECT value FROM metadata WHERE key = ?", [key]
+        ).fetchone()
+
+        return res[0] if res else None
+
+    def set(self, key: str, value: bytes) -> None:
+        """
+        Set the metadata value for a given key.
+
+        Arguments:
+            key: the metadata key.
+            value: the metadata value.
+        """
+        try:
+            # try to insert this key
+            self._execute("INSERT INTO metadata VALUES (?, ?)", [key, value])
+        except DatabaseError:
+            # key is already present, update it
+            self._execute("UPDATE metadata SET value = ? WHERE key = ?", [value, key])
+
+        # commit the changes
+        self._commit()
+
+    def get_config(self) -> Config:
+        """
+        Get the value for the `config` metadata key.
+
+        Returns:
+            the saved config.
+        """
+        res = self.get("config")
+        config = loads(res.decode()) if res is not None else {}
+
+        return Config(config)
+
+    def set_config(self, config: Config, *, replace: bool = False) -> None:
+        """
+        Update the config.
+
+        Arguments:
+            config: the config to insert.
+            replace: if `True`, save the config as given, else deepmerge.
+        """
+        new = config.raw if replace else deepmerge(self.get_config().raw, config.raw)
+
+        value = dumps(new).encode()
+
+        self.set("config", value)
 
 
-def get_metadata(path: Path, key: str) -> dict | None:
+class Data(Metadata):
     """
-    Retrieve metadata of a given key from a given ELVA SQLite database.
-
-    Arguments:
-        path: path to the ELVA SQLite database.
-        key: the key to fetch the value of.
-
-    Raises:
-        FileNotFoundError: if there is no file present.
-
-    Returns:
-        the metadata associated with the given key.
+    Handle ELVA metadata and Y-updates in an SQLite database.
     """
-    if not path.exists():
-        raise FileNotFoundError("no such file or directory")
 
-    return operate(path, _get_metadata, key)
-
-
-def _set_metadata(
-    db: Connection,
-    key: str,
-    data: dict,
-    *,
-    replace: bool = False,
-) -> None:
+    path: Path
     """
-    Insert or replace mapped metadata at the given key.
-
-    Arguments:
-        db: the database connection.
-        key: the key associated with the metadata.
-        data: mapping to update or replace with.
-        replace: flag whether to just insert or update keys (`False`) or
-          to delete absent keys as well (`True`).
+    The path to the SQLite database.
     """
-    cur = db.cursor()
 
-    res = _get_metadata(db, key)
-
-    # the presence of `key` determines how to insert the new data
-    empty = res is None
-
-    if empty:
-        res = dict()
-
-    if replace:
-        res = data
-    else:
-        # merge data and save serialized to TOML
-        res = deepmerge(res, data)
-
-    # convert object to bytes
-    value = dumps(res).encode()
-
-    if empty:
-        cur.execute("INSERT INTO metadata VALUES (?, ?)", [key, value])
-    else:
-        cur.execute("UPDATE metadata SET value = ? WHERE key = ?", [value, key])
-
-    # commit the changes
-    db.commit()
-
-
-def set_metadata(
-    path: Path,
-    key: str,
-    data: dict,
-    *,
-    replace: bool = False,
-) -> None:
+    db: Connection
     """
-    Insert or replace mapped metadata at the given key.
-
-    Arguments:
-        path: path to the ELVA SQLite database.
-        key: the key associated with the metadata.
-        data: mapping to update or replace with.
-        replace: flag whether to just insert or update keys (`False`) or
-          to delete absent keys as well (`True`).
+    The SQLite database connection instance.
     """
-    return operate(path, _set_metadata, key, data, replace=replace)
 
+    def _ensure(self) -> None:
+        """
+        Ensure the `metadata` and `yupdates` table.
+        """
+        # ensure `metadata` table
+        super()._ensure()
 
-def _get_updates(db: Connection) -> list[tuple]:
-    """
-    Retrieve all Y updates from an ELVA data file.
+        # ensure `yupdates` table
+        self._execute("CREATE TABLE IF NOT EXISTS yupdates (yupdate BLOB)")
+        self._commit()
 
-    Arguments:
-        db: the database connection.
+    def get_updates(self) -> list[bytes]:
+        """
+        Get stored Y-updates.
 
-    Returns:
-        a list of single-length tuples with a Y update each.
-    """
-    cur = db.cursor()
+        Returns:
+            a list of Y-updates.
+        """
+        res = self._execute("SELECT yupdate FROM yupdates").fetchall()
 
-    cur.execute("SELECT * FROM yupdates")
-
-    return cur.fetchall()
-
-
-def get_updates(path: Path) -> list[tuple]:
-    """
-    Retrieve all Y updates from an ELVA data file.
-
-    Arguments:
-        path: the file path to an ELVA data file.
-
-    Returns:
-        a list of single-length tuples with a Y update each.
-    """
-    return operate(path, _get_updates)
+        return [update for update, *_ in res]
 
 
 SQLiteStoreState = create_component_state("SQLiteStoreState")
 """The states of the [`SQLiteStore`][elva.store.SQLiteStore] component."""
 
 
-class SQLiteStore(Component):
+class SQLiteStore(Data, Component):
     """
     Store component saving Y updates in an ELVA SQLite database.
     """
 
     ydoc: Doc
-    """Instance of the synchronized Y Document."""
+    """
+    Instance of the synchronized Y-document.
+    """
 
     identifier: str
-    """Identifier of the synchronized Y Document."""
+    """
+    identifier of the Y-document.
+    """
 
     path: Path
-    """Path where to store the SQLite database."""
+    """
+    The path to the SQLite database.
+    """
 
-    _lock: Lock
-    """Object for restricted resource management."""
+    db: Connection
+    """
+    The SQLite database connection instance.
+    """
 
     _subscription: Subscription
-    """(while running) Object holding subscription information to changes in [`ydoc`][elva.store.SQLiteStore.ydoc]."""
+    """
+    (while running)
+    Object holding subscription information to changes
+    in [`ydoc`][elva.store.SQLiteStore.ydoc].
+    """
 
-    _stream_send: MemoryObjectSendStream
-    """(while running) Stream to send Y Document updates or flow control objects to."""
+    _send: MemoryObjectSendStream
+    """
+    (while running)
+    Stream to send Y Document updates or flow control objects to.
+    """
 
-    _stream_recv: MemoryObjectReceiveStream
-    """(while running) Stream to receive Y Document updates or flow control objects from."""
+    _receive: MemoryObjectReceiveStream
+    """
+    (while running)
+    Stream to receive Y Document updates or flow control objects from.
+    """
 
-    _db: Connection
-    """(while running) SQLite connection to the database file at [`path`][elva.store.SQLiteStore.path]."""
-
-    _cursor: Cursor
-    """(while running) SQLite cursor operating on the [`_db`][elva.store.SQLiteStore._db] connection."""
-
-    def __init__(self, ydoc: Doc, identifier: str | None, path: str):
+    def __init__(
+        self,
+        ydoc: Doc,
+        identifier: str,
+        path: str | Path,
+        fail: bool = False,
+    ) -> None:
         """
         Arguments:
             ydoc: instance of the synchronized Y Document.
-            identifier: identifier of the synchronized Y Document. If `None`, it is tried to be retrieved from the `metadata` table in the SQLite database.
-            path: path where to store the SQLite database.
+            identifier:
+                identifier of the synchronized Y Document. If `None`, it is
+                tried to be retrieved from the `metadata` table in the
+                SQLite database.
+            path: path to the SQLite database.
+            fail: raise an error when the path does not exist.
         """
         self.ydoc = ydoc
         self.identifier = identifier
-        self.path = Path(path)
-        self._lock = Lock()
+
+        super().__init__(path, fail)
 
     @property
     def states(self) -> SQLiteStoreState:
-        """The states this component can have."""
+        """
+        The states this component can have.
+        """
         return SQLiteStoreState
 
-    async def get_metadata(self, key: str) -> dict | None:
+    @property
+    def buffered(self) -> bool:
         """
-        Retrieve metadata from a given ELVA SQLite database.
+        Check if there are buffered updates.
 
-        Arguments:
-            key: the key to retrieve values for.
+        Raises:
+            RuntimeError: when the component is not running.
 
         Returns:
-            mapping of metadata values.
+            `True` when there are buffered updates, else `False`.
         """
-        await self._cursor.execute("SELECT value FROM metadata where key = ?", [key])
-        res = await self._cursor.fetchall()
-
-        if res:
-            return loads(res[0][0].decode())
+        if hasattr(self, "_receive"):
+            return self._receive.statistics().current_buffer_used > 0
         else:
-            return None
+            raise RuntimeError("store is not running")
 
-    async def set_metadata(self, key: str, data: dict, *, replace: bool = False):
-        """
-        Set given config in a given ELVA SQLite database.
-
-        Arguments:
-            key: the metadata key to update or replace.
-            data: mapping of value to update or replace with.
-            replace: flag whether to just insert or update keys (`False`) or to delete absent keys as well (`True`).
-        """
-        async with self._lock:
-            cur = self._cursor
-
-            # ensure `metadata` table
-            await cur.execute(
-                "CREATE TABLE IF NOT EXISTS metadata (key PRIMARY KEY, value BLOB)"
-            )
-
-            # read TOML serialized value
-            res = await self.get_metadata(key)
-
-            empty = res is None
-
-            if empty:
-                res = dict()
-
-            if replace:
-                res = data
-            else:
-                # merge config and save serialized to TOML
-                res = deepmerge(res, data)
-
-            value = dumps(res).encode()
-
-            if empty:
-                await cur.execute(
-                    "INSERT INTO metadata (key, value) VALUES (?, ?)", [key, value]
-                )
-            else:
-                await cur.execute(
-                    "UPDATE metadata SET value = ? WHERE key = ?", [value, key]
-                )
-
-            await self._db.commit()
-
-        # ensure to update the identifier if given
-        self.identifier = res.get("connect", {}).get("identifier") or self.identifier
-
-    async def get_updates(self) -> list:
-        """
-        Read out the updates saved in the file.
-
-        Returns:
-            a list of updates in the order they were applied to the YDoc.
-        """
-        await self._cursor.execute("SELECT yupdate FROM yupdates")
-        updates = await self._cursor.fetchall()
-
-        if updates:
-            self.log.debug("read updates from file")
-        else:
-            self.log.debug("found no updates in file")
-
-        return updates
-
-    def _on_transaction_event(self, event: TransactionEvent):
+    def _on_transaction_event(self, event: TransactionEvent) -> None:
         """
         Hook called on changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
 
@@ -352,75 +332,38 @@ class SQLiteStore(Component):
         Arguments:
             event: object holding event information of changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
         """
-        self.log.debug(f"transaction event triggered with update {event.update}")
-        self._stream_send.send_nowait(event.update)
+        self.log.debug("received transaction event")
+        self._send.send_nowait(event.update)
 
-    async def _ensure_metadata_table(self):
+    def _write(self, update: bytes) -> None:
         """
-        Hook called before the store sets its `RUNNING` state to ensure a table `config` exists.
+        Hook writing `update` to the `yupdates` ELVA SQLite database table.
+
+        Arguments:
+            update: the update to write to the ELVA SQLite database file.
         """
-        async with self._lock:
-            await self._cursor.execute(
-                "CREATE TABLE IF NOT EXISTS metadata (key PRIMARY KEY, value BLOB)"
-            )
+        self._execute("INSERT INTO yupdates VALUES (?)", [update])
+        self._commit()
 
-            await self._db.commit()
+        self.log.debug(f"wrote update to file {self.path}")
 
-        self.log.debug("ensured metadata table")
-
-    async def _ensure_identifier(self):
+    def _ensure_identifier(self) -> None:
         """
-        Hook called before the store sets its `started` signal to ensure the UUID of the YDoc contents is saved.
+        Ensure the identifier in the metadata.
         """
-        key = "config"
+        if self.identifier is not None:
+            config = self.get_config()
 
-        async with self._lock:
-            res = await self.get_metadata(key) or {}
+            config.connect.identifier.set(self.identifier)
 
-            self.identifier = self.identifier or res.get("connect", {}).get(
-                "identifier"
-            )
+            self.set_config(config)
 
-            if self.identifier is not None:
-                empty = len(res) == 0
-
-                res.setdefault("connect", {})
-                res["connect"]["identifier"] = self.identifier
-
-                value = dumps(res).encode()
-
-                if empty:
-                    await self._cursor.execute(
-                        "INSERT INTO metadata VALUES (?, ?)", [key, value]
-                    )
-                else:
-                    await self._cursor.execute(
-                        "UPDATE metadata SET value = ? WHERE key = ?", [value, key]
-                    )
-
-                await self._db.commit()
-
-        self.log.debug("ensured identifier")
-
-    async def _ensure_update_table(self):
-        """
-        Hook called before the store sets its `started` signal to ensure a table `yupdates` exists.
-        """
-        async with self._lock:
-            await self._cursor.execute(
-                "CREATE TABLE IF NOT EXISTS yupdates (yupdate BLOB)"
-            )
-
-            await self._db.commit()
-
-        self.log.debug("ensured update table")
-
-    async def _merge(self):
+    def _merge(self) -> None:
         """
         Hook to read in and apply updates from the ELVA SQLite database and             write divergent history updates to file.
         """
         # get updates stored in file
-        updates = await self.get_updates()
+        updates = self.get_updates()
 
         # the given ydoc might not be empty;
         # we append the resulting update to file as otherwise
@@ -428,7 +371,7 @@ class SQLiteStore(Component):
         # even when sequential updates from this history branch are applied
         temp = Doc()
 
-        for update, *_ in updates:
+        for update in updates:
             temp.apply_update(update)
 
         # get divergent update before we apply updates from file to `self.ydoc`
@@ -438,7 +381,7 @@ class SQLiteStore(Component):
         del temp
 
         # apply updates
-        for update, *_ in updates:
+        for update in updates:
             self.ydoc.apply_update(update)
 
         if updates:
@@ -448,66 +391,9 @@ class SQLiteStore(Component):
         if divergent_update != EMPTY_UPDATE:
             # shield the write so content won't get lost
             with CancelScope(shield=True):
-                await self._write(divergent_update)
+                self._write(divergent_update)
 
             self.log.debug("appended divergent history update to file")
-
-    async def _initialize(self):
-        """
-        Hook initializing the database, i.e. ensuring the presence of connection and the ELVA SQL database scheme.
-        """
-        # connect
-        await self._connect_database()
-
-        # ensure tables and identifier
-        await self._ensure_metadata_table()
-        await self._ensure_identifier()
-        await self._ensure_update_table()
-
-        # merge updates from file with the contents from the given YDoc
-        await self._merge()
-
-        self.log.info("initialized database")
-
-    async def _connect_database(self):
-        """
-        Hook connecting to the data base path.
-        """
-        self._db = await aconnect(self.path)
-        self._cursor = await self._db.cursor()
-
-        self.log.debug(f"connected to database {self.path}")
-
-    async def _disconnect_database(self):
-        """
-        Hook closing the database connection if initialized.
-        """
-        if hasattr(self, "_db"):
-            await self._db.close()
-            self.log.debug("closed database")
-
-            # cleanup closed resources
-            del self._db
-
-        if hasattr(self, "_cursor"):
-            # cleanup closed resources
-            del self._cursor
-
-    async def _write(self, update: bytes):
-        """
-        Hook writing `update` to the `yupdates` ELVA SQLite database table.
-
-        Arguments:
-            update: the update to write to the ELVA SQLite database file.
-        """
-        async with self._lock:
-            await self._cursor.execute(
-                "INSERT INTO yupdates VALUES (?)",
-                [update],
-            )
-            await self._db.commit()
-
-        self.log.debug(f"wrote update {update} to file {self.path}")
 
     async def before(self):
         """
@@ -516,13 +402,13 @@ class SQLiteStore(Component):
         The ELVA SQLite database is being initialized and read.
         Also, the component subscribes to changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
         """
-        # initialize tables and table content
-        await self._initialize()
+        self._ensure_identifier()
+
+        # merge updates from file with the contents from the given YDoc
+        self._merge()
 
         # initialize streams
-        self._stream_send, self._stream_recv = create_memory_object_stream(
-            max_buffer_size=65536
-        )
+        self._send, self._receive = create_memory_object_stream(max_buffer_size=65536)
         self.log.debug("instantiated buffer")
 
         # start watching for updates on the YDoc
@@ -535,13 +421,13 @@ class SQLiteStore(Component):
         """
         self.log.debug("listening for updates")
 
-        async for update in self._stream_recv:
+        async for update in self._receive:
             self.log.debug(f"received update {update}")
 
             with CancelScope(shield=True):
                 # writing needs to be shielded from cancellation,
                 # but is required to return quickly
-                await self._write(update)
+                self._write(update)
 
     async def cleanup(self):
         """
@@ -553,20 +439,17 @@ class SQLiteStore(Component):
             del self._subscription
             self.log.debug("unsubscribed from YDoc updates")
 
-        if hasattr(self, "_stream_recv"):
+        if hasattr(self, "_receive"):
             # drain the buffer and write the remaining updates to file
             while True:
                 try:
-                    update = self._stream_recv.receive_nowait()
-                    await self._write(update)
+                    update = self._receive.receive_nowait()
+                    self._write(update)
                 except WouldBlock:
                     break
 
             self.log.debug("drained buffer")
 
             # remove buffer
-            del self._stream_send, self._stream_recv
+            del self._send, self._receive
             self.log.debug("deleted buffer")
-
-        # now we can close the file
-        await self._disconnect_database()

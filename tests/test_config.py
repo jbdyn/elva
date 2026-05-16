@@ -22,6 +22,132 @@ MAP = {
 """Test mapping."""
 
 
+@parametrize(
+    "mapping",
+    (
+        {},
+        MAP,
+    ),
+)
+def test_str(mapping):
+    """
+    The string conversion is the string conversion of the config data.
+
+    Arguments:
+        mapping: the mapping to convert to a string.
+    """
+    assert str(mapping) == str(Config(mapping))
+
+
+@parametrize(
+    "mapping",
+    (
+        {},
+        MAP,
+    ),
+)
+def test_repr(mapping):
+    """
+    Evaluating the string representation with `eval` gives an equal `Config`.
+
+    Arguments:
+        mapping: the mapping to get a config representation from.
+    """
+    config = Config(mapping)
+    assert eval(repr(config)) == config
+
+
+@parametrize(
+    "mapping",
+    (
+        {},
+        MAP,
+    ),
+)
+def test_len(mapping):
+    """
+    The length of a config is the length of the config data.
+
+    Arguments:
+        mapping: the mapping to compare the length of.
+    """
+    assert len(Config(mapping)) == len(mapping)
+
+
+@parametrize(
+    "mapping",
+    (
+        {},
+        MAP,
+    ),
+)
+def test_eq(mapping):
+    """
+    `Config`s are equal when their config data are equal.
+
+    Arguments:
+        mapping: the mapping to compare for equality.
+    """
+    assert Config(mapping) == Config(mapping)
+
+
+@parametrize(
+    ("left", "right"),
+    (
+        ({}, MAP),
+        (MAP, {}),
+        ({"foo": "bar"}, {"baz": 42}),
+    ),
+)
+def test_ne(left, right):
+    """
+    `Config`s are not equal when their config data are not equal.
+
+    Arguments:
+        left: the left mapping to compare for unquality.
+        right: the right mapping to compare for unquality.
+    """
+    assert Config(left) != Config(right)
+
+
+@parametrize(
+    ("mapping", "key"),
+    (
+        ({"foo": "bar"}, "foo"),
+        ({"x": "y"}, "x"),
+    ),
+)
+def test_contains(mapping, key):
+    """
+    A key is present when the key is present in the config data.
+
+    Arguments:
+        mapping: the mapping to test for.
+        key: the key to check for presence.
+    """
+    assert key in mapping
+    assert key in Config(mapping)
+
+
+@parametrize(
+    ("mapping", "key"),
+    (
+        ({}, "foo"),
+        ({"baz": "quux"}, "foo"),
+    ),
+)
+def test_not_contains(mapping, key):
+    """
+    A key is not present when the key is not present in the config data.
+
+    Arguments:
+        mapping: the mapping to test for.
+        key: the key to check for absence.
+    """
+    assert key not in mapping
+    assert key not in Config(mapping)
+
+
 @contextmanager
 def config(mapping: Mapping = MAP) -> Generator[Config, None, None]:
     """
@@ -79,9 +205,25 @@ def test_get(query: Callable, expected: Any) -> None:
         assert c.raw == MAP
 
 
+def test_set_no_keys_no_mapping():
+    """
+    Setting the root config data can only be done with a mapping.
+    """
+    with config() as c, raises(TypeError):
+        c.set("not a mapping")
+
+
 @parametrize(
     ("operation", "expected"),
     (
+        #
+        # no keys chained
+        #
+        (
+            # new value, i.e. root, needs to be a mapping
+            lambda c: c.set({"bli": "bla"}),
+            lambda m: (m["bli"] == "bla" and len(m) == 1),
+        ),
         #
         # existing
         #
@@ -135,6 +277,37 @@ def test_set(operation: Callable, expected: Callable) -> None:
 
         # perform check
         assert expected(c.raw)
+
+
+@parametrize(
+    ("operation", "expected"),
+    (
+        #
+        # no keys
+        #
+        (lambda c: c.set("new", default=True), MAP),
+        #
+        # present keys
+        #
+        (lambda c: c.foo.bar.baz.set("new", default=True), MAP["foo"]["bar"]["baz"]),
+        (lambda c: c.foo.x.set("new", default=True), MAP["foo"]["x"]),
+        #
+        # absent keys
+        #
+        (lambda c: c.quux.set("new", default=True), "new"),
+        (lambda c: c.foo.z.set("new", default=True), "new"),
+    ),
+)
+def test_set_default(operation, expected):
+    """
+    When `default` is `True`, return a present key and set an absent key.
+
+    Arguments:
+        operation: the operation to perform on the config instance.
+        expected: the expected result of the operation.
+    """
+    with config() as c:
+        assert operation(c) == expected
 
 
 @parametrize(
@@ -195,6 +368,9 @@ def test_read_only():
         with raises(TypeError):
             c.a.b.c.set("something")
 
+        # the chain got reset despite the error
+        assert len(c.chain) == 0
+
 
 @parametrize(
     "operation",
@@ -207,7 +383,8 @@ def test_read_only():
 )
 def test_overwrite_protection(operation: Callable) -> None:
     """
-    Disabling overwriting raises exceptions when key with non-mapping value would get overwritten.
+    Disabling overwriting raises exceptions when key with non-mapping value
+    would get overwritten.
 
     Arguments:
         operation: the operation to perform on the config instance.

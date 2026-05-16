@@ -28,7 +28,7 @@ from elva.core import (
     CONFIG_NAME,
     get_command_import_path,
 )
-from elva.store import get_metadata
+from elva.store import Metadata
 
 deepmerge = always_merger.merge
 """
@@ -156,7 +156,9 @@ def read_data_file(path: str | Path) -> dict:
         parameter mapping stored in the ELVA SQLite database.
     """
     try:
-        return get_metadata(path, "config")
+        with Metadata(path, fail=True) as metadata:
+            config = metadata.get_config()
+            return config.raw
     except (
         FileNotFoundError,
         PermissionError,
