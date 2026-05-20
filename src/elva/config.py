@@ -1,5 +1,5 @@
-from collections.abc import Mapping, MutableMapping
-from typing import Any, Literal, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
+from typing import Any, Literal
 
 from deepmerge import always_merger
 
@@ -248,3 +248,44 @@ class Config(dict):
 
         # enable chaining and ad-hoc referencing
         return self
+
+
+def clean(mapping: MutableMapping) -> None:
+    """
+    Clean a config mapping from empty containers and `None` values.
+
+    Nested mappings are clean recursively.
+
+    Arguments:
+        mapping: the mapping to clean.
+    """
+    for key, value in mapping.copy().items():
+        if value is None or (type(value) in (list, tuple, dict) and len(value) == 0):
+            mapping.pop(key)
+        elif isinstance(value, dict):
+            clean(value)
+
+            if len(value) == 0:
+                mapping.pop(key)
+
+
+def convert(item: Any) -> Any:
+    """
+    Make an item TOML-serializable.
+
+    Containers are converted recursively.
+
+    Arguments:
+        item: the item to convert.
+
+    Returns:
+        the TOML-serializable conversion of the given item.
+    """
+    if isinstance(item, Sequence) and not isinstance(item, str):
+        return list(convert(i) for i in item)
+    elif isinstance(item, Mapping):
+        return dict((key, convert(i)) for key, i in item.items())
+    elif type(item) not in (str, bool, int, float):
+        return str(item)
+    else:
+        return item

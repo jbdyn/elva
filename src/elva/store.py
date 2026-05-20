@@ -14,18 +14,12 @@ from anyio import (
     create_memory_object_stream,
 )
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from deepmerge import always_merger
 from pycrdt import Doc, Subscription, TransactionEvent
 from tomli_w import dumps
 
 from elva.component import Component, create_component_state
-from elva.config import Config
+from elva.config import Config, clean, convert
 from elva.protocol import EMPTY_UPDATE
-
-deepmerge = always_merger.merge
-"""
-Deepmerge two dictionaries.
-"""
 
 
 class Metadata:
@@ -187,7 +181,9 @@ class Metadata:
         """
         new = config if replace else self.get_config().merge(config)
 
-        value = dumps(new).encode()
+        clean(new)
+
+        value = dumps(convert(new)).encode()
 
         self.set("config", value)
 

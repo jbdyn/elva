@@ -6,7 +6,7 @@ from importlib import import_module as import_
 from pathlib import Path
 from sqlite3 import DatabaseError
 from tomllib import TOMLDecodeError, load
-from typing import Any
+from typing import Any, Callable
 
 from click import (
     ClickException,
@@ -20,20 +20,14 @@ from click import (
     version_option as version,
 )
 from click.core import ParameterSource
-from deepmerge import always_merger
 
-from elva.config import Config
+from elva.config import Config, clean
 from elva.core import (
     APP_NAME,
     CONFIG_NAME,
     get_command_import_path,
 )
 from elva.store import Metadata
-
-deepmerge = always_merger.merge
-"""
-Deepmerge two dictionaries.
-"""
 
 
 class OrderedGroup(Group):
@@ -54,7 +48,7 @@ class OrderedGroup(Group):
         return list(self.commands)
 
 
-def info(message: str):
+def info(message: str) -> None:
     """
     Emit an info to stderr.
 
@@ -95,7 +89,7 @@ def find_default_config_paths() -> list[Path]:
     return paths
 
 
-def read_config_files(paths: list[Path]) -> tuple[list[Path], dict]:
+def read_config_files(paths: list[Path]) -> tuple[list[Path], Config]:
     """
     Get parameters defined in configuration files.
 
@@ -106,7 +100,7 @@ def read_config_files(paths: list[Path]) -> tuple[list[Path], dict]:
         parameter mapping from all configuration files.
         The value from the highest priority configuration overwrites all other parameter values.
     """
-    config = dict()
+    config = Config()
 
     # filter only first occurences while maintaining order with respect to highest precedence
     unique_paths = list()
@@ -135,7 +129,7 @@ def read_config_files(paths: list[Path]) -> tuple[list[Path], dict]:
             info(f"Ignoring {path}: {exc}")
         else:
             # perform a deep merge to merge also app tables
-            config = deepmerge(config, data)
+            config.merge(data)
 
             # add this path to our list of successful checks
             checked_paths.append(path)
@@ -145,7 +139,7 @@ def read_config_files(paths: list[Path]) -> tuple[list[Path], dict]:
     return checked_paths, config
 
 
-def read_data_file(path: str | Path) -> dict:
+def read_data_file(path: str | Path) -> Config:
     """
     Get metadata from file as parameter mapping.
 
@@ -165,7 +159,7 @@ def read_data_file(path: str | Path) -> dict:
     ) as exc:
         info(f"Ignoring config in {path}: {exc}")
 
-        return dict()
+        return Config()
 
 
 def stored(ctxs: dict[str, Context]) -> dict[str, Any]:
@@ -192,8 +186,7 @@ def stored(ctxs: dict[str, Context]) -> dict[str, Any]:
 
     out["config"] = config
 
-    # include config paths
-    out["config"]["files"] = paths
+    out["config.files"] = paths
 
     return out
 
@@ -224,7 +217,7 @@ def split(ctx: Context) -> tuple[dict, dict]:
     return default, given
 
 
-def merge(config: dict[str, Any], ctxs: dict[str, Context]) -> None:
+def merge(config: Config, ctxs: dict[str, Context]) -> None:
     """
     Merge a config mapping with a mapping of contexts.
 
@@ -241,16 +234,15 @@ def merge(config: dict[str, Any], ctxs: dict[str, Context]) -> None:
         config: the config mapping.
         ctxs: the mapping of contexts.
     """
-    default = dict()
-    data = dict()
-    given = dict()
+    default = Config()
+    data = Config()
+    given = Config()
 
     # collect mappings
     for name, ctx in ctxs.items():
         # read data files
         if (file := ctx.params.get("data")) is not None:
-            _data = read_data_file(file)
-            data.update(_data)
+            data.merge(read_data_file(file))
 
         # split in default and given CLI parameters
         _default, _given = split(ctx)
@@ -258,35 +250,16 @@ def merge(config: dict[str, Any], ctxs: dict[str, Context]) -> None:
         default[name] = _default
         given[name] = _given
 
-    out = dict()
+    out = Config()
 
     # deepmerge mappings
     for mapping in (default, config, data, given):
-        out = deepmerge(out, mapping)
+        out.merge(mapping)
 
-    return out
-
-
-def clean(mapping: dict) -> None:
-    """
-    Clean a config mapping from empty containers and `None` values.
-
-    Nested mappings are clean recursively.
-
-    Arguments:
-        mapping: the mapping to clean.
-    """
-    for key, value in mapping.copy().items():
-        if value is None or (type(value) in (list, tuple, dict) and len(value) == 0):
-            mapping.pop(key)
-        elif isinstance(value, dict):
-            clean(value)
-
-            if len(value) == 0:
-                mapping.pop(key)
+    config.update(out)
 
 
-def typecast(config: dict, ctxs: dict[str, Context]) -> None:
+def typecast(config: Config, ctxs: dict[str, Context]) -> None:
     """
     Cast read config file values to their CLI parameter types.
 
@@ -309,7 +282,7 @@ def typecast(config: dict, ctxs: dict[str, Context]) -> None:
         command = module.cli
 
         # get or create a context for typecasting
-        ctx = ctxs.get(name, Context(command))
+        ctx = ctxs.get(name) or Context(command)
 
         for param in command.params:
             # this parameter might not be in the read config files
@@ -319,7 +292,7 @@ def typecast(config: dict, ctxs: dict[str, Context]) -> None:
                 )
 
 
-def run(returned) -> None:
+def run(returned: list[dict[str, Context | Callable]]) -> None:
     """
     Routine executed at the end of a chain of group commands.
 
@@ -342,16 +315,16 @@ def run(returned) -> None:
     config = stored(ctxs)
 
     # merge parameters from contexts with file configs
-    config = merge(config, ctxs)
-
-    # remove empty and `None` values
-    clean(config)
+    merge(config, ctxs)
 
     # convert config file values to their CLI types
     typecast(config, ctxs)
 
+    # remove empty and `None` values
+    clean(config)
+
     # run the command
-    cmd(Config(config))
+    cmd(config)
 
 
 @group(
