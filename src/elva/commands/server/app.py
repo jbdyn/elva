@@ -21,10 +21,9 @@ async def main(config: Config):
     """
     c = config
 
-    host = c.get("connect.host", "0.0.0.0")
-    port = c.get("connect.port") or free_tcp_port()
-
-    persistent = c.get("server.persistent", False)
+    host = c.get("server.host", "0.0.0.0")
+    port = c.get("server.port") or free_tcp_port()
+    save = c.get("server.save", False)
     directory = c.get("server.directory")
     ldap = c.get("server.ldap")
     dummy = c.get("server.dummy", False)
@@ -45,7 +44,7 @@ async def main(config: Config):
     server = WebsocketServer(
         host=host,
         port=port,
-        persistent=persistent,
+        persistent=save,
         path=directory,
         process_request=process_request,
     )

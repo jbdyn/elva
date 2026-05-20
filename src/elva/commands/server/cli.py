@@ -8,8 +8,8 @@ from logging import INFO, FileHandler, StreamHandler, getLogger
 from pathlib import Path
 
 from anyio import run
+from click import INT, UsageError, command, option
 from click import Path as PathParamType
-from click import UsageError, command, option
 
 from elva.cli import app
 from elva.config import Config
@@ -18,15 +18,28 @@ from elva.log import LOGGER_NAME, DefaultFormatter
 
 @command(name="server")
 @option(
-    "--persistent",
+    "--host",
+    "-h",
+    metavar="HOST",
+    help="The interface to bind to.",
+)
+@option(
+    "--port",
     "-p",
+    help="The port to listen on.",
+    type=INT,
+)
+@option(
+    "--save",
+    "-s",
     is_flag=True,
+    help="Save changes in local documents.",
     default=None,
 )
 @option(
     "--directory",
     "-d",
-    help="Path to stored data files.",
+    help="Path to stored documents.",
     type=PathParamType(
         path_type=Path,
         exists=False,
@@ -53,15 +66,13 @@ from elva.log import LOGGER_NAME, DefaultFormatter
     default=None,
 )
 @app
-def cli(config: Config, *args: tuple, **kwargs: dict) -> None:
+def cli(config: Config) -> None:
     """
     Run a WebSocket server.
     \f
 
     Arguments:
         config: the merged configuration parameters from CLI and files.
-        args: unused positional arguments.
-        kwargs: parameters passed from the CLI.
     """
     # logging
     LOGGER_NAME.set(__package__)
