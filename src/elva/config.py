@@ -1,212 +1,247 @@
 from collections.abc import Mapping, MutableMapping
-from typing import Any, Self
+from typing import Any, Literal, Sequence
+
+from deepmerge import always_merger
+
+deepmerge = always_merger.merge
+"""Deepmerge two mappings."""
 
 
-class Config:
+class Undefined:
     """
-    Alternative API for mappings with attribute access rather than subscription.
+    Object representing an undefined value.
     """
 
-    raw: Mapping | MutableMapping
-    """The underlying mapping providing the config data."""
-
-    chain: list
-    """The chained attributes used as the data query."""
-
-    def __init__(self, raw: Mapping | MutableMapping) -> None:
+    def __repr__(self) -> str:
         """
-        Arguments:
-            raw: the underlying config data.
-        """
-        if not isinstance(raw, Mapping):
-            raise TypeError("provided config data is not a mapping")
+        Get the string representation.
 
-        self.raw = raw
-        self.chain = []
+        Returns:
+            the string representation.
+        """
+        return "<undefined>"
+
+
+class Config(dict):
+    """
+    Dictionary with config path lookup.
+    """
 
     def __str__(self) -> str:
         """
-        Get the string value of this config.
+        Get the string value.
 
         Returns:
             the string value of the config data.
         """
-        return str(self.raw)
+        return super().__repr__()
 
     def __repr__(self) -> str:
         """
-        Get the string representation of this config.
+        Get the string representation.
 
         Returns:
-            the string representation of the config data.
+            the string representation of this config.
         """
-        return f"{self.__class__.__name__}({repr(self.raw)})"
+        return f"{self.__class__.__name__}({super().__repr__()})"
 
-    def __len__(self) -> int:
+    @property
+    def delimiter(self) -> Literal["."]:
         """
-        Get the length of this config.
-
-        Returns:
-            the number of keys in the config data.
+        The delimiter of keys in a config path.
         """
-        return len(self.raw)
+        return "."
 
-    def __eq__(self, other: Self) -> bool:
+    def path(self, keys: Sequence[str]) -> str:
         """
-        Check whether this config is equal to another.
-
-        Returns:
-            `True` if the config data is equal to the other config data,
-            else `False`.
-        """
-        return self.raw == other.raw
-
-    def __ne__(self, other: Self) -> bool:
-        """
-        Check whether this config is not equal to another.
-
-        Returns:
-            `True` if the config data are not equal to the other config data,
-            else `False`.
-        """
-        return self.raw != other.raw
-
-    def __contains__(self, key: Any) -> bool:
-        """
-        Check whether a key is present in this config.
-
-        Returns:
-            `True` if the key is present in the config data, else `False`.
-        """
-        return key in self.raw
-
-    def __getattr__(self, attr: str) -> Self:
-        """
-        Called on attributes not already present on the object.
-
-        It appends the attribute to the query chain.
+        Get the config path for a sequence of keys.
 
         Arguments:
-            attr: the attribute given.
+            keys: the keys to join to a config path.
 
         Returns:
-            the config object itself.
+            the config path.
         """
-        self.chain.append(attr)
+        return self.delimiter.join(keys)
 
-        return self
-
-    def reset(self) -> Self:
+    def get(
+        self,
+        path: str,
+        default: Any = None,
+        strict: bool = False,
+    ) -> Any:
         """
-        Reset the config query chain.
-
-        Returns:
-            the config object itself.
-        """
-        self.chain.clear()
-
-        return self
-
-    def get(self, default: Any = None) -> Any:
-        """
-        Retrieve a config value or get a default.
+        Get the value to the given path.
 
         Arguments:
-            default: the value to return when no config value was found.
-
-        Returns:
-            the config value if present or the given default otherwise.
-        """
-        # alias
-        current = self.raw
-        chain = self.chain
-
-        # check whether no attributes are present
-        if not chain:
-            return current
-
-        # split and reset attribute chain
-        *path, key = chain
-
-        self.reset()
-
-        # query mappings
-        for attr in path:
-            current = current.get(attr)
-
-            if not isinstance(current, Mapping):
-                # ensure mapping
-                current = {}
-
-                break
-
-        # query the innermost mapping for the `key`
-        return current.get(key, default)
-
-    def set(self, value: Any, *, overwrite: bool = True, default: bool = False) -> Any:
-        """
-        Set a config value.
-
-        Missing mappings are created automatically.
-
-        Arguments:
-            value: the value to set for the given query chain.
-            overwrite:
-                if `True`, automatically overwrite intermediate keys with value
-                not being mappings, else raise an `AttributeError`.
-            default:
-                if `True`, return the value of a present key or set an absent
-                key to the given value. Compare to `dict.setdefault`.
+            path: the config path to query.
+            default: the value to return when the given path is absent.
+            strict: if `True`, raise a `KeyError` on lookup errors.
 
         Raises:
-            TypeError: when the config data are not mutable.
-            AttributeError: when no keys where chained.
+            KeyError: if `strict` is `True` and a lookup error occurred.
 
         Returns:
-            None or the present key's value if `default` is `True`.
+            the value of a present path or the default when the path is absent.
         """
-        # alias
-        current = self.raw
-        chain = self.chain
+        items = path.split(self.delimiter)
+        nitems = len(items)
 
-        # checks
-        if not isinstance(current, MutableMapping):
-            self.reset()
+        # start on superclass
+        out = super()
 
-            raise TypeError("provided config data is not mutable")
-
-        if not chain:
-            if default:
-                return current
-            else:
-                if not isinstance(value, Mapping):
-                    raise TypeError("given value is not a mapping")
+        try:
+            for i, item in enumerate(items):
+                if strict:
+                    out = out.__getitem__(item)
                 else:
-                    current.clear()
-                    current.update(value)
-                    return
-
-        # split and reset attribute chain
-        *path, key = chain
-
-        self.reset()
-
-        # query mappings
-        for attr in path:
-            out = current.setdefault(attr, {})
-
-            if not isinstance(out, Mapping):
-                if overwrite:
-                    current[attr] = out = {}
-                else:
-                    raise AttributeError(
-                        f"would overwrite mapping under config key {attr}"
+                    out = out.get(
+                        item,
+                        {} if i != nitems - 1 else default,
                     )
+
+            return out
+        except (KeyError, AttributeError, TypeError):
+            if strict:
+                raise KeyError(item) from None
+            else:
+                return default
+
+    def set(
+        self,
+        path: str,
+        value: Any,
+        overwrite: bool = False,
+        default: bool = False,
+    ) -> Any:
+        """
+        Set a path to a given value.
+
+        Arguments:
+            path: the config path.
+            value: the value to associate with the path.
+            overwrite:
+                if `True`, overwrite intermediate non-mappings to mappings,
+                else raise a `KeyError`.
+            default:
+                if `True`, return the value of a present path or set it to the
+                given value, else just set the value.
+
+        Raises:
+            KeyError:
+                if `overwrite` is `True` and an intermediate non-mapping would
+                be overwritten to a mapping.
+
+        Returns:
+            if `default` is `True`, the value of a present path or `None`, else
+            `None`.
+        """
+        *items, last = path.split(self.delimiter)
+
+        # start on superclass
+        current = super()
+
+        for item in items:
+            out = current.setdefault(item, {})
+
+            if not isinstance(out, MutableMapping):
+                if overwrite:
+                    out = {}
+                    current.__setitem__(item, out)
+                else:
+                    raise KeyError(f"would overwrite mapping under config key {item}")
 
             current = out
 
         # set the value in the innermost mapping under `key`
         if default:
-            return current.setdefault(key, value)
+            return current.setdefault(last, value)
         else:
-            current[key] = value
+            current.__setitem__(last, value)
+
+    def pop(self, path: str, default: Any = Undefined()) -> Any:
+        """
+        Remove a present path and return the value, else return the default if explicitely given.
+
+        Arguments:
+            path: the path to remove.
+            default: the value to return if the path is absent.
+
+        Raises:
+            KeyError: if the given path is absent and `default` was not explicitely given.
+
+        Returns:
+            the value of a present path or the default if explicitely given.
+        """
+        *items, last = path.split(self.delimiter)
+
+        # start on superclass
+        current = super()
+
+        try:
+            for item in items:
+                current = current.__getitem__(item)
+
+            item = last
+
+            return current.pop(last)
+        except (KeyError, AttributeError, TypeError):
+            if type(default) is Undefined:
+                raise KeyError(item)
+            else:
+                return default
+
+    def __getitem__(self, path: str) -> Any:
+        """
+        Lookup the value to a given path.
+
+        Arguments:
+            path: the path to query.
+
+        Returns:
+            the value of a present path.
+        """
+        return self.get(path, strict=True)
+
+    def __setitem__(self, path: str, value: Any) -> None:
+        """
+        Set a value to a given path.
+
+        Overwrite intermediate non-mappings to mappings if necessary.
+
+        Arguments:
+            path: the path to insert or update.
+            value: the value associated with the path.
+        """
+        self.set(path, value, overwrite=True, default=False)
+
+    def setdefault(self, path: str, default: Any) -> Any:
+        """
+        Get the value of a present path or insert the default if the path is absent.
+
+        Arguments:
+            path: the path to query or set the default value to.
+            default: the value to set when the given path is absent.
+
+        Returns:
+            the path of a present value or the default if the path is absent.
+        """
+        return self.set(path, default, overwrite=True, default=True)
+
+    def __delitem__(self, path: str) -> None:
+        """
+        Delete a present path.
+
+        Arguments:
+            path: the path to remove.
+        """
+        self.pop(path)
+
+    def merge(self, other: Mapping) -> None:
+        """
+        Deepmerge with a given mapping.
+
+        Arguments:
+            other: the new config data to deepmerge in.
+        """
+        self.update(deepmerge(self, other))

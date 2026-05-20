@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from contextlib import contextmanager
 from copy import deepcopy
-from typing import Any, Callable, Generator, Iterator
+from typing import Any, Callable, Generator, Sequence
 
 from pytest import mark, raises
 
@@ -29,7 +29,7 @@ MAP = {
         MAP,
     ),
 )
-def test_str(mapping):
+def test_str(mapping: dict) -> None:
     """
     The string conversion is the string conversion of the config data.
 
@@ -46,7 +46,7 @@ def test_str(mapping):
         MAP,
     ),
 )
-def test_repr(mapping):
+def test_repr(mapping: dict) -> None:
     """
     Evaluating the string representation with `eval` gives an equal `Config`.
 
@@ -54,7 +54,13 @@ def test_repr(mapping):
         mapping: the mapping to get a config representation from.
     """
     config = Config(mapping)
-    assert eval(repr(config)) == config
+    evaluated = eval(repr(config))
+
+    # the data are the same
+    assert evaluated == config
+
+    # it is a `Config` instance
+    assert isinstance(evaluated, Config)
 
 
 @parametrize(
@@ -64,7 +70,7 @@ def test_repr(mapping):
         MAP,
     ),
 )
-def test_len(mapping):
+def test_len(mapping: dict) -> None:
     """
     The length of a config is the length of the config data.
 
@@ -81,13 +87,15 @@ def test_len(mapping):
         MAP,
     ),
 )
-def test_eq(mapping):
+def test_eq(mapping: dict) -> None:
     """
     `Config`s are equal when their config data are equal.
 
     Arguments:
         mapping: the mapping to compare for equality.
     """
+    assert mapping == Config(mapping)
+    assert mapping is not Config(mapping)
     assert Config(mapping) == Config(mapping)
 
 
@@ -99,7 +107,7 @@ def test_eq(mapping):
         ({"foo": "bar"}, {"baz": 42}),
     ),
 )
-def test_ne(left, right):
+def test_ne(left: dict, right: dict) -> None:
     """
     `Config`s are not equal when their config data are not equal.
 
@@ -107,6 +115,8 @@ def test_ne(left, right):
         left: the left mapping to compare for unquality.
         right: the right mapping to compare for unquality.
     """
+    assert left != Config(right)
+    assert Config(left) != right
     assert Config(left) != Config(right)
 
 
@@ -117,7 +127,7 @@ def test_ne(left, right):
         ({"x": "y"}, "x"),
     ),
 )
-def test_contains(mapping, key):
+def test_contains(mapping: dict, key: str) -> None:
     """
     A key is present when the key is present in the config data.
 
@@ -136,7 +146,7 @@ def test_contains(mapping, key):
         ({"baz": "quux"}, "foo"),
     ),
 )
-def test_not_contains(mapping, key):
+def test_not_contains(mapping: dict, key: str) -> None:
     """
     A key is not present when the key is not present in the config data.
 
@@ -146,6 +156,33 @@ def test_not_contains(mapping, key):
     """
     assert key not in mapping
     assert key not in Config(mapping)
+
+
+def test_delimiter() -> None:
+    """
+    The delimiter of keys in a path is the dot `.`.
+    """
+    assert Config().delimiter == "."
+
+
+@parametrize(
+    ("keys", "expected"),
+    (
+        ([], ""),
+        (["a"], "a"),
+        (["a", "b"], "a.b"),
+        (["a", "b", "c"], "a.b.c"),
+    ),
+)
+def test_path(keys: Sequence[str], expected: str) -> None:
+    """
+    A `Config` generates correct paths from a sequence of keys.
+
+    Arguments:
+        keys: the keys to assemble to a path.
+        expected: the expected returned path.
+    """
+    assert Config().path(keys) == expected
 
 
 @contextmanager
@@ -160,109 +197,139 @@ def config(mapping: Mapping = MAP) -> Generator[Config, None, None]:
         the test config instance.
     """
     try:
-        c = Config(deepcopy(mapping))
-        yield c
+        _config = Config(deepcopy(mapping))
+        yield _config
     finally:
-        del c
+        del _config
 
 
 @parametrize(
-    ("query", "expected"),
+    ("operation", "expected"),
     (
-        #
-        # all
-        #
-        (lambda c: c.raw, MAP),
-        (lambda c: c.get(), MAP),
-        #
-        # existing
-        #
-        (lambda c: c.foo.get(), MAP["foo"]),
-        (lambda c: c.foo.bar.get(), MAP["foo"]["bar"]),
-        (lambda c: c.foo.bar.baz.get(), MAP["foo"]["bar"]["baz"]),
-        (lambda c: c.foo.x.get(), MAP["foo"]["x"]),
-        (lambda c: c.foo.y.get(), MAP["foo"]["y"]),
-        #
-        # absent
-        #
-        (lambda c: c.quux.get(), None),
-        (lambda c: c.quux.get("mydefault"), "mydefault"),
-        (lambda c: c.none.of.them.exist.get(), None),
+        (lambda c: c.get("foo"), MAP["foo"]),
+        (lambda c: c.get("foo.bar"), MAP["foo"]["bar"]),
+        (lambda c: c.get("foo.bar.baz"), MAP["foo"]["bar"]["baz"]),
+        (lambda c: c.get("foo.x"), MAP["foo"]["x"]),
+        (lambda c: c.get("foo.y"), MAP["foo"]["y"]),
     ),
 )
-def test_get(query: Callable, expected: Any) -> None:
+def test_get_present(operation: Callable, expected: Any) -> None:
     """
-    Getting config values works via attributes and never throws an exception.
+    Getting present paths returns the associated values.
 
     Arguments:
-        query: the query for a value.
-        expected: the expected value of the query.
+        operation: the operation to perform on the config instance.
+        expected: the expected value of the operation.
     """
     with config() as c:
-        queried = query(c)
+        queried = operation(c)
 
         assert queried == expected
-        assert c.raw == MAP
+        assert c == MAP
 
 
-def test_set_no_keys_no_mapping():
+@parametrize(
+    ("operation", "expected"),
+    (
+        (lambda c: c.get("quux"), None),
+        (lambda c: c.get("foo.nonexistend", "mydefault"), "mydefault"),
+    ),
+)
+def test_get_absent(operation: Callable, expected: Any) -> None:
     """
-    Setting the root config data can only be done with a mapping.
+    Getting absent paths returns the default value.
+
+    Arguments:
+        operation: the operation to perform on the config instance.
+        expected: the expected value of the operation.
     """
-    with config() as c, raises(TypeError):
-        c.set("not a mapping")
+    with config() as c:
+        queried = operation(c)
+
+        assert queried == expected
+        assert c == MAP
+
+
+@parametrize(
+    ("operation", "expected"),
+    (
+        (lambda c: c["foo"], MAP["foo"]),
+        (lambda c: c["foo.bar"], MAP["foo"]["bar"]),
+        (lambda c: c["foo.bar.baz"], MAP["foo"]["bar"]["baz"]),
+        (lambda c: c["foo.x"], MAP["foo"]["x"]),
+        (lambda c: c["foo.y"], MAP["foo"]["y"]),
+    ),
+)
+def test_getitem_present(operation: Callable, expected: Any) -> None:
+    """
+    Lookup of present paths returns the associated value.
+
+    Arguments:
+        operation: the operation to perform on the config instance.
+        expected: the expected value of the operation.
+    """
+    with config() as c:
+        queried = operation(c)
+
+        assert queried == expected
+        assert c == MAP
+
+
+@parametrize(
+    "operation",
+    (
+        lambda c: c["quux"],
+        lambda c: c["none.of.them.exist"],
+    ),
+)
+def test_getitem_absent(operation: Callable) -> None:
+    """
+    Lookup of absent paths raises an error.
+
+    Arguments:
+        operation: the operation to perform on the config instance.
+    """
+    with config() as c, raises(KeyError):
+        operation(c)
 
 
 @parametrize(
     ("operation", "expected"),
     (
         #
-        # no keys chained
-        #
-        (
-            # new value, i.e. root, needs to be a mapping
-            lambda c: c.set({"bli": "bla"}),
-            lambda m: (m["bli"] == "bla" and len(m) == 1),
-        ),
-        #
         # existing
         #
         (
-            lambda c: c.foo.set("bar"),
+            lambda c: c.set("foo", "bar"),
             lambda m: (m["foo"] == "bar"),
         ),
         (
-            lambda c: c.foo.x.set("?"),
+            lambda c: c.set("foo.x", "?"),
             lambda m: (m["foo"]["x"] == "?"),
         ),
         #
         # mixed
         #
         (
-            lambda c: c.foo.this.being.random.set("bar"),
-            lambda m: (m["foo"]["this"]["being"]["random"] == "bar"),
-        ),
-        (
-            lambda c: c.foo.x.nonexistend.set("?"),
-            lambda m: (m["foo"]["x"]["nonexistend"] == "?"),
+            lambda c: c.set("foo.new.from.here.on", "bar"),
+            lambda m: (m["foo"]["new"]["from"]["here"]["on"] == "bar"),
         ),
         #
         # absent
         #
         (
-            lambda c: c.quux.set("blub"),
+            lambda c: c.set("quux", "blub"),
             lambda m: (m["quux"] == "blub"),
         ),
         (
-            lambda c: c.none.of.them.exist.set(42),
+            lambda c: c.set("none.of.them.exist", 42),
             lambda m: (m["none"]["of"]["them"]["exist"] == 42),
         ),
     ),
 )
 def test_set(operation: Callable, expected: Callable) -> None:
     """
-    Setting config values overwrites existing ones and creates missing
-    mappings automatically.
+    Setting new paths creates mappings automatically if not present.
 
     Arguments:
         operation: the operation to perform on the config instance.
@@ -272,35 +339,28 @@ def test_set(operation: Callable, expected: Callable) -> None:
         # alter config
         operation(c)
 
-        # check that the chain has been reset
-        assert len(c.chain) == 0
-
         # perform check
-        assert expected(c.raw)
+        assert expected(dict(c))
 
 
 @parametrize(
     ("operation", "expected"),
     (
         #
-        # no keys
-        #
-        (lambda c: c.set("new", default=True), MAP),
-        #
         # present keys
         #
-        (lambda c: c.foo.bar.baz.set("new", default=True), MAP["foo"]["bar"]["baz"]),
-        (lambda c: c.foo.x.set("new", default=True), MAP["foo"]["x"]),
+        (lambda c: c.set("foo.bar.baz", "new", default=True), MAP["foo"]["bar"]["baz"]),
+        (lambda c: c.set("foo.x", "new", default=True), MAP["foo"]["x"]),
         #
         # absent keys
         #
-        (lambda c: c.quux.set("new", default=True), "new"),
-        (lambda c: c.foo.z.set("new", default=True), "new"),
+        (lambda c: c.set("quux", "new", default=True), "new"),
+        (lambda c: c.set("foo.z", "new", default=True), "new"),
     ),
 )
-def test_set_default(operation, expected):
+def test_set_default(operation: Callable, expected: Callable) -> None:
     """
-    When `default` is `True`, return a present key and set an absent key.
+    Setting the `default` flag to `True` returns a present value or the default.
 
     Arguments:
         operation: the operation to perform on the config instance.
@@ -311,83 +371,284 @@ def test_set_default(operation, expected):
 
 
 @parametrize(
-    "data",
+    ("operation", "expected"),
     (
-        None,
-        1,
-        3.14,
-        list("abc"),
-        set(list("abc")),
-        tuple("abc"),
+        #
+        # present keys
+        #
+        (lambda c: c.setdefault("foo.bar.baz", "new"), MAP["foo"]["bar"]["baz"]),
+        (lambda c: c.setdefault("foo.x", "new"), MAP["foo"]["x"]),
+        #
+        # absent keys
+        #
+        (lambda c: c.setdefault("quux", "new"), "new"),
+        (lambda c: c.setdefault("foo.z", "new"), "new"),
     ),
 )
-def test_wrong_data_type(data: None | int | float | list | set | tuple) -> None:
+def test_setdefault(operation: Callable, expected: Any) -> None:
     """
-    Raw config values other than mappings throw an exception.
+    The `setdefault` `dict` API works like `set(..., default=True)`.
 
     Arguments:
-        data: the data config value.
+        operation: the operation to perform on the config instance.
+        expected: the expected result of the operation.
     """
-    with raises(TypeError):
-        Config(data)
+    with config() as c:
+        assert operation(c) == expected
 
 
-def test_read_only():
+@parametrize(
+    ("operation", "expected"),
+    (
+        (
+            lambda c: c.set("foo.x.nonexistend", "?", overwrite=True),
+            lambda m: (m["foo"]["x"]["nonexistend"] == "?"),
+        ),
+        (
+            lambda c: c.set("foo.bar.baz.nonexistend", "?", overwrite=True),
+            lambda m: (m["foo"]["bar"]["baz"]["nonexistend"] == "?"),
+        ),
+    ),
+)
+def test_set_intermediate_overwrite(operation: Callable, expected: Callable) -> None:
     """
-    Setting values on read-only mappings fails.
+    Setting a path overwrites intermediate mappings if the `overwrite` flag is given.
+
+    Arguments:
+        operation: the operation to perform on the config instance.
+        expected: the expected result of the operation.
     """
+    with config() as c:
+        operation(c)
 
-    class ReadOnlyMapping(Mapping):
-        """
-        A `Mapping` and not a `MutableMapping`.
-        """
+        assert expected(dict(c))
 
-        def __init__(self, raw: Mapping) -> None:
-            assert isinstance(raw, Mapping)
 
-            self.raw = raw
+@parametrize(
+    ("operation", "expected"),
+    (
+        (
+            lambda c: c.set("foo.x.nonexistend", "?"),
+            lambda m: (m["foo"]["x"]["nonexistend"] == "?"),
+        ),
+        (
+            lambda c: c.set("foo.bar.baz.nonexistend", "?"),
+            lambda m: (m["foo"]["bar"]["baz"]["nonexistend"] == "?"),
+        ),
+    ),
+)
+def test_set_intermediate_no_overwrite(operation: Callable, expected: Callable) -> None:
+    """
+    Setting a path by which a mapping would be overwritten raises an error.
 
-        def __getitem__(self, item: str) -> Any:
-            return self.raw[item]
+    Arguments:
+        operation: the operation to perform on the config instance.
+        expected: the expected result of the operation.
+    """
+    with config() as c, raises(KeyError):
+        operation(c)
 
-        def __iter__(self) -> Iterator:
-            return iter(self.raw)
 
-        def __len__(self) -> int:
-            return len(self.raw)
+@parametrize(
+    ("operation", "expected"),
+    (
+        (
+            lambda c: c.__delitem__("foo"),
+            lambda m: (set(m.keys()) == set()),
+        ),
+        (
+            lambda c: c.__delitem__("foo.x"),
+            lambda m: (set(m["foo"].keys()) == {"bar", "y"}),
+        ),
+    ),
+)
+def test_del(operation: Callable, expected: Callable) -> None:
+    """
+    Deleting a present path removes it from the mapping.
 
-    # instantiate
-    ro = ReadOnlyMapping(MAP)
+    Arguments:
+        operation: the operation to perform on the config instance.
+        expected: the expected result of the operation.
+    """
+    with config() as c:
+        operation(c)
 
-    with config(ro) as c:
-        # getting values work
-        assert c.foo.get() == MAP["foo"]
-        assert c.foo.bar.get() == MAP["foo"]["bar"]
+        assert expected(dict(c))
 
-        # setting values fails as the given mapping does not support
-        with raises(TypeError):
-            c.a.b.c.set("something")
 
-        # the chain got reset despite the error
-        assert len(c.chain) == 0
+@parametrize(
+    ("operation", "returned", "expected"),
+    (
+        (
+            lambda c: c.pop("foo"),
+            MAP["foo"],
+            lambda m: (set(m.keys()) == set()),
+        ),
+        (
+            lambda c: c.pop("foo.x"),
+            MAP["foo"]["x"],
+            lambda m: (set(m["foo"].keys()) == {"bar", "y"}),
+        ),
+    ),
+)
+def test_pop_present_no_default(
+    operation: Callable, returned: Any, expected: Callable
+) -> None:
+    """
+    Popping a present path returns its value.
+
+    Arguments:
+        operation: the operation to perform on the config instance.
+        returned: the return value of the operation.
+        expected: the expected result of the operation.
+    """
+    with config() as c:
+        assert operation(c) == returned
+
+        assert expected(dict(c))
 
 
 @parametrize(
     "operation",
     (
-        # `x`, `y` and `baz` don't point to mappings and would be set to a mapping
-        lambda c: c.foo.x.new.set("not allowed", overwrite=False),
-        lambda c: c.foo.y.new.set("not allowed", overwrite=False),
-        lambda c: c.foo.bar.baz.new.set("not allowed", overwrite=False),
+        lambda c: c.pop("nonexistend"),
+        lambda c: c.pop("foo.does.not.exist"),
     ),
 )
-def test_overwrite_protection(operation: Callable) -> None:
+def test_pop_absent_no_default(operation: Callable) -> None:
     """
-    Disabling overwriting raises exceptions when key with non-mapping value
-    would get overwritten.
+    Popping an absent path without giving a default value raises an error.
 
     Arguments:
         operation: the operation to perform on the config instance.
     """
-    with config() as c, raises(AttributeError):
+    with config() as c, raises(KeyError):
         operation(c)
+
+
+@parametrize(
+    ("operation", "expected"),
+    (
+        (lambda c: c.pop("nonexistend", "mydefault"), "mydefault"),
+        (lambda c: c.pop("foo.does.not.exist", "mydefault"), "mydefault"),
+    ),
+)
+def test_pop_absent_default(operation: Callable, expected: Callable) -> None:
+    """
+    Popping an absent path gives back the specified default value.
+
+    Arguments:
+        operation: the operation to perform on the config instance.
+        expected: the expected result of the operation.
+    """
+    with config() as c:
+        assert operation(c) == expected
+
+
+@parametrize(
+    ("mapping", "expected"),
+    (
+        # empty
+        (
+            {},
+            MAP,
+        ),
+        # 1st level key added
+        (
+            {
+                "z": 1337,
+            },
+            {
+                "foo": {"bar": {"baz": [1, 2, 3]}, "x": 1, "y": set(list("abc"))},
+                "z": 1337,
+            },
+        ),
+        # 2nd level key added
+        (
+            {
+                "foo": {
+                    "quux": "blub",
+                },
+            },
+            {
+                "foo": {
+                    "bar": {"baz": [1, 2, 3]},
+                    "x": 1,
+                    "y": set(list("abc")),
+                    "quux": "blub",
+                }
+            },
+        ),
+        # 3rd level key added
+        (
+            {
+                "foo": {
+                    "bar": {"quux": "blub"},
+                },
+            },
+            {
+                "foo": {
+                    "bar": {"baz": [1, 2, 3], "quux": "blub"},
+                    "x": 1,
+                    "y": set(list("abc")),
+                }
+            },
+        ),
+        # merge deeply nested list
+        (
+            {
+                "foo": {
+                    "bar": {"baz": [4, 5, 6]},
+                },
+            },
+            {
+                "foo": {
+                    "bar": {"baz": [1, 2, 3, 4, 5, 6]},
+                    "x": 1,
+                    "y": set(list("abc")),
+                }
+            },
+        ),
+        # merge deeply nested set
+        (
+            {
+                "foo": {
+                    "y": set([4, 5, 6]),
+                },
+            },
+            {
+                "foo": {
+                    "bar": {"baz": [1, 2, 3]},
+                    "x": 1,
+                    "y": set(list("abc")) | set([4, 5, 6]),
+                }
+            },
+        ),
+        # overwrite existing value when not mergable
+        (
+            {
+                "foo": {
+                    "y": ["not", "a", "set", "anymore"],
+                },
+            },
+            {
+                "foo": {
+                    "bar": {"baz": [1, 2, 3]},
+                    "x": 1,
+                    "y": ["not", "a", "set", "anymore"],
+                }
+            },
+        ),
+    ),
+)
+def test_merge(mapping: dict, expected: dict) -> None:
+    """
+    Merging means deeply merging with another mapping.
+
+    Arguments:
+        mapping: the mapping to merge in.
+        expected: the config data after the deepmerge.
+    """
+    with config() as c:
+        c.merge(mapping)
+        assert c == expected
