@@ -245,3 +245,6 @@ class Config(dict):
             other: the new config data to deepmerge in.
         """
         self.update(deepmerge(self, other))
+
+        # enable chaining and ad-hoc referencing
+        return self

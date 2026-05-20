@@ -1,3 +1,4 @@
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from click import command, echo
@@ -19,9 +20,9 @@ def convert(item: Any) -> Any:
     Returns:
         the TOML-serializable conversion of the given item.
     """
-    if type(item) in (list, tuple, set):
+    if isinstance(item, Sequence) and not isinstance(item, str):
         return list(convert(i) for i in item)
-    elif type(item) is dict:
+    elif isinstance(item, Mapping):
         return dict((key, convert(i)) for key, i in item.items())
     elif type(item) not in (str, bool, int, float):
         return str(item)
@@ -42,6 +43,4 @@ def cli(config: Config) -> None:
     Arguments:
         config: mapping of merged configuration parameters from various sources.
     """
-    raw = convert(config.raw)
-
-    echo(dumps(raw))
+    echo(dumps(convert(config)))

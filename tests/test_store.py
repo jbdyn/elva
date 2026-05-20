@@ -45,7 +45,7 @@ async def test_metadata(tmp_data_file, metadata):
         assert store.get_config() == metadata
 
         # the default API is equivalent to updating a dict
-        metadata.quux.set(3.14)
+        metadata["quux"] = 3.14
         store.set_config(metadata)
         assert store.get_config() == metadata
 

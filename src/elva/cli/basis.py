@@ -157,8 +157,7 @@ def read_data_file(path: str | Path) -> dict:
     """
     try:
         with Metadata(path, fail=True) as metadata:
-            config = metadata.get_config()
-            return config.raw
+            return metadata.get_config()
     except (
         FileNotFoundError,
         PermissionError,

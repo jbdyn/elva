@@ -6,10 +6,11 @@ from anyio import create_task_group
 from websockets.asyncio.server import basic_auth
 
 from elva.auth import DummyAuth, LDAPAuth
+from elva.config import Config
 from elva.server import WebsocketServer, free_tcp_port
 
 
-async def main(config: dict):
+async def main(config: Config):
     """
     Main app routine.
 
@@ -20,13 +21,13 @@ async def main(config: dict):
     """
     c = config
 
-    host = c.connect.host.get("0.0.0.0")
-    port = c.connect.port.get("port") or free_tcp_port()
+    host = c.get("connect.host", "0.0.0.0")
+    port = c.get("connect.port") or free_tcp_port()
 
-    persistent = c.server.persistent.get(False)
-    directory = c.server.directory.get()
-    ldap = c.server.ldap.get()
-    dummy = c.server.dummy.get(False)
+    persistent = c.get("server.persistent", False)
+    directory = c.get("server.directory")
+    ldap = c.get("server.ldap")
+    dummy = c.get("server.dummy", False)
 
     if ldap is not None:
         process_request = LDAPAuth(*ldap).check

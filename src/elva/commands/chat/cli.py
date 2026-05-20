@@ -35,8 +35,8 @@ def cli(config: Config) -> None:
     LOGGER_NAME.set(__package__)
     log = getLogger(__package__)
 
-    level = config.log.level.get()
-    file = config.log.file.get()
+    level = config.get("log.level")
+    file = config.get("log.file")
 
     if level is not None and file is not None:
         handler = FileHandler(file)

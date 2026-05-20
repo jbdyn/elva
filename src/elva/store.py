@@ -185,7 +185,7 @@ class Metadata:
             config: the config to insert.
             replace: if `True`, save the config as given, else deepmerge.
         """
-        new = config.raw if replace else deepmerge(self.get_config().raw, config.raw)
+        new = config if replace else self.get_config().merge(config)
 
         value = dumps(new).encode()
 
@@ -354,7 +354,7 @@ class SQLiteStore(Data, Component):
         if self.identifier is not None:
             config = self.get_config()
 
-            config.connect.identifier.set(self.identifier)
+            config["connect.identifier"] = self.identifier
 
             self.set_config(config)
 

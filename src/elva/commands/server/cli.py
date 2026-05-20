@@ -67,14 +67,14 @@ def cli(config: Config, *args: tuple, **kwargs: dict) -> None:
     LOGGER_NAME.set(__package__)
     log = getLogger(__package__)
 
-    if (file := config.log.file.get()) is not None:
+    if (file := config.get("log.file")) is not None:
         handler = FileHandler(file)
     else:
         handler = StreamHandler(sys.stdout)
     handler.setFormatter(DefaultFormatter())
     log.addHandler(handler)
 
-    level = config.log.level.get(INFO)
+    level = config.get("log.level", INFO)
     log.setLevel(level)
 
     # defer heavy app import

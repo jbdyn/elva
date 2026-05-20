@@ -66,7 +66,7 @@ class UI(App):
         """
         self.config = c = config
 
-        super().__init__(ansi_color=c.editor.ansi.get(False))
+        super().__init__(ansi_color=c.get("editor.ansi", False))
 
         # document structure
         self.ydoc = Doc()
@@ -74,9 +74,9 @@ class UI(App):
         self.ydoc["ytext"] = self.ytext
 
         # Build title for header
-        host = c.connect.host.get()
-        port = c.connect.port.get()
-        identifier = c.connect.identifier.get(self.ydoc.guid)
+        host = c.get("connect.host")
+        port = c.get("connect.port")
+        identifier = c.get("connect.identifier", self.ydoc.guid)
 
         if host and identifier:
             if port:
@@ -96,15 +96,15 @@ class UI(App):
                 identifier,
                 host,
                 port=port,
-                safe=c.connect.safe.get(True),
+                safe=c.get("connect.safe", True),
                 on_exception=self.on_provider_exception,
             )
 
-            self.provider.awareness.set_local_state(c.user.get({}))
+            self.provider.awareness.set_local_state(c.get("user", {}))
 
             self.components.append(self.provider)
 
-        if (file := c.editor.data.get()) is not None:
+        if (file := c.get("editor.data")) is not None:
             self.store = SQLiteStore(
                 self.ydoc,
                 identifier,
@@ -112,16 +112,16 @@ class UI(App):
             )
             self.components.append(self.store)
 
-        if (file := c.render.file.get()) is not None:
+        if (file := c.get("render.file")) is not None:
             self.renderer = TextRenderer(
                 self.ytext,
                 file,
-                c.render.auto.get(False),
-                c.render.timeout.get(300),
+                c.get("render.auto", False),
+                c.get("render.timeout", 300),
             )
             self.components.append(self.renderer)
 
-        self._language = c.editor.language.get()
+        self._language = c.get("editor.language")
 
     def on_provider_exception(self, exc: WebSocketException, config: dict):
         """
@@ -213,12 +213,12 @@ class UI(App):
 
         # load text from rendered file
         text = ""
-        render_file_path = c.render.file.get()
+        render_file_path = c.get("render.file")
 
         if render_file_path is not None and render_file_path.exists():
             # we found some content on disk;
             # now check whether this has precedence over the data file
-            data_file_path = c.editor.data.get()
+            data_file_path = c.get("editor.data")
 
             if data_file_path is None or not data_file_path.exists():
                 # there is no data file on disk associated with this
@@ -277,7 +277,7 @@ class UI(App):
         # alias
         c = self.config
 
-        file_path = c.editor.data.get()
+        file_path = c.get("editor.data")
 
         if file_path is not None and file_path.suffix:
             suffixes = "".join(file_path.suffixes)
@@ -303,7 +303,7 @@ class UI(App):
         # alias
         c = self.config
 
-        if c.editor.data.get() is None:
+        if c.get("editor.data") is None:
             self.run_worker(self.get_and_set_file_paths())
 
     async def get_and_set_file_paths(self, data_file: bool = True):
@@ -326,24 +326,24 @@ class UI(App):
         data_file_path = get_data_file_path(path)
 
         if data_file:
-            c.editor.data.set(data_file_path)
+            c["editor.data"] = data_file_path
             self.store = SQLiteStore(
                 self.ydoc,
-                c.connect.identifier.get(self.ydoc.guid),
+                c.get("connect.identifier", self.ydoc.guid),
                 data_file_path,
             )
             self.components.append(self.store)
             self.run_worker(self.store.start())
 
-        if c.render.file.get() is None:
+        if c.get("render.file") is None:
             render_file_path = get_render_file_path(data_file_path)
 
-            c.render.file.set(render_file_path)
+            c["render.file"] = render_file_path
 
             self.renderer = TextRenderer(
                 self.ytext,
                 render_file_path,
-                c.render.auto.get(False),
+                c.get("render.auto", False),
             )
             self.components.append(self.renderer)
             self.run_worker(self.renderer.start())
@@ -355,7 +355,7 @@ class UI(App):
         """
         Action performed on triggering the `render` key binding.
         """
-        if self.config.render.file.get() is None:
+        if self.config.get("render.file") is None:
             self.run_worker(self.get_and_set_file_paths(data_file=False))
         else:
             await self.renderer.write()
@@ -392,7 +392,7 @@ class UI(App):
         """
         Method pushing the configuration mapping to the active dashboard.
         """
-        config = tuple(self.config.raw.items())
+        config = tuple(self.config.items())
 
         config_view = self.screen.query_one(ConfigView)
         config_view.config = config

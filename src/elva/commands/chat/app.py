@@ -329,16 +329,16 @@ class UI(App):
         self.config = c = config
 
         self.client_id = str(self.ydoc.client_id)
-        self.user = c.user.name.get(self.client_id)
-        self.display_name = c.user.display.get(self.client_id)
-        self.show_self = c.chat.self.get(False)
+        self.user = c.get("user.name", self.client_id)
+        self.display_name = c.get("user.display", self.client_id)
+        self.show_self = c.get("chat.self", False)
 
         self.message, self.ytext, message_id = self.get_message("")
 
         # components
         self.components = []
 
-        if (file := c.chat.data.get()) is not None:
+        if (file := c.get("chat.data")) is not None:
             self.store = SQLiteStore(
                 self.ydoc,
                 c.connect.identifier.get(self.ydoc.guid),
@@ -346,25 +346,25 @@ class UI(App):
             )
             self.components.append(self.store)
 
-        if c.connect.host.get() is not None:
+        if c.get("connect.host") is not None:
             self.provider = WebsocketProvider(
                 ydoc,
-                c.connect.identifier.get(self.ydoc.guid),
-                c.connect.host.get(),
-                port=c.connect.port.get(),
-                safe=c.connect.safe.get(True),
+                c.get("connect.identifier", self.ydoc.guid),
+                c.get("connect.host"),
+                port=c.get("connect.port"),
+                safe=c.get("connect.safe", True),
                 on_exception=self.on_provider_exception,
             )
 
-            self.provider.awareness.set_local_state(c.user.get())
+            self.provider.awareness.set_local_state(c.get("user", {}))
 
             self.components.append(self.provider)
 
-        if (file := c.render.file.get()) is not None:
+        if (file := c.get("render.file")) is not None:
             self.renderer = TextRenderer(
                 self.history,
                 file,
-                c.render.auto.get(True),
+                c.get("render.auto", True),
             )
             self.components.append(self.renderer)
 
@@ -575,7 +575,7 @@ class UI(App):
         # alias
         c = self.config
 
-        if c.chat.data.get() is None:
+        if c.get("chat.data") is None:
             self.run_worker(self.get_and_set_file_paths())
 
     async def get_and_set_file_paths(self, data_file: bool = True):
@@ -597,25 +597,25 @@ class UI(App):
 
         data_file_path = get_data_file_path(path)
         if data_file:
-            c.chat.data.set(data_file_path)
+            c["chat.data"] = data_file_path
 
             self.store = SQLiteStore(
                 self.ydoc,
-                c.connect.identifier.get(self.ydoc.guid),
+                c.get("connect.identifier", self.ydoc.guid),
                 data_file_path,
             )
             self.components.append(self.store)
             self.run_worker(self.store.start())
 
-        if c.render.file.get() is None:
+        if c.get("render.file") is None:
             render_file_path = get_render_file_path(data_file_path)
 
-            c.render.file.set(render_file_path)
+            c["render.file"] = render_file_path
 
             self.renderer = TextRenderer(
                 self.history,
                 render_file_path,
-                c.render.auto.get(True),
+                c.get("render.auto", True),
             )
             self.components.append(self.renderer)
             self.run_worker(self.renderer.start())
@@ -630,7 +630,7 @@ class UI(App):
         # alias
         c = self.config
 
-        if c.render.file.get() is None:
+        if c.get("render.file") is None:
             self.run_worker(self.get_and_set_file_paths(data_file=False))
         else:
             await self.renderer.write()
@@ -667,7 +667,7 @@ class UI(App):
         """
         Method pushing the configuration mapping to the active dashboard.
         """
-        config = tuple(self.config.raw.items())
+        config = tuple(self.config.items())
 
         config_view = self.screen.query_one(ConfigView)
         config_view.config = config
