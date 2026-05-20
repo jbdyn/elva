@@ -64,19 +64,31 @@ class UI(App):
         Arguments:
             config: mapping of configuration parameters to their values.
         """
-        self.config = c = config
-
-        super().__init__(ansi_color=c.get("editor.ansi", False))
-
         # document structure
         self.ydoc = Doc()
         self.ytext = Text()
         self.ydoc["ytext"] = self.ytext
 
-        # Build title for header
+        # define defaults
+        self.config = c = config
+
+        for path, default in (
+            ("config.dump", True),
+            ("connect.identifier", self.ydoc.guid),
+            ("connect.safe", True),
+            ("render.auto", True),
+            ("render.timeout", 300),
+            ("editor.ansi", False),
+        ):
+            c.setdefault(path, default)
+
+        # initialize `Textual` app
+        super().__init__(ansi_color=c.get("editor.ansi", False))
+
+        # build title for header
         host = c.get("connect.host")
         port = c.get("connect.port")
-        identifier = c.get("connect.identifier", self.ydoc.guid)
+        identifier = c["connect.identifier"]
 
         if host and identifier:
             if port:
@@ -96,7 +108,7 @@ class UI(App):
                 identifier,
                 host,
                 port=port,
-                safe=c.get("connect.safe", True),
+                safe=c["connect.safe"],
                 on_exception=self.on_provider_exception,
             )
 
@@ -107,17 +119,25 @@ class UI(App):
         if (file := c.get("editor.data")) is not None:
             self.store = SQLiteStore(
                 self.ydoc,
-                identifier,
                 file,
             )
+
+            if c["config.dump"]:
+                trimmed = Config(c.deepcopy())
+
+                del trimmed["config"]
+                del trimmed["editor.data"]
+
+                self.store.set_config(trimmed, replace=c.get("config.replace", False))
+
             self.components.append(self.store)
 
         if (file := c.get("render.file")) is not None:
             self.renderer = TextRenderer(
                 self.ytext,
                 file,
-                c.get("render.auto", False),
-                c.get("render.timeout", 300),
+                auto_save=c["render.auto"],
+                timeout=c["render.timeout"],
             )
             self.components.append(self.renderer)
 

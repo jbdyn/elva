@@ -240,11 +240,6 @@ class SQLiteStore(Data, Component):
     Instance of the synchronized Y-document.
     """
 
-    identifier: str
-    """
-    identifier of the Y-document.
-    """
-
     path: Path
     """
     The path to the SQLite database.
@@ -277,22 +272,16 @@ class SQLiteStore(Data, Component):
     def __init__(
         self,
         ydoc: Doc,
-        identifier: str,
         path: str | Path,
         fail: bool = False,
     ) -> None:
         """
         Arguments:
             ydoc: instance of the synchronized Y Document.
-            identifier:
-                identifier of the synchronized Y Document. If `None`, it is
-                tried to be retrieved from the `metadata` table in the
-                SQLite database.
             path: path to the SQLite database.
             fail: raise an error when the path does not exist.
         """
         self.ydoc = ydoc
-        self.identifier = identifier
 
         super().__init__(path, fail)
 
@@ -343,20 +332,10 @@ class SQLiteStore(Data, Component):
 
         self.log.debug(f"wrote update to file {self.path}")
 
-    def _ensure_identifier(self) -> None:
-        """
-        Ensure the identifier in the metadata.
-        """
-        if self.identifier is not None:
-            config = self.get_config()
-
-            config["connect.identifier"] = self.identifier
-
-            self.set_config(config)
-
     def _merge(self) -> None:
         """
-        Hook to read in and apply updates from the ELVA SQLite database and             write divergent history updates to file.
+        Hook to read in and apply updates from the ELVA SQLite database and
+        write divergent history updates to file.
         """
         # get updates stored in file
         updates = self.get_updates()
@@ -398,8 +377,6 @@ class SQLiteStore(Data, Component):
         The ELVA SQLite database is being initialized and read.
         Also, the component subscribes to changes in [`ydoc`][elva.store.SQLiteStore.ydoc].
         """
-        self._ensure_identifier()
-
         # merge updates from file with the contents from the given YDoc
         self._merge()
 

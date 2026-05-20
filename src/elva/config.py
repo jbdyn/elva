@@ -1,4 +1,5 @@
 from collections.abc import Mapping, MutableMapping, Sequence
+from copy import deepcopy
 from typing import Any, Literal
 
 from deepmerge import always_merger
@@ -248,6 +249,15 @@ class Config(dict):
 
         # enable chaining and ad-hoc referencing
         return self
+
+    def deepcopy(self) -> dict:
+        """
+        Get a deep copy of the config data.
+
+        Returns:
+            a deep copy of the config data.
+        """
+        return deepcopy(self)
 
 
 def clean(mapping: MutableMapping) -> None:

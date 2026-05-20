@@ -307,31 +307,35 @@ class UI(App):
     ]
     """Key bindings for controlling the app."""
 
-    def __init__(
-        self,
-        config: Config,
-        *args: tuple,
-        **kwargs: dict,
-    ):
+    def __init__(self, config: Config) -> None:
         """
         Arguments:
             config: mapping of configuration parameters.
-            args: positional arguments passed to [`App`][textual.app.App].
-            kwargs: keyword arguments passed to [`App`][textual.app.App].
         """
-        super().__init__(*args, **kwargs)
-
         # structure
         self.ydoc = ydoc = Doc()
         ydoc["history"] = self.history = Array()
         ydoc["future"] = self.future = Map()
 
+        self.client_id = str(self.ydoc.client_id)
+
         self.config = c = config
 
-        self.client_id = str(self.ydoc.client_id)
-        self.user = c.get("user.name", self.client_id)
-        self.display_name = c.get("user.display", self.client_id)
-        self.show_self = c.get("chat.self", False)
+        for path, default in (
+            ("connect.identifier", self.ydoc.guid),
+            ("connect.safe", True),
+            ("user.name", self.client_id),
+            ("user.display", self.client_id),
+            ("render.auto", True),
+            ("chat.self", False),
+        ):
+            c.setdefault(path, default)
+
+        super().__init__()
+
+        self.user = c["user.name"]
+        self.display_name = c["user.display"]
+        self.show_self = c["chat.self"]
 
         self.message, self.ytext, message_id = self.get_message("")
 
@@ -341,18 +345,26 @@ class UI(App):
         if (file := c.get("chat.data")) is not None:
             self.store = SQLiteStore(
                 self.ydoc,
-                c.connect.identifier.get(self.ydoc.guid),
                 file,
             )
+
+            if c.get("config.dump", True):
+                trimmed = Config(c.deepcopy())
+
+                del trimmed["config"]
+                del trimmed["chat.data"]
+
+                self.store.set_config(trimmed, replace=c.get("config.replace", False))
+
             self.components.append(self.store)
 
         if c.get("connect.host") is not None:
             self.provider = WebsocketProvider(
                 ydoc,
-                c.get("connect.identifier", self.ydoc.guid),
-                c.get("connect.host"),
+                c["connect.identifier"],
+                c["connect.host"],
                 port=c.get("connect.port"),
-                safe=c.get("connect.safe", True),
+                safe=c["connect.safe"],
                 on_exception=self.on_provider_exception,
             )
 
@@ -364,7 +376,7 @@ class UI(App):
             self.renderer = TextRenderer(
                 self.history,
                 file,
-                c.get("render.auto", True),
+                c["render.auto"],
             )
             self.components.append(self.renderer)
 

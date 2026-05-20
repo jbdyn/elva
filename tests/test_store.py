@@ -38,9 +38,8 @@ async def test_metadata(tmp_data_file, metadata):
 
     # read via a Y-store
     ydoc = Doc()
-    identifier = None
 
-    async with SQLiteStore(ydoc, identifier, tmp_data_file) as store:
+    async with SQLiteStore(ydoc, tmp_data_file) as store:
         # the metadata we wrote previously to the database can be also retrieved from the component
         assert store.get_config() == metadata
 
@@ -65,8 +64,6 @@ async def test_metadata(tmp_data_file, metadata):
 
 
 async def test_read_write(tmp_data_file):
-    identifier = "identifier"
-
     SlowSQLiteStoreState = create_component_state("SlowSQLiteStoreState")
 
     class SlowSQLiteStore(SQLiteStore):
@@ -93,7 +90,7 @@ async def test_read_write(tmp_data_file):
     doc_before.observe(on_transaction_event)
 
     # store initialization and CRDT manipulation
-    store = SlowSQLiteStore(doc_before, identifier, tmp_data_file)
+    store = SlowSQLiteStore(doc_before, tmp_data_file)
 
     # cancel *while* handling an incoming update
     async with anyio.create_task_group() as tg:
@@ -126,7 +123,7 @@ async def test_read_write(tmp_data_file):
     # instantiate a new store object
     doc_after = Doc()
 
-    async with SQLiteStore(doc_after, identifier, tmp_data_file) as store:
+    async with SQLiteStore(doc_after, tmp_data_file) as store:
         # the new doc state is equivalent to the previous one, i.e.
         # all Y Document content is properly restored
         assert doc_after.get_state() == doc_before.get_state()
@@ -134,8 +131,6 @@ async def test_read_write(tmp_data_file):
 
 async def test_non_empty_ydoc(tmp_data_file):
     """The updates of non-empty YDocs should be written to file, too."""
-    identifier = "identifier"
-
     #
     # first run with empty file
     #
@@ -150,7 +145,7 @@ async def test_non_empty_ydoc(tmp_data_file):
     assert doc_1.get_state() != STATE_ZERO
 
     # run the store, writing the updates to file
-    async with SQLiteStore(doc_1, identifier, tmp_data_file):
+    async with SQLiteStore(doc_1, tmp_data_file):
         content_1_added = "addition while store is running"
         ytext += content_1_added
         assert str(ytext) == content_1_before + content_1_added
@@ -177,7 +172,7 @@ async def test_non_empty_ydoc(tmp_data_file):
     assert doc_2.get_state() != STATE_ZERO
 
     # start the store, which restores all content
-    async with SQLiteStore(doc_2, identifier, tmp_data_file):
+    async with SQLiteStore(doc_2, tmp_data_file):
         assert content_1_before + content_1_added in str(ytext)
         assert content_2_before in str(ytext)
 

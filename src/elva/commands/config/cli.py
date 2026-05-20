@@ -33,6 +33,20 @@ from elva.cli import context
         allow_dash=False,
     ),
 )
+@option(
+    "--dump/--no-dump",
+    "-d/-nd",
+    "dump",
+    help="Dump config or leave data file metadata config untouched.",
+    default=True,
+)
+@option(
+    "--replace/--merge",
+    "-r/-m",
+    "replace",
+    help="Merge or replace metadata config with collected config.",
+    default=False,
+)
 @context
 def cli() -> None:
     """
