@@ -121,41 +121,42 @@ def test_ne(left: dict, right: dict) -> None:
 
 
 @parametrize(
-    ("mapping", "key"),
+    ("mapping", "path"),
     (
         ({"foo": "bar"}, "foo"),
         ({"x": "y"}, "x"),
+        (MAP, "foo.bar.baz"),
     ),
 )
-def test_contains(mapping: dict, key: str) -> None:
+def test_contains(mapping: dict, path: str) -> None:
     """
     A key is present when the key is present in the config data.
 
     Arguments:
         mapping: the mapping to test for.
-        key: the key to check for presence.
+        path: the path to check for presence.
     """
-    assert key in mapping
-    assert key in Config(mapping)
+    assert path in Config(mapping)
 
 
 @parametrize(
-    ("mapping", "key"),
+    ("mapping", "path"),
     (
         ({}, "foo"),
+        ({}, "foo.bar"),
         ({"baz": "quux"}, "foo"),
+        (MAP, "quux.fizz.buzz"),
     ),
 )
-def test_not_contains(mapping: dict, key: str) -> None:
+def test_not_contains(mapping: dict, path: str) -> None:
     """
     A key is not present when the key is not present in the config data.
 
     Arguments:
         mapping: the mapping to test for.
-        key: the key to check for absence.
+        path: the path to check for absence.
     """
-    assert key not in mapping
-    assert key not in Config(mapping)
+    assert path not in Config(mapping)
 
 
 def test_delimiter() -> None:

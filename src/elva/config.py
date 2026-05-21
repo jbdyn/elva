@@ -192,6 +192,29 @@ class Config(dict):
             else:
                 return default
 
+    def __contains__(self, path: str) -> bool:
+        """
+        Check for presence of a path.
+
+        Arguments:
+            path: the path to check presence for.
+
+        Returns:
+            `True` if the path is present, else `False`.
+        """
+        *items, last = path.split(self.delimiter)
+
+        # start on superclass
+        current = super()
+
+        try:
+            for item in items:
+                current = current.__getitem__(item)
+
+            return current.__contains__(last)
+        except (KeyError, AttributeError, TypeError):
+            return False
+
     def __getitem__(self, path: str) -> Any:
         """
         Lookup the value to a given path.
