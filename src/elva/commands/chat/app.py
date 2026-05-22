@@ -348,11 +348,11 @@ class UI(App):
                 file,
             )
 
-            if c.get("config.dump", True):
+            if c.get("config.dump", False):
                 trimmed = Config(c.deepcopy())
 
-                del trimmed["config"]
-                del trimmed["chat.data"]
+                trimmed.pop("config", None)
+                trimmed.pop("chat.data", None)
 
                 self.store.set_config(trimmed, replace=c.get("config.replace", False))
 

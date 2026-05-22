@@ -108,7 +108,7 @@ class UI(App):
                 identifier,
                 host,
                 port=port,
-                safe=c["connect.safe"],
+                safe=c.get("connect.safe", True),
                 on_exception=self.on_provider_exception,
             )
 
@@ -122,11 +122,11 @@ class UI(App):
                 file,
             )
 
-            if c["config.dump"]:
+            if c.get("config.dump", False):
                 trimmed = Config(c.deepcopy())
 
-                del trimmed["config"]
-                del trimmed["editor.data"]
+                trimmed.pop("config", None)
+                trimmed.pop("editor.data", None)
 
                 self.store.set_config(trimmed, replace=c.get("config.replace", False))
 
