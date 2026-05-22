@@ -6,8 +6,9 @@ from pytest import fixture, mark
 
 from elva.component import create_component_state
 from elva.config import Config
+from elva.files import Data, Metadata
 from elva.protocol import STATE_ZERO
-from elva.store import Data, Metadata, SQLiteStore
+from elva.store import SQLiteStore
 
 pytestmark = mark.anyio
 parametrize = mark.parametrize

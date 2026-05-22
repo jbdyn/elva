@@ -6,8 +6,8 @@ from pytest import mark, raises
 
 import elva.cli as _cli
 import elva.files as _files
-import elva.store as _store
 from elva.config import Config
+from elva.files import Metadata
 
 # alias
 parametrize = mark.parametrize
@@ -152,7 +152,7 @@ def test_read_data_file(tmp_path, capfd, metadata, expected, warn):
         with data_file_path.open(mode="w") as file:
             file.write(metadata)
     elif isinstance(metadata, dict):
-        with _store.Metadata(data_file_path) as m:
+        with Metadata(data_file_path) as m:
             m.set_config(Config(metadata))
 
     # the return dict is populated as expected

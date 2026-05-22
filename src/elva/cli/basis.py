@@ -28,7 +28,7 @@ from elva.core import (
     CONFIG_NAME,
     get_command_import_path,
 )
-from elva.store import Metadata
+from elva.files import Metadata
 
 
 class OrderedGroup(Group):
