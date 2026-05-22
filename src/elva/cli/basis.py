@@ -185,9 +185,12 @@ def stored(ctxs: dict[str, Context]) -> dict[str, Any]:
 
     paths, out = read_config_files(files)
 
-    out["config"] = config
+    # merge with `config` section from config files
+    section = out.setdefault("config", {})
+    section.update(config)
 
-    out["config.files"] = paths
+    # overwrite with the read paths
+    section["files"] = paths
 
     return out
 

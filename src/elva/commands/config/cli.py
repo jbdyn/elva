@@ -34,7 +34,7 @@ Table for translations from flag to parameter names.
     "-i/-x",
     "defaults",
     help="Include or exclude default config file paths.",
-    default=None,
+    default=True,
 )
 @option(
     "--file",
