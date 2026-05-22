@@ -4,19 +4,6 @@ Module providing authentication utilities.
 
 import logging
 from base64 import b64encode
-from enum import IntEnum
-
-import ldap3
-from ldap3.core.exceptions import LDAPException
-from ldap3.utils.log import (
-    BASIC,
-    ERROR,
-    EXTENDED,
-    NETWORK,
-    OFF,
-    PROTOCOL,
-    set_library_log_detail_level,
-)
 
 from elva.log import LOGGER_NAME
 
@@ -62,33 +49,6 @@ class Password:
             the value of the [`redact`][elva.auth.Password.redact] attribute.
         """
         return self.redact
-
-
-class LDAP3LogLevel(IntEnum):
-    """
-    The logging level specified by the LDAP3 Python library as enumeration.
-
-    Intended as arguments for `ldap3.utils.log.set_library_log_detail_level`.
-    See [https://ldap3.readthedocs.io/en/latest/logging.html]() for details.
-    """
-
-    OFF = OFF
-    """Nothing is logged."""
-
-    ERROR = ERROR
-    """Only exceptions are logged."""
-
-    BASIC = BASIC
-    """Library activity is logged, only operation result is shownn"""
-
-    PROTOCOL = PROTOCOL
-    """LDAPv3 operations are logged, sent requests and received responses are shown."""
-
-    NETWORK = NETWORK
-    """Socket activity is logged."""
-
-    EXTENDED = EXTENDED
-    """LDAP messages are decoded and properly printed."""
 
 
 def basic_authorization_header(
@@ -184,63 +144,3 @@ class DummyAuth(Auth):
             `True` if username and password are identical, `False` if they are not.
         """
         return username == password
-
-
-class LDAPAuth(Auth):
-    """
-    `Basic Authentication` using LDAP self-bind.
-    """
-
-    def __init__(
-        self,
-        server: str,
-        base: str,
-        use_ssl: bool = True,
-        log_level: None | LDAP3LogLevel = None,
-    ):
-        """
-        Arguments:
-            server: address of the LDAP server.
-            base: base for lookup on the LDAP server.
-            use_ssl: flag whether to use SSL verification (`True`) or not (`False`).
-            log_level: the logging level of the underlying LDAP3 library.
-        """
-        self.server = ldap3.Server(server, use_ssl=use_ssl)
-        self.base = base
-
-        self.log.info(f"using server {self.server.name}")
-        self.log.info(f"using base {base}")
-
-        if log_level is not None:
-            set_library_log_detail_level(log_level)
-
-    def check(self, username: str, password: str) -> bool:
-        """
-        Perform a self-bind connection to the given LDAP server.
-
-        Arguments:
-            username: user name to use for the LDAP self-bind connection.
-            password: password to use for the LDAP self-bind connection.
-
-        Returns:
-            `True` if the LDAP self-bind connection could be established, i.e. was successful, `False` otherwise.
-        """
-        user = f"uid={username},{self.base}"
-
-        try:
-            self.log.debug(f"trying connection with username {username}")
-            with ldap3.Connection(
-                self.server,
-                user=user,
-                password=password,
-            ) as conn:
-                if conn.result["description"] == "success":
-                    self.log.debug(f"succeeded self-bind with username {username}")
-                    return True
-                else:
-                    self.log.debug(f"failed self-bind with username {username}")
-                    return False
-
-        except LDAPException as exc:
-            self.log.warning(f"failed connection with username {username}: {exc}")
-            return False

@@ -24,7 +24,6 @@ TRANSLATIONS = {
     "s": "save",
     "directory": "directory",
     "d": "directory",
-    "ldap": "ldap",
     "dummy": "dummy",
 }
 """
@@ -100,13 +99,6 @@ def run(config: Config) -> None:
         resolve_path=True,
         allow_dash=False,
     ),
-)
-@option(
-    "--ldap",
-    metavar="REALM SERVER BASE",
-    help="Enable Basic Authentication via LDAP self bind.",
-    nargs=3,
-    type=str,
 )
 @option(
     "--dummy",
