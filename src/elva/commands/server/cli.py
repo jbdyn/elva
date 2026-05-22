@@ -7,7 +7,6 @@ from importlib import import_module as import_
 from logging import INFO, FileHandler, StreamHandler, getLogger
 from pathlib import Path
 
-from anyio import run as arun
 from click import INT, UsageError, command, option
 from click import Path as PathParamType
 
@@ -56,8 +55,10 @@ def run(config: Config) -> None:
     app = import_(".app", __package__)
 
     # run app, catch file permission errors with an appropriate message
+    anyio = import_("anyio")
+
     try:
-        arun(app.main, config)
+        anyio.run(app.main, config)
     except PermissionError as exc:
         raise UsageError(exc)
     except KeyboardInterrupt:
