@@ -7,13 +7,62 @@ from importlib import import_module as import_
 from logging import INFO, FileHandler, StreamHandler, getLogger
 from pathlib import Path
 
-from anyio import run
+from anyio import run as arun
 from click import INT, UsageError, command, option
 from click import Path as PathParamType
 
-from elva.cli import app
+from elva.cli import context, unset
 from elva.config import Config
 from elva.log import LOGGER_NAME, DefaultFormatter
+
+TRANSLATIONS = {
+    "host": "host",
+    "h": "host",
+    "port": "port",
+    "p": "port",
+    "save": "save",
+    "s": "save",
+    "directory": "directory",
+    "d": "directory",
+    "ldap": "ldap",
+    "dummy": "dummy",
+}
+"""
+Table for translation from flag to parameter names.
+"""
+
+
+def run(config: Config) -> None:
+    """
+    Run the app.
+
+    Arguments:
+        config: the merged config.
+    """
+    # logging
+    LOGGER_NAME.set(__package__)
+    log = getLogger(__package__)
+
+    if (file := config.get("log.file")) is not None:
+        handler = FileHandler(file)
+    else:
+        handler = StreamHandler(sys.stdout)
+    handler.setFormatter(DefaultFormatter())
+    log.addHandler(handler)
+
+    level = config.get("log.level", INFO)
+    log.setLevel(level)
+
+    # defer heavy app import
+    app = import_(".app", __package__)
+
+    # run app, catch file permission errors with an appropriate message
+    try:
+        arun(app.main, config)
+    except PermissionError as exc:
+        raise UsageError(exc)
+    except KeyboardInterrupt:
+        pass
 
 
 @command(name="server")
@@ -65,7 +114,8 @@ from elva.log import LOGGER_NAME, DefaultFormatter
     is_flag=True,
     default=None,
 )
-@app
+@unset(TRANSLATIONS)
+@context
 def cli(config: Config) -> None:
     """
     Run a WebSocket server.
@@ -74,27 +124,4 @@ def cli(config: Config) -> None:
     Arguments:
         config: the merged configuration parameters from CLI and files.
     """
-    # logging
-    LOGGER_NAME.set(__package__)
-    log = getLogger(__package__)
-
-    if (file := config.get("log.file")) is not None:
-        handler = FileHandler(file)
-    else:
-        handler = StreamHandler(sys.stdout)
-    handler.setFormatter(DefaultFormatter())
-    log.addHandler(handler)
-
-    level = config.get("log.level", INFO)
-    log.setLevel(level)
-
-    # defer heavy app import
-    app = import_(".app", __package__)
-
-    # run app, catch file permission errors with an appropriate message
-    try:
-        run(app.main, config)
-    except PermissionError as exc:
-        raise UsageError(exc)
-    except KeyboardInterrupt:
-        pass
+    return run

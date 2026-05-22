@@ -14,6 +14,7 @@ from click import (
     Group,
     echo,
     get_app_dir,
+    get_current_context,
     group,
 )
 from click import (
@@ -173,7 +174,7 @@ def stored(ctxs: dict[str, Context]) -> dict[str, Any]:
         the inital config mapping with config from config files.
     """
     # get `config` command config
-    ctx = ctxs.pop("config", None)
+    ctx = ctxs.get("config", None)
     config = ctx.params if ctx is not None else dict()
 
     defaults = config.setdefault("defaults", True)
@@ -259,6 +260,34 @@ def merge(config: Config, ctxs: dict[str, Context]) -> None:
     config.update(out)
 
 
+def alter(config: Config, ctxs: dict[str, Context]) -> None | Callable:
+    """
+    Run the alteration logic for each command.
+
+    Arguments:
+        config: the merged config.
+        ctxs: the mapping of contexts.
+
+    Returns:
+        The app routine or `None` when no app `routine` was returned.
+    """
+    app = None
+
+    for name, ctx in ctxs.items():
+        if name in config:
+            section = config[name]
+
+            app = ctx.alter(section)
+
+            # remove all parameters to be unset from this config section
+            unset = set(section.pop("unset", []))
+
+            for param in unset:
+                section.pop(param, None)
+
+    return app
+
+
 def typecast(config: Config, ctxs: dict[str, Context]) -> None:
     """
     Cast read config file values to their CLI parameter types.
@@ -305,17 +334,17 @@ def run(returned: list[dict[str, Context | Callable]]) -> None:
     for mapping in returned:
         ctxs.update(mapping)
 
-    # fail early when there is nothing to run with the config
-    cmd = ctxs.pop("cmd", None)
-
-    if cmd is None:
-        raise ClickException("no app command specified")
-
     # read config from config files
     config = stored(ctxs)
 
     # merge parameters from contexts with file configs
     merge(config, ctxs)
+
+    # alter configuration parameters
+    app = alter(config, ctxs)
+
+    if app is None:
+        raise ClickException("no app command specified")
 
     # convert config file values to their CLI types
     typecast(config, ctxs)
@@ -324,7 +353,10 @@ def run(returned: list[dict[str, Context | Callable]]) -> None:
     clean(config)
 
     # run the command
-    cmd(config)
+    rc = app(config)
+
+    ctx = get_current_context()
+    ctx.exit(rc or 0)
 
 
 @group(

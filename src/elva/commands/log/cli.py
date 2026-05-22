@@ -3,7 +3,7 @@ from pathlib import Path
 from click import Context, IntRange, Parameter, command, option
 from click import Path as PathParameter
 
-from elva.cli import context
+from elva.cli import context, unset
 from elva.log import LogLevel
 
 LEVEL = [
@@ -57,6 +57,19 @@ class LogLevelRange(IntRange):
             return LogLevel[value]
 
 
+TRANSLATE = {
+    "verbose": "level",
+    "v": "level",
+    "quiet": "quiet",
+    "q": "quiet",
+    "file": "file",
+    "f": "file",
+}
+"""
+Table for translations from flag to parameter names.
+"""
+
+
 @command(name="log")
 @option(
     "--verbose",
@@ -65,6 +78,14 @@ class LogLevelRange(IntRange):
     help="Verbosity of logging output.",
     count=True,
     type=LogLevelRange(0, 2, clamp=True),
+)
+@option(
+    "--quiet",
+    "-q",
+    "quiet",
+    is_flag=True,
+    help="Unset the logging level.",
+    default=None,
 )
 @option(
     "--file",
@@ -83,9 +104,18 @@ class LogLevelRange(IntRange):
         allow_dash=False,
     ),
 )
+@unset(TRANSLATE)
 @context
-def cli() -> None:
+def cli(config: dict) -> None:
     """
     Configure logging.
+    \f
+
+    Arguments:
+        config: the merged `log` config section.
     """
-    return
+    # alias
+    c = config
+
+    if c.pop("quiet", False):
+        c.pop("level", None)

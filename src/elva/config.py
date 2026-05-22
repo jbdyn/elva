@@ -53,7 +53,7 @@ class Config(dict):
         """
         return "."
 
-    def path(self, keys: Sequence[str]) -> str:
+    def path(self, *keys: str) -> str:
         """
         Get the config path for a sequence of keys.
 

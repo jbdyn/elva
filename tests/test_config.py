@@ -183,7 +183,7 @@ def test_path(keys: Sequence[str], expected: str) -> None:
         keys: the keys to assemble to a path.
         expected: the expected returned path.
     """
-    assert Config().path(keys) == expected
+    assert Config().path(*keys) == expected
 
 
 @contextmanager

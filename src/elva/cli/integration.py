@@ -2,13 +2,14 @@
 Module providing the main command line interface functionality.
 """
 
-from functools import partial, wraps
+from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
 
 from click import (
     Context,
     Parameter,
+    ParamType,
     option,
 )
 from click import (
@@ -21,19 +22,18 @@ from click import (
 from elva.files import get_data_file_path
 
 
-def context(arg: Callable | None = None, /, cmd: bool = False) -> Callable:
+def context(arg: Callable | None = None) -> Callable:
     """
     Make a function return the subcommand.
 
     Arguments:
         arg: the first argument needed for convenient operation with and without paranthesis.
-        cmd: flag whether to include decorated function in the returned mapping.
 
     Returns:
         the decorated function.
     """
 
-    def _context(fn: Callable) -> Callable:
+    def _context(cmd: Callable) -> Callable:
         """
         Command decorator for returning the CLI context and the command function in a mapping.
 
@@ -46,7 +46,7 @@ def context(arg: Callable | None = None, /, cmd: bool = False) -> Callable:
 
         # wrap the command to let `wrapper` look like `cmd`
         # (same name and docstring) but with altered signature
-        @wraps(fn)
+        @wraps(cmd)
         @ctx
         def __context(ctx: Context, **kwargs: Any) -> Any:
             """
@@ -59,16 +59,14 @@ def context(arg: Callable | None = None, /, cmd: bool = False) -> Callable:
             Returns:
                 the mapping of the command name to its associated CLI context.
             """
+            # save the decorated routine as an attribute as config alteration
+            # routine
+            ctx.alter = cmd
+
             # map the command's name to its context
-            mapping = {
+            return {
                 ctx.command.name: ctx,
             }
-
-            if cmd:
-                # include the command function itself
-                mapping["cmd"] = fn
-
-            return mapping
 
         return __context
 
@@ -77,10 +75,6 @@ def context(arg: Callable | None = None, /, cmd: bool = False) -> Callable:
         return _context(arg)
     else:
         return _context
-
-
-app = partial(context, cmd=True)
-"""App subcommand decorator returning a routine to run in addition to its CLI context."""
 
 
 #
@@ -124,3 +118,64 @@ data = option(
     ),
     callback=resolve_data_file_path,
 )
+"""
+The data file option for an ELVA app command.
+"""
+
+
+class TranslatedChoice(ParamType):
+    """
+    A choice from flag to parameter name translation mapping.
+    """
+
+    name = "choice"
+
+    def __init__(self, translate: dict) -> None:
+        """
+        Arguments:
+            translate: the flag to parameter name mapping.
+        """
+        self.translate = translate
+
+    def convert(self, value: str, param: Parameter, ctx: Context) -> str:
+        """
+        Convert the parsed CLI value to the parameter name.
+
+        Arguments:
+            value: the parsed CLI value.
+            param: the associated Parameter instance.
+            ctx: the current parameter context instance.
+
+        Returns:
+            the parameter name.
+        """
+        tr = self.translate
+
+        try:
+            return tr[value]
+        except KeyError:
+            self.fail(
+                f"'{value}' is not a valid choice. Use one from {list(tr.keys())}"
+            )
+
+
+def unset(translate: dict) -> Callable:
+    """
+    Return the configured `--unset` commandline option.
+
+    Arguments:
+        translate: the translation mapping from flag to parameter names.
+
+    Returns:
+        the configured `--unset` commandline option.
+    """
+    return option(
+        "--unset",
+        "-?",
+        "unset",
+        metavar="OPTION",
+        multiple=True,
+        show_choices=False,
+        help="Unset an option. Can be given multiple times.",
+        type=TranslatedChoice(translate),
+    )

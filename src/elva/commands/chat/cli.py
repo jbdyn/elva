@@ -4,33 +4,34 @@ CLI definition.
 
 from importlib import import_module as import_
 from logging import FileHandler, getLogger
+from typing import Callable
 
-from click import command, get_current_context, option
+from click import command, option
 
-from elva.cli import app, data
+from elva.cli import context, data, unset
 from elva.config import Config
 from elva.log import LOGGER_NAME, DefaultFormatter
 
+TRANSLATIONS = {
+    "self": "self",
+    "s": "self",
+    "no-self": "self",
+    "ns": "self",
+    "file": "data",
+    "f": "data",
+}
+"""
+Table for translation from flag to parameter names.
+"""
 
-@command(name="chat")
-@option(
-    "--self/--no-self",
-    "-s/-n",
-    help="Show your own writing in the preview.",
-    is_flag=True,
-    default=None,
-)
-@data
-@app
-def cli(config: Config) -> None:
+
+def run(config: Config) -> None:
     """
-    Send messages with real-time preview.
-    \f
+    Run the app.
 
     Arguments:
-        config: the merged configuration from CLI parameters and files.
+        config: the merged config.
     """
-
     # logging
     LOGGER_NAME.set(__package__)
     log = getLogger(__package__)
@@ -52,10 +53,30 @@ def cli(config: Config) -> None:
     ui = app.UI(config)
     ui.run()
 
-    # reflect the app's return code
-    ctx = get_current_context()
-    ctx.exit(ui.return_code or 0)
+    return ui.return_code
 
 
-if __name__ == "__main__":
-    cli()
+@command(name="chat")
+@option(
+    "--self/--no-self",
+    "-s/-ns",
+    "self",
+    help="Show your own writing in the preview.",
+    is_flag=True,
+    default=None,
+)
+@data
+@unset(TRANSLATIONS)
+@context
+def cli(config: Config) -> Callable:
+    """
+    Send messages with real-time preview.
+    \f
+
+    Arguments:
+        config: the merged configuration from CLI parameters and files.
+
+    Returns:
+        the app entry point.
+    """
+    return run

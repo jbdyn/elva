@@ -1,6 +1,22 @@
 from click import INT, command, option
 
-from elva.cli import context
+from elva.cli import context, unset
+
+TRANSLATE = {
+    "host": "host",
+    "h": "host",
+    "port": "port",
+    "p": "port",
+    "identifier": "identifier",
+    "i": "identifier",
+    "safe": "safe",
+    "s": "safe",
+    "unsafe": "safe",
+    "u": "safe",
+}
+"""
+Table for translation from flag to parameter names.
+"""
 
 
 @command(name="connect")
@@ -26,15 +42,20 @@ from elva.cli import context
 )
 @option(
     "--safe/--unsafe",
-    "-s",
+    "-s/-u",
     "safe",
     is_flag=True,
     help="Try to establish a safe connection.",
     default=None,
 )
+@unset(TRANSLATE)
 @context
-def cli() -> None:
+def cli(config: dict) -> None:
     """
     Configure connection details.
+    \f
+
+    Arguments:
+        config: the merged `connect` config section.
     """
     return

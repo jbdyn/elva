@@ -4,40 +4,43 @@ CLI definition.
 
 from importlib import import_module as import_
 from logging import FileHandler, getLogger
+from typing import Callable
 
-from click import command, get_current_context, option
+from click import command, option
 
-from elva.cli import app, data
+from elva.cli import context, data, unset
 from elva.config import Config
 from elva.log import LOGGER_NAME, DefaultFormatter
 
+TRANSLATE = {
+    "ansi": "ansi",
+    "a": "ansi",
+    "textual": "ansi",
+    "t": "ansi",
+    "file": "data",
+    "f": "data",
+}
+"""
+Table for translation from flag to parameter names.
+"""
 
-@command(name="editor")
-@option(
-    "--ansi/--textual",
-    "-a/-t",
-    is_flag=True,
-    help="Use the terminal ANSI colors for the Textual colortheme.",
-    default=None,
-)
-@data
-@app
-def cli(config: Config) -> None:
+
+def run(config: Config) -> None:
     """
-    Edit text documents collaboratively in real-time.
-    \f
+    Run the app.
 
     Arguments:
-        config: the merged configuration from CLI parameters and files.
-        args: unused positional arguments.
-        kwargs: parameters passed from the CLI.
+        config: the merged config.
     """
+    # alias
+    c = config
+
     # logging
     LOGGER_NAME.set(__package__)
     log = getLogger(__package__)
 
-    level = config.get("log.level")
-    file = config.get("log.file")
+    level = c.get("log.level")
+    file = c.get("log.file")
 
     if file is not None and level is not None:
         handler = FileHandler(file)
@@ -53,10 +56,27 @@ def cli(config: Config) -> None:
     ui = app.UI(config)
     ui.run()
 
-    # reflect the app's return code
-    ctx = get_current_context()
-    ctx.exit(ui.return_code or 0)
+    return ui.return_code
 
 
-if __name__ == "__main__":
-    cli()
+@command(name="editor")
+@option(
+    "--ansi/--textual",
+    "-a/-t",
+    "ansi",
+    is_flag=True,
+    help="Use the terminal ANSI colors for the Textual colortheme.",
+    default=None,
+)
+@data
+@unset(TRANSLATE)
+@context
+def cli(config: dict) -> Callable:
+    """
+    Edit text documents collaboratively in real-time.
+    \f
+
+    Arguments:
+        config: the merged `editor` config section.
+    """
+    return run
