@@ -108,7 +108,6 @@ class UI(App):
                 identifier,
                 host,
                 port=port,
-                safe=c.get("connect.safe", True),
                 on_exception=self.on_provider_exception,
             )
 

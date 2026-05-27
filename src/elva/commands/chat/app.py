@@ -364,7 +364,6 @@ class UI(App):
                 c["connect.identifier"],
                 c["connect.host"],
                 port=c.get("connect.port"),
-                safe=c["connect.safe"],
                 on_exception=self.on_provider_exception,
             )
 
