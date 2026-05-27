@@ -74,7 +74,7 @@ def free_tcp_port(host: None | str = None) -> int:
             return port
 
 
-RE_IDENTIFIER = re.compile(r"^[A-Za-z0-9\-_]{10,250}$")
+RE_IDENTIFIER = re.compile(r"^[A-Za-z0-9\-_]{1,250}$")
 """Regular expression for a valid Y Doc identifier."""
 
 
