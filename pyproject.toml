@@ -68,7 +68,6 @@ dependencies = [
     "websockets>=14.0.0,<16.0",
     "pycrdt",
     "anyio",
-    "sqlite_anyio",
     "click",
     "rich",
     "emoji",
