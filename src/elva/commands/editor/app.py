@@ -12,9 +12,10 @@ from textual.binding import Binding
 from textual.widgets import Footer, Header
 from websockets.exceptions import InvalidStatus, WebSocketException
 
-from elva.cli import get_data_file_path, get_render_file_path
 from elva.component import Component, ComponentState
+from elva.config import Config
 from elva.core import FILE_SUFFIX
+from elva.files import get_data_file_path, get_render_file_path
 from elva.provider import WebsocketProvider
 from elva.renderer import TextRenderer
 from elva.store import SQLiteStore
@@ -58,20 +59,37 @@ class UI(App):
     ]
     """Key bindings for actions of the app."""
 
-    def __init__(self, config: dict):
+    def __init__(self, config: Config) -> None:
         """
         Arguments:
             config: mapping of configuration parameters to their values.
         """
+        # document structure
+        self.ydoc = Doc()
+        self.ytext = Text()
+        self.ydoc["ytext"] = self.ytext
+
+        # define defaults
         self.config = c = config
 
-        ansi_color = c.get("ansi_color", False)
-        super().__init__(ansi_color=ansi_color)
+        for path, default in (
+            ("config.dump", True),
+            ("connect.identifier", self.ydoc.guid),
+            ("connect.safe", True),
+            ("render.auto", True),
+            ("render.timeout", 300),
+            ("editor.ansi", False),
+        ):
+            c.setdefault(path, default)
 
-        # Build title for header
-        host = c.get("host")
-        port = c.get("port")
-        identifier = c.get("identifier", "")
+        # initialize `Textual` app
+        super().__init__(ansi_color=c.get("editor.ansi", False))
+
+        # build title for header
+        host = c.get("connect.host")
+        port = c.get("connect.port")
+        identifier = c["connect.identifier"]
+
         if host and identifier:
             if port:
                 self.title = f"{host}:{port}/{identifier}"
@@ -82,49 +100,48 @@ class UI(App):
         else:
             self.title = "Elva"
 
-        # document structure
-        self.ydoc = Doc()
-        self.ytext = Text()
-        self.ydoc["ytext"] = self.ytext
-
         self.components = list()
 
-        if c.get("host") is not None:
+        if host is not None:
             self.provider = WebsocketProvider(
                 self.ydoc,
-                c["identifier"],
-                c["host"],
-                port=c.get("port"),
-                safe=c.get("safe", True),
+                identifier,
+                host,
+                port=port,
+                safe=c.get("connect.safe", True),
                 on_exception=self.on_provider_exception,
             )
 
-            data = {}
-            if c.get("name") is not None:
-                data = {"user": {"name": c["name"]}}
-
-            self.provider.awareness.set_local_state(data)
+            self.provider.awareness.set_local_state(c.get("user", {}))
 
             self.components.append(self.provider)
 
-        if c.get("file") is not None:
+        if (file := c.get("editor.data")) is not None:
             self.store = SQLiteStore(
                 self.ydoc,
-                c["identifier"],
-                c["file"],
+                file,
             )
+
+            if c.get("config.dump", False):
+                trimmed = Config(c.deepcopy())
+
+                trimmed.pop("config", None)
+                trimmed.pop("editor.data", None)
+
+                self.store.set_config(trimmed, replace=c.get("config.replace", False))
+
             self.components.append(self.store)
 
-        if c.get("render") is not None:
+        if (file := c.get("render.file")) is not None:
             self.renderer = TextRenderer(
                 self.ytext,
-                c["render"],
-                c.get("auto_save", False),
-                c.get("timeout", 300),
+                file,
+                auto_save=c["render.auto"],
+                timeout=c["render.timeout"],
             )
             self.components.append(self.renderer)
 
-        self._language = c.get("language")
+        self._language = c.get("editor.language")
 
     def on_provider_exception(self, exc: WebSocketException, config: dict):
         """
@@ -211,16 +228,18 @@ class UI(App):
                 self.on_awareness_update
             )
 
-        # load text from rendered file
+        # alias
         c = self.config
 
+        # load text from rendered file
         text = ""
+        render_file_path = c.get("render.file")
 
-        render_file_path = c.get("render")
         if render_file_path is not None and render_file_path.exists():
             # we found some content on disk;
             # now check whether this has precedence over the data file
-            data_file_path = c.get("file")
+            data_file_path = c.get("editor.data")
+
             if data_file_path is None or not data_file_path.exists():
                 # there is no data file on disk associated with this
                 # file name; we load the content
@@ -275,8 +294,11 @@ class UI(App):
         """
         The language the text document is written in.
         """
+        # alias
         c = self.config
-        file_path = c.get("file")
+
+        file_path = c.get("editor.data")
+
         if file_path is not None and file_path.suffix:
             suffixes = "".join(file_path.suffixes)
             suffix = suffixes.split(FILE_SUFFIX)[0].removeprefix(".")
@@ -298,7 +320,10 @@ class UI(App):
         """
         Action performed on triggering the `save` key binding.
         """
-        if self.config.get("file") is None:
+        # alias
+        c = self.config
+
+        if c.get("editor.data") is None:
             self.run_worker(self.get_and_set_file_paths())
 
     async def get_and_set_file_paths(self, data_file: bool = True):
@@ -308,6 +333,9 @@ class UI(App):
         Arguments:
             data_file: flag whether to add a data file path to the config.
         """
+        # alias
+        c = self.config
+
         name = await self.push_screen_wait("input")
 
         if not name:
@@ -316,20 +344,26 @@ class UI(App):
         path = Path(name)
 
         data_file_path = get_data_file_path(path)
+
         if data_file:
-            self.config["file"] = data_file_path
+            c["editor.data"] = data_file_path
             self.store = SQLiteStore(
-                self.ydoc, self.config["identifier"], data_file_path
+                self.ydoc,
+                c.get("connect.identifier", self.ydoc.guid),
+                data_file_path,
             )
             self.components.append(self.store)
             self.run_worker(self.store.start())
 
-        if self.config.get("render") is None:
+        if c.get("render.file") is None:
             render_file_path = get_render_file_path(data_file_path)
-            self.config["render"] = render_file_path
+
+            c["render.file"] = render_file_path
 
             self.renderer = TextRenderer(
-                self.ytext, render_file_path, self.config.get("auto_save", False)
+                self.ytext,
+                render_file_path,
+                c.get("render.auto", False),
             )
             self.components.append(self.renderer)
             self.run_worker(self.renderer.start())
@@ -341,7 +375,7 @@ class UI(App):
         """
         Action performed on triggering the `render` key binding.
         """
-        if self.config.get("render") is None:
+        if self.config.get("render.file") is None:
             self.run_worker(self.get_and_set_file_paths(data_file=False))
         else:
             await self.renderer.write()

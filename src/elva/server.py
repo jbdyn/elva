@@ -171,7 +171,7 @@ class Room(Component):
         if persistent:
             self.ydoc = Doc()
             if path is not None:
-                self.store = SQLiteStore(self.ydoc, identifier, self.path)
+                self.store = SQLiteStore(self.ydoc, self.path)
 
     @property
     def states(self) -> RoomState:

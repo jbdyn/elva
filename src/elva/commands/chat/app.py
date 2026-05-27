@@ -19,7 +19,8 @@ from textual.widget import Widget
 from textual.widgets import Rule, Static, TabbedContent, TabPane
 from websockets.exceptions import InvalidStatus, WebSocketException
 
-from elva.cli import get_data_file_path, get_render_file_path
+from elva.config import Config
+from elva.files import get_data_file_path, get_render_file_path
 from elva.parser import ArrayEventParser, MapEventParser
 from elva.provider import WebsocketProvider
 from elva.renderer import TextRenderer
@@ -164,7 +165,7 @@ class History(MessageList, ArrayEventParser, can_focus=False):
         """
         self.messages.unobserve(self._subscription)
 
-    def _on_edit(self, retain: int = 0, delete: int = 0, insert: list = [], txn = None):
+    def _on_edit(self, retain: int = 0, delete: int = 0, insert: list = [], txn=None):
         """
         Hook called by the [`parse`][elva.parser.ArrayEventParser.parse] method.
 
@@ -227,7 +228,9 @@ class Future(MessageList, MapEventParser, can_focus=False):
         """
         self.messages.unobserve(self._subscription)
 
-    def _on_edit(self, delete: dict = {}, update: dict = {}, insert: dict = {}, txn = None):
+    def _on_edit(
+        self, delete: dict = {}, update: dict = {}, insert: dict = {}, txn=None
+    ):
         """
         Hook called by the [`parse`][elva.parser.MapEventParser.parse] method.
 
@@ -304,68 +307,76 @@ class UI(App):
     ]
     """Key bindings for controlling the app."""
 
-    def __init__(
-        self,
-        config: dict,
-        *args: tuple,
-        **kwargs: dict,
-    ):
+    def __init__(self, config: Config) -> None:
         """
         Arguments:
             config: mapping of configuration parameters.
-            args: positional arguments passed to [`App`][textual.app.App].
-            kwargs: keyword arguments passed to [`App`][textual.app.App].
         """
-        super().__init__(*args, **kwargs)
-
         # structure
         self.ydoc = ydoc = Doc()
         ydoc["history"] = self.history = Array()
         ydoc["future"] = self.future = Map()
 
+        self.client_id = str(self.ydoc.client_id)
+
         self.config = c = config
 
-        self.client_id = str(self.ydoc.client_id)
-        self.user = c.get("user", self.client_id)
-        self.display_name = c.get("name")
-        self.show_self = c.get("show_self", True)
+        for path, default in (
+            ("connect.identifier", self.ydoc.guid),
+            ("connect.safe", True),
+            ("user.name", self.client_id),
+            ("user.display", self.client_id),
+            ("render.auto", True),
+            ("chat.self", False),
+        ):
+            c.setdefault(path, default)
+
+        super().__init__()
+
+        self.user = c["user.name"]
+        self.display_name = c["user.display"]
+        self.show_self = c["chat.self"]
 
         self.message, self.ytext, message_id = self.get_message("")
 
         # components
         self.components = []
 
-        if c.get("file") is not None:
+        if (file := c.get("chat.data")) is not None:
             self.store = SQLiteStore(
                 self.ydoc,
-                c["identifier"],
-                c["file"],
+                file,
             )
+
+            if c.get("config.dump", False):
+                trimmed = Config(c.deepcopy())
+
+                trimmed.pop("config", None)
+                trimmed.pop("chat.data", None)
+
+                self.store.set_config(trimmed, replace=c.get("config.replace", False))
+
             self.components.append(self.store)
 
-        if c.get("host") is not None:
+        if c.get("connect.host") is not None:
             self.provider = WebsocketProvider(
                 ydoc,
-                c["identifier"],
-                c["host"],
-                port=c.get("port"),
-                safe=c.get("safe", True),
+                c["connect.identifier"],
+                c["connect.host"],
+                port=c.get("connect.port"),
+                safe=c["connect.safe"],
                 on_exception=self.on_provider_exception,
             )
 
-            data = {}
-            if c.get("name") is not None:
-                data = {"user": {"name": c["name"]}}
-
-            self.provider.awareness.set_local_state(data)
+            self.provider.awareness.set_local_state(c.get("user", {}))
 
             self.components.append(self.provider)
 
-        if c.get("render") is not None:
+        if (file := c.get("render.file")) is not None:
             self.renderer = TextRenderer(
                 self.history,
-                c["render"],
-                c.get("auto_save", True),
+                file,
+                c["render.auto"],
             )
             self.components.append(self.renderer)
 
@@ -398,7 +409,7 @@ class UI(App):
         ymap = Map(
             {
                 "text": ytext,
-                "author_display": self.display_name or self.client_id,
+                "author_display": self.display_name,
                 # we assume that self.user is unique in the room, ensured by the server
                 "author": self.user,
                 "id": message_id,
@@ -573,7 +584,10 @@ class UI(App):
         """
         Action performed on triggering the `save` key binding.
         """
-        if self.config.get("file") is None:
+        # alias
+        c = self.config
+
+        if c.get("chat.data") is None:
             self.run_worker(self.get_and_set_file_paths())
 
     async def get_and_set_file_paths(self, data_file: bool = True):
@@ -588,23 +602,32 @@ class UI(App):
         if not name:
             return
 
+        # alias
+        c = self.config
+
         path = Path(name)
 
         data_file_path = get_data_file_path(path)
         if data_file:
-            self.config["file"] = data_file_path
+            c["chat.data"] = data_file_path
+
             self.store = SQLiteStore(
-                self.ydoc, self.config["identifier"], data_file_path
+                self.ydoc,
+                c.get("connect.identifier", self.ydoc.guid),
+                data_file_path,
             )
             self.components.append(self.store)
             self.run_worker(self.store.start())
 
-        if self.config.get("render") is None:
+        if c.get("render.file") is None:
             render_file_path = get_render_file_path(data_file_path)
-            self.config["render"] = render_file_path
+
+            c["render.file"] = render_file_path
 
             self.renderer = TextRenderer(
-                self.history, render_file_path, self.config.get("auto_save", True)
+                self.history,
+                render_file_path,
+                c.get("render.auto", True),
             )
             self.components.append(self.renderer)
             self.run_worker(self.renderer.start())
@@ -616,7 +639,10 @@ class UI(App):
         """
         Action performed on triggering the `render` key binding.
         """
-        if self.config.get("render") is None:
+        # alias
+        c = self.config
+
+        if c.get("render.file") is None:
             self.run_worker(self.get_and_set_file_paths(data_file=False))
         else:
             await self.renderer.write()

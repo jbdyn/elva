@@ -26,9 +26,9 @@ if __name__ == "__main__":
 ```
 """
 
-import logging
-import logging.handlers
 from contextvars import ContextVar
+from enum import IntEnum
+from logging import DEBUG, INFO, Formatter
 
 LOGGER_NAME: ContextVar = ContextVar("logger_name")
 """
@@ -38,11 +38,25 @@ This variable is read by the Component class on initialization.
 """
 
 
-###
-#
-# formatter
-#
-class DefaultFormatter(logging.Formatter):
+class LogLevel(IntEnum):
+    """
+    Enumeration of `logging` log levels.
+    """
+
+    INFO = INFO
+    DEBUG = DEBUG
+
+    def __str__(self) -> str:
+        """
+        Convert a log level to a string.
+
+        Returns:
+            the string conversion of a log level.
+        """
+        return self.name
+
+
+class DefaultFormatter(Formatter):
     """
     Default formatter for ELVA apps.
 
@@ -58,4 +72,5 @@ class DefaultFormatter(logging.Formatter):
     def __init__(self):
         fmt = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
         datefmt = "%Y-%m-%d %H:%M:%S"
+
         super().__init__(fmt=fmt, datefmt=datefmt)

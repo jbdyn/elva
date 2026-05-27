@@ -119,9 +119,13 @@ def test_component_repr():
 
 async def test_component_logging():
     """The component logger name is taken from the LOGGER_NAME context variable."""
-
     # setup base logger
     logger = logging.getLogger(__name__)
+
+    # remove any existing handlers
+    for handler in logger.handlers:
+        logger.removeHandler(handler)
+
     file = io.StringIO()
     handler = logging.StreamHandler(file)
     handler.setFormatter(DefaultFormatter())
