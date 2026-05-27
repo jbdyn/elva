@@ -65,13 +65,13 @@ classifiers = [
 # see https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies-optional-dependencies
 dependencies = [
     "setuptools",
-    "websockets>=14.0.0,<16.0",
+    "websockets>=14.0.0",
     "pycrdt",
     "anyio",
     "click",
     "rich",
     "emoji",
-    "textual[syntax]>=2.0,<6.0",
+    "textual[syntax]>=2.0",
     "tree-sitter-language-pack",
     "tomli-w",
     "tomli",
