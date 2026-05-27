@@ -302,29 +302,29 @@ def test_getitem_absent(operation: Callable) -> None:
         #
         (
             lambda c: c.set("foo", "bar"),
-            lambda m: (m["foo"] == "bar"),
+            lambda m: m["foo"] == "bar",
         ),
         (
             lambda c: c.set("foo.x", "?"),
-            lambda m: (m["foo"]["x"] == "?"),
+            lambda m: m["foo"]["x"] == "?",
         ),
         #
         # mixed
         #
         (
             lambda c: c.set("foo.new.from.here.on", "bar"),
-            lambda m: (m["foo"]["new"]["from"]["here"]["on"] == "bar"),
+            lambda m: m["foo"]["new"]["from"]["here"]["on"] == "bar",
         ),
         #
         # absent
         #
         (
             lambda c: c.set("quux", "blub"),
-            lambda m: (m["quux"] == "blub"),
+            lambda m: m["quux"] == "blub",
         ),
         (
             lambda c: c.set("none.of.them.exist", 42),
-            lambda m: (m["none"]["of"]["them"]["exist"] == 42),
+            lambda m: m["none"]["of"]["them"]["exist"] == 42,
         ),
     ),
 )
@@ -403,11 +403,11 @@ def test_setdefault(operation: Callable, expected: Any) -> None:
     (
         (
             lambda c: c.set("foo.x.nonexistend", "?", overwrite=True),
-            lambda m: (m["foo"]["x"]["nonexistend"] == "?"),
+            lambda m: m["foo"]["x"]["nonexistend"] == "?",
         ),
         (
             lambda c: c.set("foo.bar.baz.nonexistend", "?", overwrite=True),
-            lambda m: (m["foo"]["bar"]["baz"]["nonexistend"] == "?"),
+            lambda m: m["foo"]["bar"]["baz"]["nonexistend"] == "?",
         ),
     ),
 )
@@ -430,11 +430,11 @@ def test_set_intermediate_overwrite(operation: Callable, expected: Callable) -> 
     (
         (
             lambda c: c.set("foo.x.nonexistend", "?"),
-            lambda m: (m["foo"]["x"]["nonexistend"] == "?"),
+            lambda m: m["foo"]["x"]["nonexistend"] == "?",
         ),
         (
             lambda c: c.set("foo.bar.baz.nonexistend", "?"),
-            lambda m: (m["foo"]["bar"]["baz"]["nonexistend"] == "?"),
+            lambda m: m["foo"]["bar"]["baz"]["nonexistend"] == "?",
         ),
     ),
 )
@@ -455,11 +455,11 @@ def test_set_intermediate_no_overwrite(operation: Callable, expected: Callable) 
     (
         (
             lambda c: c.__delitem__("foo"),
-            lambda m: (set(m.keys()) == set()),
+            lambda m: set(m.keys()) == set(),
         ),
         (
             lambda c: c.__delitem__("foo.x"),
-            lambda m: (set(m["foo"].keys()) == {"bar", "y"}),
+            lambda m: set(m["foo"].keys()) == {"bar", "y"},
         ),
     ),
 )
@@ -483,12 +483,12 @@ def test_del(operation: Callable, expected: Callable) -> None:
         (
             lambda c: c.pop("foo"),
             MAP["foo"],
-            lambda m: (set(m.keys()) == set()),
+            lambda m: set(m.keys()) == set(),
         ),
         (
             lambda c: c.pop("foo.x"),
             MAP["foo"]["x"],
-            lambda m: (set(m["foo"].keys()) == {"bar", "y"}),
+            lambda m: set(m["foo"].keys()) == {"bar", "y"},
         ),
     ),
 )
