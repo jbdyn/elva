@@ -62,7 +62,10 @@ async def test_connect(free_tcp_port, tmp_path):
     ) as server:
         # run the provider
         async with WebsocketProvider(
-            ydoc, identifier, LOCALHOST, port=free_tcp_port,
+            ydoc,
+            identifier,
+            LOCALHOST,
+            port=free_tcp_port,
         ) as provider:
             # wait for the provider to be connected
             sub_provider = provider.subscribe()
@@ -105,10 +108,16 @@ async def test_multiple_connect_no_history(free_tcp_port):
         # run the providers
         async with (
             WebsocketProvider(
-                ydoc_a, identifier, LOCALHOST, port=free_tcp_port,
+                ydoc_a,
+                identifier,
+                LOCALHOST,
+                port=free_tcp_port,
             ) as provider_a,
             WebsocketProvider(
-                ydoc_b, identifier, LOCALHOST, port=free_tcp_port,
+                ydoc_b,
+                identifier,
+                LOCALHOST,
+                port=free_tcp_port,
             ) as provider_b,
         ):
             # the YDocs contain both nothing
@@ -164,10 +173,16 @@ async def test_multiple_connect_divergent_history(free_tcp_port):
         # run the providers
         async with (
             WebsocketProvider(
-                ydoc_a, identifier, LOCALHOST, port=free_tcp_port,
+                ydoc_a,
+                identifier,
+                LOCALHOST,
+                port=free_tcp_port,
             ) as provider_a,
             WebsocketProvider(
-                ydoc_b, identifier, LOCALHOST, port=free_tcp_port,
+                ydoc_b,
+                identifier,
+                LOCALHOST,
+                port=free_tcp_port,
             ) as provider_b,
         ):
             # the YDocs hold some differing content
@@ -210,7 +225,10 @@ async def test_manual_reconnect(free_tcp_port):
 
     async with WebsocketServer(LOCALHOST, free_tcp_port, persistent=True) as server:
         provider = WebsocketProvider(
-            ydoc, identifier, LOCALHOST, port=free_tcp_port,
+            ydoc,
+            identifier,
+            LOCALHOST,
+            port=free_tcp_port,
         )
         sub = provider.subscribe()
         async with anyio.create_task_group() as tg:
@@ -255,7 +273,10 @@ async def test_auto_reconnect(free_tcp_port):
 
     # subscribe to both provider and server state changes
     provider = WebsocketProvider(
-        ydoc, identifier, LOCALHOST, port=free_tcp_port,
+        ydoc,
+        identifier,
+        LOCALHOST,
+        port=free_tcp_port,
     )
     sub_provider = provider.subscribe()
 
@@ -320,7 +341,10 @@ async def test_synchronization_from_provider_to_server(free_tcp_port):
     async with (
         WebsocketServer(LOCALHOST, free_tcp_port, persistent=True) as server,
         WebsocketProvider(
-            ydoc, identifier, LOCALHOST, port=free_tcp_port,
+            ydoc,
+            identifier,
+            LOCALHOST,
+            port=free_tcp_port,
         ) as provider,
     ):
         # wait for the provider to be connected
@@ -370,7 +394,10 @@ async def test_synchronization_from_server_to_provider(free_tcp_port):
 
         # run the provider
         async with WebsocketProvider(
-            ydoc, identifier, LOCALHOST, port=free_tcp_port,
+            ydoc,
+            identifier,
+            LOCALHOST,
+            port=free_tcp_port,
         ) as provider:
             # wait for the provider to be connected
             sub = provider.subscribe()
@@ -410,7 +437,10 @@ async def test_bidirectional_synchronization(free_tcp_port):
 
         # run the provider
         async with WebsocketProvider(
-            ydoc, identifier, LOCALHOST, port=free_tcp_port,
+            ydoc,
+            identifier,
+            LOCALHOST,
+            port=free_tcp_port,
         ) as provider:
             # wait for the provider to be connected
             sub = provider.subscribe()
@@ -469,7 +499,10 @@ async def test_auth(free_tcp_port):
         # no authorization header raises InvalidStatus exception
         with pytest.raises(ExceptionGroup) as excinfo:
             async with WebsocketProvider(
-                ydoc, identifier, LOCALHOST, port=free_tcp_port,
+                ydoc,
+                identifier,
+                LOCALHOST,
+                port=free_tcp_port,
             ):
                 await anyio.sleep_forever()
 

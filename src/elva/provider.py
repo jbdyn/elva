@@ -3,9 +3,8 @@ Module holding provider components.
 """
 
 import logging
-import socket
-import ssl
 from inspect import Signature, isawaitable, signature
+from ssl import CERT_REQUIRED, PROTOCOL_TLS_CLIENT, TLSVersion, create_default_context
 from typing import Any, Awaitable, Callable, Literal
 from urllib.parse import urlunparse
 
@@ -16,9 +15,8 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 
 from elva.awareness import Awareness
 from elva.component import Component, create_component_state
-from elva.protocol import YMessage
 from elva.core import LOCAL_HOSTS
-
+from elva.protocol import YMessage
 
 WebsocketProviderState = create_component_state(
     "WebsocketProviderState", ("CONNECTED",)
@@ -87,20 +85,20 @@ class WebsocketProvider(Component):
         # only disable TLS for local hosts
         if host in LOCAL_HOSTS:
             # default for `socket.create_connection`
-            tls_context = None
+            tls = None
 
             # for `websockets.connect`
             scheme = "ws"
         else:
             # define protocol and load default certificates
-            tls_context = ssl.create_default_context(ssl.PROTOCOL_TLS_CLIENT)
+            tls = create_default_context(PROTOCOL_TLS_CLIENT)
 
             # explicitly require certificate and hostname checking
-            tls_context.verify_mode = ssl.CERT_REQUIRED
-            tls_context.check_hostname = True
+            tls.verify_mode = CERT_REQUIRED
+            tls.check_hostname = True
 
             # require at minimum TLS v1.2
-            tls_context.minimum_version = ssl.TLSVersion.TLSv1_2
+            tls.minimum_version = TLSVersion.TLSv1_2
 
             # for `websockets.connect`
             scheme = "wss"
@@ -117,7 +115,7 @@ class WebsocketProvider(Component):
         )
 
         # pass the TLS context to `websockets.connect`
-        kwargs["ssl"] = tls_context
+        kwargs["ssl"] = tls
 
         self._signature = signature(connect).bind(uri, *args, **kwargs)
         self.options = self._signature.arguments

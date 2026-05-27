@@ -5,10 +5,10 @@ Module containing server components.
 import logging
 import re
 import socket
-import ssl
 from contextlib import closing
 from http import HTTPStatus
 from pathlib import Path
+from ssl import SSLContext
 from typing import Callable, Iterable
 
 import anyio
@@ -381,7 +381,7 @@ class WebsocketServer(Component):
     rooms: dict[str, Room]
     """mapping of connection handlers to their corresponding identifiers."""
 
-    tls_context: ssl.SSLContext | None
+    tls_context: SSLContext | None
     """[`SSLContext`][`ssl.SSLContext`] instance for TLS connections."""
 
     def __init__(
@@ -391,7 +391,7 @@ class WebsocketServer(Component):
         persistent: bool = False,
         path: None | Path = None,
         process_request: None | Callable = None,
-        tls_context: ssl.SSLContext | None = None,
+        tls: SSLContext | None = None,
     ):
         """
         Arguments:
@@ -400,13 +400,13 @@ class WebsocketServer(Component):
             persistent: flag whether to save Y Document updates persistently.
             path: path where to store Y Document contents on disk.
             process_request: callable checking the HTTP request headers on new connections.
-            tls_context: [`SSLContext`][`ssl.SSLContext`] instance for TLS connections.
+            tls: [`SSLContext`][`ssl.SSLContext`] instance for TLS connections.
         """
         self.host = host
         self.port = port
         self.persistent = persistent
         self.path = path
-        self.tls_context = tls_context
+        self.tls = tls
 
         if path is not None:
             # check whether `path` is writable, OS-agnostic
@@ -452,7 +452,7 @@ class WebsocketServer(Component):
             self.port,
             process_request=self.process_request,
             logger=conn_logger,
-            ssl=self.tls_context,
+            ssl=self.tls,
         ):
             self._change_state(self.states.NONE, self.states.SERVING)
 
