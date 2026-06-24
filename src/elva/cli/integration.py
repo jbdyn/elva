@@ -173,9 +173,9 @@ def unset(translate: dict) -> Callable:
         "--unset",
         "-?",
         "unset",
-        metavar="OPTION",
+        metavar="ENTRY",
         multiple=True,
         show_choices=False,
-        help="Unset an option. Can be given multiple times.",
+        help="Unset the value of a command option. Can be given multiple times.",
         type=TranslatedChoice(translate),
     )
