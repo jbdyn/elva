@@ -1,4 +1,4 @@
-from collections.abc import Mapping, MutableMapping, Sequence
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from copy import deepcopy
 from typing import Any, Literal
 
@@ -322,3 +322,24 @@ def convert(item: Any) -> Any:
         return str(item)
     else:
         return item
+
+
+def deepsort(obj: Any) -> Any:
+    """
+    Deeply sort mappings and iterables.
+
+    Arguments:
+        obj: the object to sort.
+
+    Returns:
+        if `obj` is iterable and not a string, a `dict` if it is a mapping or a `list` otherwise,
+        else `obj` is returned untouched.
+    """
+    # strings cause an infinite recursion
+    if isinstance(obj, Iterable) and not isinstance(obj, str):
+        if isinstance(obj, Mapping):
+            return dict((key, deepsort(value)) for key, value in sorted(obj.items()))
+        else:
+            return list(deepsort(value) for value in sorted(obj))
+    else:
+        return obj

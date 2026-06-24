@@ -2,7 +2,7 @@ from click import command, echo, option
 from tomli_w import dumps
 
 from elva.cli import context, data, unset
-from elva.config import Config, convert
+from elva.config import Config, convert, deepsort
 from elva.files import Metadata
 
 TRANSLATIONS = {
@@ -36,14 +36,14 @@ def run(config: Config) -> None:
         c.pop("config", None)
 
     # remove own context
-    own = config.pop("context", {})
+    own = c.pop("context", {})
 
     # write to file if desired
     if (file := own.get("data", None)) and dump:
         with Metadata(file) as metadata:
-            metadata.set_config(config, replace=replace)
+            metadata.set_config(c, replace=replace)
 
-    echo(dumps(convert(config)))
+    echo(dumps(deepsort(convert(c))))
 
 
 @command(name="context")
