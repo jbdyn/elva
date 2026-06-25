@@ -1,18 +1,5 @@
 import logging
 import uuid
-from enum import Enum
-from functools import reduce
-from operator import or_
-from ssl import (
-    Options,
-    Purpose,
-    SSLContext,
-    TLSVersion,
-    VerifyFlags,
-    VerifyMode,
-    create_default_context,
-)
-from typing import Type
 
 import anyio
 from pycrdt import Doc, Text
@@ -22,9 +9,8 @@ from websockets.exceptions import InvalidStatus
 
 from elva.auth import DummyAuth, basic_authorization_header
 from elva.log import LOGGER_NAME
-from elva.provider import WebsocketProvider, tls
+from elva.provider import WebsocketProvider
 from elva.server import WebsocketServer
-from elva.tls import Check, Mode, Option, Version
 
 parametrize = mark.parametrize
 
@@ -62,123 +48,6 @@ def ydoc_updates_are_empty(ydoc_a, ydoc_b):
     is_empty = update_a == b"\x00\x00" and update_b == b"\x00\x00"
 
     return is_equal and is_empty
-
-
-@parametrize(
-    ("host", "config", "expected_ctx", "expected_scheme"),
-    (
-        # localhost
-        (LOCALHOST, {}, None, "ws"),
-        (LOCALHOST, {"on": True}, SSLContext, "wss"),
-        (LOCALHOST, {"on": False}, None, "ws"),
-        ("localhost", {}, None, "ws"),
-        # DNS names
-        ("some.server.address", {}, SSLContext, "wss"),
-        ("some.server.address", {"on": True}, SSLContext, "wss"),
-        ("some.server.address", {"on": False}, None, "ws"),
-        # IP addresses
-        ("192.168.1.42", {}, SSLContext, "wss"),
-        ("192.168.1.42", {"on": True}, SSLContext, "wss"),
-        ("192.168.1.42", {"on": False}, None, "ws"),
-    ),
-)
-def test_tls_setup(
-    host: str,
-    config: dict,
-    expected_ctx: None | SSLContext,
-    expected_scheme: str,
-) -> None:
-    """
-    The TLS context and websocket scheme is correctly set up depending on host and TLS config.
-
-    Arguments:
-        host: the host address.
-        config: the TLS config.
-        expected_ctx: the expected value for the TLS context.
-        expected_scheme: the expected_scheme for the websocket scheme.
-    """
-    ctx, scheme = tls(host, config)
-
-    if expected_ctx is None:
-        assert ctx is expected_ctx
-    else:
-        assert isinstance(ctx, expected_ctx)
-
-    assert scheme == expected_scheme
-
-
-@parametrize(
-    ("attr", "config", "expected_value"),
-    (
-        #
-        # versions
-        ("minimum_version", {"version": Version.TLSv1_2}, TLSVersion.TLSv1_2),
-        ("minimum_version", {"version": Version.TLSv1_3}, TLSVersion.TLSv1_3),
-        #
-        # modes
-        ("verify_mode", {"mode": Mode.NONE}, VerifyMode.CERT_NONE),
-        ("verify_mode", {"mode": Mode.OPTIONAL}, VerifyMode.CERT_OPTIONAL),
-        ("verify_mode", {"mode": Mode.REQUIRED}, VerifyMode.CERT_REQUIRED),
-        #
-        # checks
-        ("verify_flags", {}, create_default_context(Purpose.SERVER_AUTH).verify_flags),
-        (
-            "verify_flags",
-            {"checks": None},
-            create_default_context(Purpose.SERVER_AUTH).verify_flags,
-        ),
-        (
-            "verify_flags",
-            {"checks": list(Check.ALL)},
-            reduce(or_, VerifyFlags.__members__.values()),
-        ),
-        #
-        # options
-        ("options", {}, create_default_context(Purpose.SERVER_AUTH).options),
-        (
-            "options",
-            {"options": None},
-            create_default_context(Purpose.SERVER_AUTH).options,
-        ),
-        (
-            "options",
-            {"options": list(Option.ALL)},
-            reduce(
-                or_,
-                (
-                    o
-                    for o in Options.__members__.values()
-                    if not any(
-                        o.name.startswith(deprecated)
-                        for deprecated in ("OP_NO_SSL", "OP_NO_TLS")
-                    )
-                ),
-            ),
-        ),
-        #
-        # hostname check
-        ("check_hostname", {"hostname": True}, True),
-        ("check_hostname", {"hostname": False}, False),
-    ),
-)
-def test_tls_attributes(
-    attr: str,
-    config: dict,
-    expected_value: Type[Enum] | bool,
-) -> None:
-    """
-    TLS context attributes are set correctly depending on the given TLS config.
-
-    Arguments:
-        attr: the attribute to check the value for.
-        config: the TLS config.
-        expected_value: the expected value of the given TLS context attribute.
-    """
-    # use a fake DNS name to enable TLS by default with the need to set "on" = True
-    # in the config
-    ctx, _ = tls("some.host.address", config)
-
-    assert getattr(ctx, attr) == expected_value
 
 
 async def test_connect(free_tcp_port, tmp_path):

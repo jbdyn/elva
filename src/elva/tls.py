@@ -1,9 +1,20 @@
+from collections.abc import Sequence
 from enum import STRICT, Enum, IntEnum, IntFlag, auto
 from functools import reduce
 from itertools import chain
 from operator import or_
-from ssl import Options, TLSVersion, VerifyFlags, VerifyMode
+from ssl import (
+    Options,
+    Purpose,
+    SSLContext,
+    TLSVersion,
+    VerifyFlags,
+    VerifyMode,
+    create_default_context,
+)
 from typing import Any, Callable, Generator, Type
+
+from elva.core import LOCAL_HOSTS
 
 
 class Renamed:
@@ -293,3 +304,99 @@ Option = IntFlag(
 """
 Available TLS options.
 """
+
+#
+# setup
+#
+
+
+def enable(purpose: Purpose, config: dict) -> SSLContext:
+    """
+    Return TLS context and websocket scheme for TLS turned off.
+
+    Arguments:
+        config: the TLS section of the ELVA config.
+
+    Returns:
+        the configured TLS context.
+    """
+    # the client authenticates the server
+    ctx = create_default_context(purpose)
+
+    hostname = config.get("hostname")
+
+    # update hostname check flag depending on the mode set
+    if config.get("mode") in (Mode.NONE, Mode.OPTIONAL):
+        config["hostname"] = hostname = False
+
+    # update hostname check flag in the TLS context
+    if hostname is not None:
+        ctx.check_hostname = hostname
+
+    # update other attributes with enumeration values
+    for param, attr in (
+        ("mode", "verify_mode"),
+        ("version", "minimum_version"),
+        ("options", "options"),
+        ("checks", "verify_flags"),
+    ):
+        if (new := config.get(param)) is not None:
+            if isinstance(new, Sequence):
+                new = reduce(or_, new)
+
+            setattr(ctx, attr, new.translate())
+
+    return ctx
+
+
+def setup(purpose: Purpose, host: str, config: dict) -> None | SSLContext:
+    """
+    Return the TLS context and websocket scheme depending on the given TLS config.
+
+    Arguments:
+        purpose: the purpose of the TLS context.
+        host: the host address.
+        config: the TLS section of the ELVA config.
+
+    Returns:
+        `None` if TLS is disabled, else the configured TLS context.
+    """
+    on = config.get("on")
+
+    if on is None:
+        if host in LOCAL_HOSTS:
+            return
+        else:
+            return enable(purpose, config)
+    elif on:
+        return enable(purpose, config)
+    else:  # not on and not `None`
+        return
+
+
+def client(host: str, config: dict) -> None | SSLContext:
+    """
+    Set up the TLS context for a client.
+
+    Arguments:
+        host: the host address.
+        config: the TLS section of the ELVA config.
+
+    Returns:
+        `None` if TLS is disabled, else the configured TLS context.
+    """
+    return setup(Purpose.SERVER_AUTH, host, config)
+
+
+def server(host: str, config: dict) -> None | SSLContext:
+    """
+    Set up the TLS context for a client.
+
+    Arguments:
+        host: the host address.
+        config: the TLS section of the ELVA config.
+
+    Returns:
+        `None` if TLS is disabled, else the configured TLS context.
+    """
+    return setup(Purpose.CLIENT_AUTH, host, config)

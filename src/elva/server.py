@@ -25,6 +25,7 @@ from websockets.http11 import Request, Response
 from elva.component import Component, create_component_state
 from elva.protocol import YMessage
 from elva.store import SQLiteStore
+from elva.tls import server
 
 
 def free_tcp_port(host: None | str = None) -> int:
@@ -381,7 +382,7 @@ class WebsocketServer(Component):
     rooms: dict[str, Room]
     """mapping of connection handlers to their corresponding identifiers."""
 
-    tls_context: SSLContext | None
+    tls: SSLContext | None
     """[`SSLContext`][`ssl.SSLContext`] instance for TLS connections."""
 
     def __init__(
@@ -391,7 +392,7 @@ class WebsocketServer(Component):
         persistent: bool = False,
         path: None | Path = None,
         process_request: None | Callable = None,
-        tls: SSLContext | None = None,
+        tls_config: dict = {},
     ):
         """
         Arguments:
@@ -406,7 +407,7 @@ class WebsocketServer(Component):
         self.port = port
         self.persistent = persistent
         self.path = path
-        self.tls = tls
+        self.tls = server(host, tls_config)
 
         if path is not None:
             # check whether `path` is writable, OS-agnostic
