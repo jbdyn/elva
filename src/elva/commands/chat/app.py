@@ -323,7 +323,6 @@ class UI(App):
 
         for path, default in (
             ("connect.identifier", self.ydoc.guid),
-            ("connect.safe", True),
             ("user.name", self.client_id),
             ("user.display", self.client_id),
             ("render.auto", True),
@@ -364,6 +363,7 @@ class UI(App):
                 c["connect.identifier"],
                 c["connect.host"],
                 port=c.get("connect.port"),
+                tls_config=c.get("tls", {}),
                 on_exception=self.on_provider_exception,
             )
 

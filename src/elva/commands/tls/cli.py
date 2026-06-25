@@ -4,7 +4,7 @@ from itertools import chain
 from os import linesep
 from typing import Type
 
-from click import Context, Parameter, ParamType, command, echo, option
+from click import ClickException, Context, Parameter, ParamType, command, echo, option
 
 from elva.cli import context, unset
 from elva.tls import Check, Mode, Option, Version
@@ -158,6 +158,13 @@ def show(ctx: Context, param: Parameter, value: Type[Enum], enum: Type[Enum]) ->
     callback=resolve_flags,
 )
 @option(
+    "--check-hostname/--no-check-hostname",
+    "-h/-nh",
+    "hostname",
+    help="Enable or disable hostname checking.",
+    default=None,
+)
+@option(
     "--option",
     "-o",
     "options",
@@ -227,3 +234,8 @@ def cli(config: dict) -> None:
         remove = set(c.pop(f"no_{param}", []))
 
         c[param] = sorted(keep - remove)
+
+    if c.get("mode") in (Mode.NONE, Mode.OPTIONAL) and c.get("hostname"):
+        raise ClickException(
+            "hostname checking is only allowed for verify mode 'REQUIRED'"
+        )

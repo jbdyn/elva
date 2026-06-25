@@ -3,8 +3,15 @@ Module holding provider components.
 """
 
 import logging
+from collections.abc import Sequence
+from functools import reduce
 from inspect import Signature, isawaitable, signature
-from ssl import CERT_REQUIRED, PROTOCOL_TLS_CLIENT, TLSVersion, create_default_context
+from operator import or_
+from ssl import (
+    Purpose,
+    SSLContext,
+    create_default_context,
+)
 from typing import Any, Awaitable, Callable, Literal
 from urllib.parse import urlunparse
 
@@ -17,6 +24,82 @@ from elva.awareness import Awareness
 from elva.component import Component, create_component_state
 from elva.core import LOCAL_HOSTS
 from elva.protocol import YMessage
+from elva.tls import Mode
+
+
+def disable_tls() -> tuple[None, str]:
+    """
+    Return TLS context and websocket scheme for TLS turned off.
+
+    Returns:
+        a tuple with TLS context `None` and websocket scheme `"ws"`.
+    """
+    return None, "ws"
+
+
+def enable_tls(config: dict) -> tuple[SSLContext, str]:
+    """
+    Return TLS context and websocket scheme for TLS turned off.
+
+    Arguments:
+        config: the TLS section of the ELVA config.
+
+    Returns:
+        a tuple with a configured TLS context and websocket scheme `"wss"`.
+    """
+    # the client authenticates the server
+    ctx = create_default_context(Purpose.SERVER_AUTH)
+
+    check_hostname = config.get("hostname")
+
+    # update hostname check flag depending on the mode set
+    if config.get("mode") in (Mode.NONE, Mode.OPTIONAL):
+        config["hostname"] = check_hostname = False
+
+    # update hostname check flag in the TLS context
+    if check_hostname is not None:
+        ctx.check_hostname = check_hostname
+
+    # update other attributes with enumeration values
+    for param, attr in (
+        ("mode", "verify_mode"),
+        ("version", "minimum_version"),
+        ("options", "options"),
+        ("checks", "verify_flags"),
+    ):
+        if (new := config.get(param)) is not None:
+            if isinstance(new, Sequence):
+                new = reduce(or_, new)
+
+            setattr(ctx, attr, new.translate())
+
+    return ctx, "wss"
+
+
+def tls(host: str, config: dict) -> tuple[None | SSLContext, str]:
+    """
+    Return the TLS context and websocket scheme depending on the given TLS config.
+
+    Arguments:
+        host: the host address.
+        config: the TLS section of the ELVA config.
+
+    Returns:
+        `(None, "ws")` for TLS context and websocket scheme if TLS is disabled, else
+        a tuple with the configured TLS context and scheme "wss".
+    """
+    on = config.get("on")
+
+    if on is None:
+        if host in LOCAL_HOSTS:
+            return disable_tls()
+        else:
+            return enable_tls(config)
+    elif on:
+        return enable_tls(config)
+    else:  # not on and not `None`
+        return disable_tls()
+
 
 WebsocketProviderState = create_component_state(
     "WebsocketProviderState", ("CONNECTED",)
@@ -66,6 +149,7 @@ class WebsocketProvider(Component):
         *args: tuple[Any],
         port: int = None,
         on_exception: Awaitable | None = None,
+        tls_config: dict = {},
         **kwargs: dict[Any],
     ):
         """
@@ -82,26 +166,7 @@ class WebsocketProvider(Component):
         self.awareness = Awareness(ydoc)
         self.awareness.log = logging.getLogger(f"{self.log.name}.Awareness")
 
-        # only disable TLS for local hosts
-        if host in LOCAL_HOSTS:
-            # default for `socket.create_connection`
-            tls = None
-
-            # for `websockets.connect`
-            scheme = "ws"
-        else:
-            # define protocol and load default certificates
-            tls = create_default_context(PROTOCOL_TLS_CLIENT)
-
-            # explicitly require certificate and hostname checking
-            tls.verify_mode = CERT_REQUIRED
-            tls.check_hostname = True
-
-            # require at minimum TLS v1.2
-            tls.minimum_version = TLSVersion.TLSv1_2
-
-            # for `websockets.connect`
-            scheme = "wss"
+        tls_ctx, scheme = tls(host, tls_config)
 
         netloc = f"{host}:{port}" if port is not None else host
 
@@ -115,7 +180,7 @@ class WebsocketProvider(Component):
         )
 
         # pass the TLS context to `websockets.connect`
-        kwargs["ssl"] = tls
+        kwargs["ssl"] = tls_ctx
 
         self._signature = signature(connect).bind(uri, *args, **kwargs)
         self.options = self._signature.arguments
