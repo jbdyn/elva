@@ -26,6 +26,12 @@ class Renamed:
     Mapping of renames.
     """
 
+    def __str__(self) -> str:
+        """
+        Get the string conversion of the enumeration member.
+        """
+        return self.name
+
     def translate(self) -> Enum:
         """
         Translate back to the source member.
