@@ -459,12 +459,8 @@ class YTextArea(TextArea, TextEventParser):
             a hex color string.
         """
         # try to retrieve a client's color
-        states = self.awareness.client_states
-        state = states.get(client, {})
-        user = state.get("user", {})
-        color = user.get("color", None)
-
-        return color or self.default_cursor_color
+        state = self.awareness.client_states.get(client, {})
+        return state.get("color", self.default_cursor_color)
 
     def _watch_selection(self):
         """

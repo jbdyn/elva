@@ -8,6 +8,7 @@ import socket
 from contextlib import closing
 from http import HTTPStatus
 from pathlib import Path
+from ssl import SSLContext
 from typing import Callable, Iterable
 
 import anyio
@@ -24,6 +25,7 @@ from websockets.http11 import Request, Response
 from elva.component import Component, create_component_state
 from elva.protocol import YMessage
 from elva.store import SQLiteStore
+from elva.tls import server
 
 
 def free_tcp_port(host: None | str = None) -> int:
@@ -76,6 +78,33 @@ def free_tcp_port(host: None | str = None) -> int:
 
 RE_IDENTIFIER = re.compile(r"^[A-Za-z0-9\-_]{1,250}$")
 """Regular expression for a valid Y Doc identifier."""
+
+
+class TLSProbeFilter(logging.Filter):
+    """Filter to suppress TLS probe errors from websockets handshake failures."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return False to suppress TLS probe noise, True otherwise."""
+        # Suppress "did not receive a valid HTTP request" errors
+        # These are typically from TLS probes or port scanners
+        if record.levelno >= logging.ERROR:
+            msg = record.getMessage()
+            if "did not receive a valid HTTP request" in msg:
+                return False
+            if "connection closed while reading HTTP request" in msg:
+                return False
+            # Also check exception text (for tracebacks)
+            if record.exc_text:
+                if "did not receive a valid HTTP request" in record.exc_text:
+                    return False
+                if "connection closed while reading HTTP request" in record.exc_text:
+                    return False
+            # Check exc_info if exc_text not yet formatted
+            if record.exc_info and record.exc_info[1]:
+                exc_str = str(record.exc_info[1])
+                if "did not receive a valid HTTP request" in exc_str:
+                    return False
+        return True
 
 
 class RequestProcessor:
@@ -353,6 +382,9 @@ class WebsocketServer(Component):
     rooms: dict[str, Room]
     """mapping of connection handlers to their corresponding identifiers."""
 
+    tls: SSLContext | None
+    """[`SSLContext`][`ssl.SSLContext`] instance for TLS connections."""
+
     def __init__(
         self,
         host: str,
@@ -360,6 +392,7 @@ class WebsocketServer(Component):
         persistent: bool = False,
         path: None | Path = None,
         process_request: None | Callable = None,
+        tls_config: dict = {},
     ):
         """
         Arguments:
@@ -368,11 +401,13 @@ class WebsocketServer(Component):
             persistent: flag whether to save Y Document updates persistently.
             path: path where to store Y Document contents on disk.
             process_request: callable checking the HTTP request headers on new connections.
+            tls: [`SSLContext`][`ssl.SSLContext`] instance for TLS connections.
         """
         self.host = host
         self.port = port
         self.persistent = persistent
         self.path = path
+        self.tls = server(host, tls_config)
 
         if path is not None:
             # check whether `path` is writable, OS-agnostic
@@ -408,12 +443,17 @@ class WebsocketServer(Component):
         """
         Hook handling incoming connections and messages.
         """
+        # Configure logger to filter TLS probe noise
+        conn_logger = logging.getLogger(f"{self.log.name}.ServerConnection")
+        conn_logger.addFilter(TLSProbeFilter())
+
         async with serve(
             self.handle,
             self.host,
             self.port,
             process_request=self.process_request,
-            logger=logging.getLogger(f"{self.log.name}.ServerConnection"),
+            logger=conn_logger,
+            ssl=self.tls,
         ):
             self._change_state(self.states.NONE, self.states.SERVING)
 

@@ -15,6 +15,7 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 from elva.awareness import Awareness
 from elva.component import Component, create_component_state
 from elva.protocol import YMessage
+from elva.tls import client
 
 WebsocketProviderState = create_component_state(
     "WebsocketProviderState", ("CONNECTED",)
@@ -63,8 +64,8 @@ class WebsocketProvider(Component):
         host: str,
         *args: tuple[Any],
         port: int = None,
-        safe: bool = True,
         on_exception: Awaitable | None = None,
+        tls_config: dict = {},
         **kwargs: dict[Any],
     ):
         """
@@ -73,7 +74,6 @@ class WebsocketProvider(Component):
             identifier: identifier of the synchronized Y Document.
             host: hostname or IP address of the Y Document synchronizing websocket server.
             port: port of the Y Document synchronizing websocket server.
-            safe: flag whether to establish a secured (`True`) or unsecured (`False`) connection.
             on_exception: callback to which the current connection exception and a reference to the connection option mapping is given.
             *args: positional arguments passed to [`connect`][websockets.asyncio.client.connect].
             **kwargs: keyword arguments passed to [`connect`][websockets.asyncio.client.connect].
@@ -82,8 +82,10 @@ class WebsocketProvider(Component):
         self.awareness = Awareness(ydoc)
         self.awareness.log = logging.getLogger(f"{self.log.name}.Awareness")
 
-        # construct URI
-        scheme = "wss" if safe else "ws"
+        tls = client(host, tls_config)
+
+        scheme = "ws" if tls is None else "wss"
+
         netloc = f"{host}:{port}" if port is not None else host
 
         # scheme, netloc, url, params, query, fragment
@@ -94,6 +96,10 @@ class WebsocketProvider(Component):
         kwargs.setdefault(
             "logger", logging.getLogger(f"{self.log.name}.ClientConnection")
         )
+
+        # pass the TLS context to `websockets.connect`
+        kwargs["ssl"] = tls
+
         self._signature = signature(connect).bind(uri, *args, **kwargs)
         self.options = self._signature.arguments
 

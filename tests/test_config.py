@@ -5,7 +5,7 @@ from typing import Any, Callable, Generator, Sequence
 
 from pytest import mark, raises
 
-from elva.config import Config
+from elva.config import Config, deepsort
 
 # alias
 parametrize = mark.parametrize
@@ -653,3 +653,48 @@ def test_merge(mapping: dict, expected: dict) -> None:
     with config() as c:
         c.merge(mapping)
         assert c == expected
+
+
+UNSORTED_MAP = {
+    "foo": {
+        "y": set(list("bac")),
+        "bar": {
+            "baz": [3, 2, 1],
+        },
+        "x": 1,
+    },
+}
+"""Unsorted test mapping."""
+
+
+SORTED_MAP = {
+    "foo": {
+        "bar": {
+            "baz": [1, 2, 3],
+        },
+        "x": 1,
+        "y": list("abc"),
+    },
+}
+"""Sorted test mapping. Differs to `MAP` only in `foo.y`."""
+
+
+@parametrize(
+    ("obj", "expected"),
+    (
+        (None, None),
+        (1, 1),
+        ("cba", "cba"),  # single string value are returned as is
+        (list("cba"), list("abc")),
+        (UNSORTED_MAP, SORTED_MAP),
+    ),
+)
+def test_deepsort(obj: Any, expected: Any) -> None:
+    """
+    Deepsorting sorts nested mappings and iterables.
+
+    Arguments:
+        mapping: the object to sort.
+        expected: the sorted object.
+    """
+    assert deepsort(obj) == expected

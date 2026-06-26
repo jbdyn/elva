@@ -9,10 +9,6 @@ TRANSLATE = {
     "p": "port",
     "identifier": "identifier",
     "i": "identifier",
-    "safe": "safe",
-    "s": "safe",
-    "unsafe": "safe",
-    "u": "safe",
 }
 """
 Table for translation from flag to parameter names.
@@ -39,14 +35,6 @@ Table for translation from flag to parameter names.
     "-i",
     "identifier",
     help="Unique identifier of the shared document.",
-)
-@option(
-    "--safe/--unsafe",
-    "-s/-u",
-    "safe",
-    is_flag=True,
-    help="Try to establish a safe connection.",
-    default=None,
 )
 @unset(TRANSLATE)
 @context

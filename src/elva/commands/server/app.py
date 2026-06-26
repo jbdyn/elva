@@ -44,6 +44,7 @@ async def main(config: Config):
         persistent=save,
         path=directory,
         process_request=process_request,
+        tls_config=c.get("tls", {}),
     )
 
     async with create_task_group() as tg:

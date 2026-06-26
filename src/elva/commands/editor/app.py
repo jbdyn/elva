@@ -108,7 +108,7 @@ class UI(App):
                 identifier,
                 host,
                 port=port,
-                safe=c.get("connect.safe", True),
+                tls_config=c.get("tls", {}),
                 on_exception=self.on_provider_exception,
             )
 
