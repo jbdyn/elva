@@ -1,11 +1,7 @@
-from shlex import split
-from subprocess import PIPE, Popen
-
-from click import ClickException, Context, Parameter, ParamType, command, option
+from click import command, option
 from click import password_option as secret
 
-from elva.auth import Password
-from elva.cli import context, unset
+from elva.cli import SecretParamType, ask, context, unset
 
 TRANSLATE = {
     "user": "user",
@@ -18,58 +14,6 @@ TRANSLATE = {
 """
 Table for translation from flag to parameter names.
 """
-
-
-def run(command: str) -> Password:
-    """
-    Run the command returning the secret for authentication on stdin.
-
-    Arguments:
-        command: the command to run.
-
-    Returns:
-        the password with the stripped stdout content as value.
-    """
-    args = split(command)
-
-    process = Popen(args, text=True, stdout=PIPE, stderr=PIPE)
-
-    stdout, stderr = process.communicate()
-
-    if stderr:
-        raise ClickException(stderr)
-
-    return Password(stdout.rstrip("\r\n"))
-
-
-class SecretParamType(ParamType):
-    """
-    CLI parameter type for parsing secrets.
-    """
-
-    name = "secret"
-
-    def convert(
-        self,
-        value: Password | str | None,
-        param: Parameter,
-        ctx: Context,
-    ) -> Password:
-        """
-        Convert the parsed CLI value to a secret.
-
-        Arguments:
-            value: the value given via CLI or API.
-            param: the parameter instance.
-            ctx: the context of the current invokation.
-
-        Returns:
-            the value in the `Password` wrapper or `None`.
-        """
-        if isinstance(value, Password) or value is None:
-            return value
-
-        return Password(value)
 
 
 @command(name="basic")
@@ -90,7 +34,7 @@ class SecretParamType(ParamType):
 )
 @option(
     "--command",
-    "-c",
+    "-x",
     help="The command returning the secret on stdin.",
 )
 @unset(TRANSLATE)
@@ -114,4 +58,4 @@ def cli(config: dict):
         and "secret" not in unset
         and "command" not in unset
     ):
-        c["secret"] = run(c["command"])
+        c["secret"] = ask(c["command"])

@@ -2,11 +2,14 @@ from enum import Enum
 from functools import partial
 from itertools import chain
 from os import linesep
+from pathlib import Path
 from typing import Type
 
 from click import ClickException, Context, Parameter, ParamType, command, echo, option
+from click import Path as PathParamType
+from click import password_option as secret
 
-from elva.cli import context, unset
+from elva.cli import SecretParamType, ask, context, unset
 from elva.tls import Check, Mode, Option, Version
 
 TRANSLATE = {
@@ -134,7 +137,7 @@ def show(ctx: Context, param: Parameter, value: Type[Enum], enum: Type[Enum]) ->
     "-m",
     "mode",
     metavar="MODE",
-    help="Set the TLS verification mode.",
+    help="Set the TLS certificate verification mode.",
     type=EnumParamType(Mode),
 )
 @option(
@@ -158,7 +161,7 @@ def show(ctx: Context, param: Parameter, value: Type[Enum], enum: Type[Enum]) ->
     callback=resolve_flags,
 )
 @option(
-    "--check-hostname/--no-check-hostname",
+    "--hostname/--no-hostname",
     "-h/-nh",
     "hostname",
     help="Enable or disable hostname checking.",
@@ -183,6 +186,84 @@ def show(ctx: Context, param: Parameter, value: Type[Enum], enum: Type[Enum]) ->
     help="Disable a TLS option. Can be given multiple times.",
     type=EnumParamType(Option),
     callback=resolve_flags,
+)
+@option(
+    "--authority",
+    "-a",
+    "authority",
+    help=(
+        "Set the path to the Certificate Authority certificate(s). "
+        "Also useful for self-signed certificates."
+    ),
+    type=PathParamType(
+        path_type=Path,
+        exists=True,
+        file_okay=True,
+        dir_okay=True,
+        readable=True,
+        writable=False,
+        executable=False,
+        resolve_path=True,
+        allow_dash=False,
+    ),
+    default=None,
+)
+@option(
+    "--certificate",
+    "-f",
+    "certificate",
+    help=(
+        "Set the path to a certificate file in PEM format. "
+        "It can contain the private key as well, in which case "
+        "-k, --key is not needed."
+    ),
+    type=PathParamType(
+        path_type=Path,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        writable=False,
+        executable=False,
+        resolve_path=True,
+        allow_dash=False,
+    ),
+    default=None,
+)
+@option(
+    "--key",
+    "-k",
+    "key",
+    help="Set the path to the private key file in PEM format.",
+    type=PathParamType(
+        path_type=Path,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        writable=False,
+        executable=False,
+        resolve_path=True,
+        allow_dash=False,
+    ),
+    default=None,
+)
+@secret(
+    "--secret",
+    "-s",
+    "secret",
+    metavar="[SECRET]",
+    help=(
+        "Give the secret for decrypting the private key. "
+        "If not given if needed, the built-in OpenSSL mechanism is used."
+    ),
+    prompt_required=False,
+    type=SecretParamType(),
+)
+@option(
+    "--command",
+    "-x",
+    help="Set the command returning the secret on stdin.",
 )
 @unset(TRANSLATE)
 @option(
@@ -229,13 +310,26 @@ def cli(config: dict) -> None:
     # alias
     c = config
 
+    # fail early for wrong combination of mode and hostname check
+    if c.get("mode") in (Mode.NONE, Mode.OPTIONAL) and c.get("hostname"):
+        raise ClickException(
+            "hostname checking is only allowed for verify mode 'REQUIRED'"
+        )
+
+    # combine checks and options
     for param in ("checks", "options"):
         keep = set(c.pop(param, []))
         remove = set(c.pop(f"no_{param}", []))
 
         c[param] = sorted(keep - remove)
 
-    if c.get("mode") in (Mode.NONE, Mode.OPTIONAL) and c.get("hostname"):
-        raise ClickException(
-            "hostname checking is only allowed for verify mode 'REQUIRED'"
-        )
+    # get the secret from a given command if applicable
+    unset = set(c.get("unset", []))
+
+    if (
+        c.get("command", None)
+        and not c.get("secret", None)
+        and "secret" not in unset
+        and "command" not in unset
+    ):
+        c["secret"] = ask(c["command"])

@@ -320,14 +320,32 @@ def enable(purpose: Purpose, config: dict) -> SSLContext:
     Returns:
         the configured TLS context.
     """
+    # alias
+    c = config
+
     # the client authenticates the server
     ctx = create_default_context(purpose)
 
-    hostname = config.get("hostname")
+    if (certificate := c.get("certificate")) is not None:
+        secret = c.get("secret")
+        password = secret.value if secret is not None else None
+
+        ctx.load_cert_chain(
+            certificate,
+            keyfile=c.get("key"),
+            password=password,
+        )
+
+    if authority := c.get("authority"):
+        key = "capath" if authority.is_dir() else "cafile"
+        kwargs = {key: authority}
+        ctx.load_verify_locations(**kwargs)
+
+    hostname = c.get("hostname")
 
     # update hostname check flag depending on the mode set
-    if config.get("mode") in (Mode.NONE, Mode.OPTIONAL):
-        config["hostname"] = hostname = False
+    if c.get("mode") in (Mode.NONE, Mode.OPTIONAL):
+        c["hostname"] = hostname = False
 
     # update hostname check flag in the TLS context
     if hostname is not None:
@@ -340,7 +358,7 @@ def enable(purpose: Purpose, config: dict) -> SSLContext:
         ("options", "options"),
         ("checks", "verify_flags"),
     ):
-        if (new := config.get(param)) is not None:
+        if (new := c.get(param)) is not None:
             if isinstance(new, Sequence):
                 new = reduce(or_, new)
 
