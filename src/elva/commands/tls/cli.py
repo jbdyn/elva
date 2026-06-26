@@ -1,6 +1,7 @@
 from enum import Enum
-from functools import partial
+from functools import partial, reduce
 from itertools import chain
+from operator import or_
 from os import linesep
 from pathlib import Path
 from typing import Type
@@ -98,7 +99,10 @@ def resolve_flags(
     Returns:
         a tuple containing all included flags.
     """
-    return tuple(chain(*(v for v in value)))
+    if value and reduce(or_, value) == 0:
+        return value
+    else:
+        return tuple(chain(*(v for v in value)))
 
 
 def show(ctx: Context, param: Parameter, value: Type[Enum], enum: Type[Enum]) -> None:

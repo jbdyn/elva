@@ -68,6 +68,10 @@ class RenamedIterable(Renamed):
         Returns:
             the member of the source enumeration.
         """
+        if self.value == 0:
+            # zero-valued members are not covered by iteration
+            return super().translate()
+
         return reduce(
             or_,
             (
@@ -197,6 +201,9 @@ class RenamedCheck(RenamedIterable):
 
     source = VerifyFlags
     prefix = PREFIX_CHECK
+    rename = {
+        "NONE": VerifyFlags(0).name,
+    }
 
 
 def filter_check(name: str, member: VerifyFlags) -> None | tuple[str, int]:
@@ -229,7 +236,10 @@ Check = IntFlag(
     "Check",
     chain(
         _Check.__members__.items(),
-        (("ALL", reduce(or_, _Check)),),
+        (
+            ("NONE", 0),
+            ("ALL", reduce(or_, _Check)),
+        ),
     ),
     type=RenamedCheck,
     boundary=STRICT,
@@ -254,6 +264,7 @@ class RenamedOption(RenamedIterable):
     source = Options
     prefix = PREFIX_OPTION
     rename = {
+        "NONE": Options(0).name,
         "DEFAULT": "OP_ALL",
     }
 
@@ -296,7 +307,10 @@ Option = IntFlag(
     "Option",
     chain(
         _Option.__members__.items(),
-        (("ALL", reduce(or_, _Option)),),
+        (
+            ("NONE", 0),
+            ("ALL", reduce(or_, _Option)),
+        ),
     ),
     type=RenamedOption,
     boundary=STRICT,
