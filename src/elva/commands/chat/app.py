@@ -364,6 +364,7 @@ class UI(App):
                 c["connect.host"],
                 port=c.get("connect.port"),
                 tls_config=c.get("tls", {}),
+                visible=c.get("room.visible"),
                 on_exception=self.on_provider_exception,
             )
 

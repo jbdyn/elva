@@ -67,6 +67,7 @@ class WebsocketProvider(Component):
         port: int = None,
         client_type: str = "elva",
         on_exception: Awaitable | None = None,
+        visible: bool | None = None,
         tls_config: dict = {},
         **kwargs: dict[Any],
     ):
@@ -92,7 +93,12 @@ class WebsocketProvider(Component):
         port = update_port(host, port=port)
 
         netloc = f"{host}:{port}" if port is not None else host
-        query = urlencode({"client": client_type})
+        params = {"client": client_type}
+
+        if visible is not None:
+            params["visible"] = int(visible)
+
+        query = urlencode(params)
 
         # scheme, netloc, url, params, query, fragment
         uri = urlunparse((scheme, netloc, identifier, None, query, None))

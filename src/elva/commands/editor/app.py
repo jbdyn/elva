@@ -110,6 +110,7 @@ class UI(App):
                 host,
                 port=port,
                 tls_config=c.get("tls", {}),
+                visible=c.get("room.visible"),
                 on_exception=self.on_provider_exception,
             )
 

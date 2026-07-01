@@ -8,6 +8,12 @@ from elva.cli import context
 
 @command(name="room")
 @option(
+    "--visible/--hidden",
+    "-v/-h",
+    help="Set the visibility of a room.",
+    default=None,
+)
+@option(
     "--info",
     "-i",
     is_flag=True,

@@ -6,6 +6,7 @@ import logging
 import re
 import socket
 from contextlib import closing
+from enum import Enum, auto
 from http import HTTPStatus
 from json import dumps, loads
 from pathlib import Path
@@ -31,6 +32,55 @@ from elva.core import update_port
 from elva.protocol import YMessage
 from elva.store import SQLiteStore
 from elva.tls import client, server
+
+
+class Visible(Enum):
+    """
+    Room visibility options.
+    """
+
+    NEVER = auto()
+    """
+    Always set a room to be invisible, regardless of the client request.
+    """
+
+    FALSE = auto()
+    """
+    Set a room to be invisible if nothing else was requested by the client.
+    """
+
+    TRUE = auto()
+    """
+    Set a room to be visible if nothing else was requested by the client.
+    """
+
+    ALWAYS = auto()
+    """
+    Always set a room to be visible, regardless of the client request.
+    """
+
+    def __str__(self) -> str:
+        """
+        Get the string conversion of a member.
+
+        Returns:
+            the name of the member.
+        """
+        return self.name
+
+    def __bool__(self) -> bool:
+        """
+        Get the boolean conversion of a member.
+
+        Returns:
+            `True` for the members `ALWAYS` and `TRUE` and
+            `False` for the members `NEVER` and `FALSE`.
+        """
+        match self.name:
+            case "ALWAYS" | "TRUE":
+                return True
+            case "NEVER" | "FALSE":
+                return False
 
 
 def fetch_rooms(
@@ -232,6 +282,7 @@ class Room(Component):
         identifier: str,
         persistent: bool = False,
         path: None | Path = None,
+        visible: bool = False,
     ):
         """
         If `persistent = False` and `path = None`, messages will be broadcasted only.
@@ -246,6 +297,7 @@ class Room(Component):
             identifier: identifier for the used Y Document.
             persistent: flag whether to store received Y Document updates.
             path: path where to save a Y Document on disk.
+            visible: `True` if the room should be visible, else `False`.
         """
         self.identifier = identifier
         self.persistent = persistent
@@ -261,6 +313,8 @@ class Room(Component):
             self.ydoc = Doc()
             if path is not None:
                 self.store = SQLiteStore(self.ydoc, self.path)
+
+        self.visible = visible
 
     @property
     def states(self) -> RoomState:
@@ -459,6 +513,9 @@ class WebsocketServer(Component):
     tls_config: dict
     """The `tls` config section of the ELVA config."""
 
+    visible: Visible
+    """The visibility setting for rooms."""
+
     def __init__(
         self,
         host: str,
@@ -467,6 +524,7 @@ class WebsocketServer(Component):
         path: None | Path = None,
         process_request: None | Callable = None,
         tls_config: dict = {},
+        visible: Visible = Visible.FALSE,
     ):
         """
         Arguments:
@@ -476,12 +534,14 @@ class WebsocketServer(Component):
             path: path where to store Y Document contents on disk.
             process_request: callable checking the HTTP request headers on new connections.
             tls_config: the `tls` config section of the ELVA config.
+            visible: the visibility setting for rooms.
         """
         self.host = host
         self.port = port
         self.persistent = persistent
         self.path = path
         self.tls = server(host, tls_config)
+        self.visible = visible
 
         if path is not None:
             # check whether `path` is writable, OS-agnostic
@@ -539,6 +599,8 @@ class WebsocketServer(Component):
                 self.log.info(f"storing content in {location}")
             else:
                 self.log.info("broadcast only and no content will be stored")
+
+            self.log.info(f"set room visibility to {self.visible}")
 
             # keep the server active indefinitely
             await anyio.sleep_forever()
@@ -620,10 +682,27 @@ class WebsocketServer(Component):
         return [
             room.info()
             for room in self.rooms.values()
-            if room.states.ACTIVE in room.state
+            if room.states.ACTIVE in room.state and room.visible
         ]
 
-    async def get_room(self, identifier: str) -> Room:
+    def update_visibility(self, visible: bool | None = None) -> bool:
+        """
+        Update the visibility depending on the query and the server policy.
+
+        Arguments:
+            visible: flag given in the client's HTTP request query.
+
+        Returns:
+            `True` if the room is set to be visible, else `False` if the room
+            shall be hidden.
+        """
+        match self.visible:
+            case Visible.ALWAYS | Visible.NEVER:
+                return bool(self.visible)
+            case Visible.TRUE | Visible.FALSE:
+                return bool(self.visible) if visible is None else visible
+
+    async def get_room(self, identifier: str, visible: bool | None = None) -> Room:
         """
         Get or create a [`Room`][elva.server.Room] via its corresponding `identifier`.
 
@@ -637,11 +716,15 @@ class WebsocketServer(Component):
         try:
             room = self.rooms[identifier]
         except KeyError:
+            visible = self.update_visibility(visible)
+
             room = Room(
                 identifier,
                 persistent=self.persistent,
                 path=self.path,
+                visible=visible,
             )
+
             self.rooms[identifier] = room
 
         # make sure the room is `ACTIVE`
@@ -666,8 +749,12 @@ class WebsocketServer(Component):
         identifier = parsed.path[1:]  # Remove leading `/`
         query = parse_qs(parsed.query)
         client_type = query.get("client", ["unknown"])[0]
+        visible = query.get("visible")
 
-        room = await self.get_room(identifier)
+        if visible is not None:
+            visible = visible[0] == "1"
+
+        room = await self.get_room(identifier, visible=visible)
 
         # Get client IP for logging
         remote = websocket.remote_address

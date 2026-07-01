@@ -7,12 +7,13 @@ from importlib import import_module as import_
 from logging import INFO, FileHandler, StreamHandler, getLogger
 from pathlib import Path
 
-from click import INT, UsageError, command, option
+from click import INT, Choice, UsageError, command, option
 from click import Path as PathParamType
 
 from elva.cli import context, unset
 from elva.config import Config
 from elva.log import LOGGER_NAME, DefaultFormatter
+from elva.server import Visible
 
 TRANSLATIONS = {
     "host": "host",
@@ -105,6 +106,18 @@ def run(config: Config) -> None:
     "--dummy",
     help="Enable Dummy Basic Authentication. DO NOT USE IN PRODUCTION.",
     is_flag=True,
+    default=None,
+)
+@option(
+    "--visible",
+    "-v",
+    help=(
+        "Set the default or enforced visibility of rooms. "
+        f"Can be one of {', '.join(str(v) for v in Visible)}."
+    ),
+    metavar="VISIBILITY",
+    show_choices=False,
+    type=Choice(Visible),
     default=None,
 )
 @unset(TRANSLATIONS)
