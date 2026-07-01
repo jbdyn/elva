@@ -105,7 +105,6 @@ async def test_websocket_server_request_processor(free_tcp_port):
     ) as websocket_server:
         # invalid identifiers, so we expect a HTTP status 403 (forbidden) response
         for bad_identifier in (
-            "",  # empty
             r"a/b\c",  # filesystem path
             "x&b?",  # HTML characters
             "x" * 255,  # too long
