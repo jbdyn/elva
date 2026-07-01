@@ -425,6 +425,7 @@ class Room(Component):
             identifier=self.identifier,
             clients=len(self.clients),
             persistent=self.persistent,
+            permanent=self.path is not None,
         )
 
 
@@ -455,8 +456,8 @@ class WebsocketServer(Component):
     rooms: dict[str, Room]
     """mapping of connection handlers to their corresponding identifiers."""
 
-    tls: SSLContext | None
-    """[`SSLContext`][`ssl.SSLContext`] instance for TLS connections."""
+    tls_config: dict
+    """The `tls` config section of the ELVA config."""
 
     def __init__(
         self,
@@ -474,7 +475,7 @@ class WebsocketServer(Component):
             persistent: flag whether to save Y Document updates persistently.
             path: path where to store Y Document contents on disk.
             process_request: callable checking the HTTP request headers on new connections.
-            tls: [`SSLContext`][`ssl.SSLContext`] instance for TLS connections.
+            tls_config: the `tls` config section of the ELVA config.
         """
         self.host = host
         self.port = port

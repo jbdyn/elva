@@ -72,9 +72,7 @@ def run(config: Config) -> None:
     if json:
         echo(rooms)
     else:
-        if not rooms:
-            echo("no active rooms", err=True)
-        else:
+        if rooms:
             echo(
                 linesep.join(
                     out for room in rooms if (out := display(room, details=details))

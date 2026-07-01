@@ -97,7 +97,6 @@ class RoomBrowserScreen(Screen):
                     key=room["identifier"],
                 )
 
-
     def on_data_table_row_selected(self, event: DataTable.RowSelected):
         """
         Hook called when a row is selected.

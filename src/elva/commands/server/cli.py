@@ -109,12 +109,12 @@ def run(config: Config) -> None:
 )
 @unset(TRANSLATIONS)
 @context
-def cli(config: Config) -> None:
+def cli(config: dict) -> None:
     """
     Run a WebSocket server.
     \f
 
     Arguments:
-        config: the merged configuration parameters from CLI and files.
+        config: the `server` section of the ELVA config.
     """
     return run
